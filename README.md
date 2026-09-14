@@ -1,30 +1,74 @@
-# LabPracticeApp
+# Crowdsourced Satellite Network Measurements on Moving Platforms
 
-LabPracticeApp is a bare React Native mobile app for simple network measurement. It lets a user enter a target URL, send one HTTP request every 10 seconds, measure latency with `Date.now()`, and save each result as a CSV row on the device.
+An Android capstone for collecting network performance data during flights and other mobility scenarios. The research contribution is an offline-first measurement infrastructure, a reliability evaluation, and a real or simulated mobility dataset.
 
-The app is written in plain JavaScript at the app/source level. It uses one shared JS codebase for the main UI and measurement logic, with Android-specific native setup only where required for background execution and battery optimization handling.
+## Architecture and scope
 
-## Quick Start
-
-Install dependencies from the project root:
-
-```bash
-npm install
+```text
+React Native CLI + TypeScript UI (no Expo)
+  → Kotlin native module
+  → Android foreground measurement service
+  → SQLite (OP-SQLite for RN access, WAL mode)
+  → WorkManager deferred sync
+  → FastAPI
+  → PostgreSQL + TimescaleDB
+  → Python/pandas analysis
 ```
 
-Start Metro:
+Kotlin owns measurement execution independently of the JavaScript lifecycle. SQLite will be the local source of truth: persist every measurement before upload. Kotlin will write measurements, connectivity events, debug logs and sync-queue entries; React Native will handle session setup, settings, manual metadata and local history. Full records will be read from SQLite, not streamed through bridge events.
+
+The MVP uses controlled HTTP RTT, download and upload probes, DNS-inclusive connection timing, connectivity gaps, and backend public-IP/ASN context. Manual flight/provider details and available WiFi metadata provide context; GPS is optional supporting evidence. HTTP RTT is an application-layer metric, not ICMP latency.
+
+Planned backend: FastAPI in Docker on Fly.io, one region initially, with session creation, measurement/event batch ingestion, ping/download/upload probes, client-IP and config endpoints. Planned local tables: sessions, measurements, connectivity_events, sync_queue, device_info, debug_logs, user_settings and probe_config.
+
+No Expo, Firebase primary storage, AsyncStorage measurement storage, third-party speed-test SDKs, required ICMP/traceroute, iOS implementation, complex login or real-time dashboard in the MVP. Multi-region probes, raw DNS timing, provider classification and public dataset publication are stretch goals.
+
+## Milestones
+
+| Milestone | Deliverable and acceptance | Target |
+| --- | --- | --- |
+| 1 — Native bridge proof | Start/stop Kotlin foreground service, persistent notification, status events and recovery of live status after reopening; 10–30 minute phone-lock test | Weeks 1–3 with M2 |
+| 2 — Local data truth | SQLite/WAL, Kotlin test rows every 60 seconds, RN history, persistence and concurrent-access checks | Weeks 1–3 |
+| 3 — Core probes | Native HTTP RTT every 60 seconds, controlled throughput, connection timing, failure/gap logs, minimal FastAPI probe server; multi-hour ground run | Weeks 4–6 |
+| 4 — Backend and sync | PostgreSQL/TimescaleDB, durable queue, WorkManager retry, idempotent ingestion, single-region deployment | Weeks 7–9 |
+| 5 — Context and reliability | Manual metadata, available WiFi/IP/ASN, optional location; fake-flight harness | Weeks 10–12 |
+| 6 — Data collection | At least one flight dataset, or a controlled unstable-network/mobile fallback, through the entire pipeline | Weeks 12–13 |
+| 7 — Analysis and report | Reproducible notebook with RTT, throughput and gaps; design, evaluation and limitations | Weeks 14–15 |
+
+The fake-flight harness will cover phone lock, activity removal, process termination, WiFi toggling, airplane mode, backend outage/delay/failure, constrained bandwidth, reconnect, retry and duplicate prevention. Prove bridge and storage first; pass ground tests before relying on flight access.
+
+## Current implementation: Milestone 1
+
+The active app is TypeScript with Start, Stop and Refresh status controls. A Kotlin native module starts a native Android service with an ongoing notification, an open-app action and a Stop action. A native heartbeat provides a liveness check; it is not a network probe. Status comes from native process memory, including session ID, start time, elapsed duration and heartbeat count. UI reopening and JS reload query the existing service instead of starting another session.
+
+The earlier JS/CSV prototype has been retired. No probes, SQLite, backend or synchronization are implemented yet. Application ID remains `com.labpracticeapp` to preserve the existing Android scaffold.
+
+### Bridge contract
+
+```ts
+startSession(config: MeasurementConfig): Promise<string> // resolves when foreground startup succeeds
+stopSession(): Promise<void> // resolves after service shutdown; safe when already stopped
+getServiceStatus(): Promise<ServiceStatus>
+```
+
+M1 accepts an empty `MeasurementConfig`; probe configuration is reserved for M3. Status states are `stopped`, `starting`, `running` and `stopping`. Repeated starts reuse the current session; starting during shutdown rejects. `MeasurementServiceStatusChanged` carries lightweight status snapshots. Start failures reject and expose an error in status. RN subscribes to events and refreshes on foreground entry; events are not durable storage.
+
+The service uses `specialUse` with an explicit research-measurement subtype because user-initiated continuous network observation does not fit deferred data transfer. A Play Store release would require review of this declaration. See [Android service types](https://developer.android.com/develop/background-work/services/fgs/service-types). The native module uses RN's supported legacy-module interoperability layer with the existing New Architecture scaffold; see [RN 0.84 compatibility](https://reactnative.dev/blog/2026/02/11/react-native-0.84).
+
+M1 uses `START_NOT_STICKY`: activity removal does not intentionally stop the service, but force-stop, Android's active-app Stop, process death and reboot end the in-memory session. A fresh process reports stopped, never a stale running flag. Durable recovery belongs to later persistence/reliability work. A foreground service is not a guarantee against OS/OEM termination, and heartbeat callbacks can pause during deep sleep; elapsed duration uses Android's monotonic clock. No wake lock or battery-exemption prompt is needed for this service-lifecycle proof.
+
+Android 13+ notification permission is requested when starting. Denial does not prevent the service from running, but the app explains that the notification may be hidden. No location permissions are requested in M1.
+
+## Development
+
+Prerequisites: Node >=22.11, JDK 17, Android SDK/platform 36, build tools 36.0.0 and NDK 27.1.12297006. Configure `ANDROID_HOME` or an ignored `android/local.properties` with your SDK path.
 
 ```bash
+npm ci
 npm start
 ```
 
-In a second terminal, run the Android app:
-
-```bash
-npm run android
-```
-
-For a real Android phone over USB, confirm the device is connected and forward Metro first:
+In another terminal, with an emulator or USB-debugging phone attached:
 
 ```bash
 adb devices
@@ -32,237 +76,41 @@ adb reverse tcp:8081 tcp:8081
 npm run android
 ```
 
-## Current Features
-
-- Enter a target website URL
-- Normalize input such as `example.com` to `https://example.com`
-- Start and stop a measurement loop
-- Run one request immediately, then every 10 seconds
-- Measure latency using `Date.now()` before and after `fetch`
-- Save each result to `network_log.csv`
-- Show the 30 most recent logs in the UI
-- Show current app state, status, last latency, and request count
-- Show the CSV path in the app
-- Continue measuring on Android in the background through a foreground service and persistent notification
-
-## Current Measurement Data
-
-Each CSV row contains:
-
-- `timestamp`
-- `target_url`
-- `success`
-- `latency_ms`
-- `http_status`
-- `app_state`
-- `error`
-
-The CSV header is:
-
-```csv
-timestamp,target_url,success,latency_ms,http_status,app_state,error
-```
-
-## Tech Stack
-
-Main tools and libraries currently used:
-
-- `react-native` `0.84.1`
-- `react` `19.2.3`
-- `react-native-fs`
-- `react-native-background-actions`
-- `react-native-safe-area-context`
-- React Native built-in UI components for the current interface
-
-## Background Service
-
-Android background measurement currently uses `react-native-background-actions`.
-
-How it works now:
-
-- When the app is active, measurement runs in the normal JS app context
-- When the app goes to the background on Android, the app starts a foreground service
-- The foreground service shows a persistent notification
-- The notification text updates with the latest request result and request count
-
-Current limitation:
-
-- Android background mode is supported
-- iOS should still be treated as foreground-only for this project stage
-
-## Project Structure
-
-```text
-LabPracticeApp/
-  App.js
-  src/
-    components/
-      ControlPanel.js
-      LogList.js
-    services/
-      backgroundService.js
-      csvService.js
-      deviceSettingsService.js
-      measurementService.js
-      pingService.js
-      preferencesService.js
-    utils/
-      url.js
-```
-
-## Important Files
-
-- `App.js`: top-level app state, UI composition, start/stop behavior, AppState handling
-- `src/components/ControlPanel.js`: input and buttons
-- `src/components/LogList.js`: recent measurement cards
-- `src/services/pingService.js`: simple `fetch` request and latency measurement
-- `src/services/measurementService.js`: orchestration of request + CSV append
-- `src/services/csvService.js`: CSV creation, append, recent row parsing, request counting
-- `src/services/backgroundService.js`: Android background loop and notification updates
-- `src/services/deviceSettingsService.js`: Android battery optimization helpers
-- `src/services/preferencesService.js`: small persisted flags for startup prompts
-- `src/utils/url.js`: URL normalization
-
-## How Requests Work
-
-The app currently uses a simple `fetch` request:
-
-- method: `GET`
-- one request immediately on start
-- then one request every 10 seconds
-- `success` is based on `response.ok`
-- `http_status` is recorded when a response is received
-- failures are stored in the `error` field
-
-## CSV Storage
-
-The file name is:
-
-```text
-network_log.csv
-```
-
-It is stored in the app documents directory through `react-native-fs`.
-
-The app shows the exact path when the user presses `Show CSV Path`.
-
-On Android, the file is typically under the app sandbox, for example:
-
-```text
-/data/user/0/com.labpracticeapp/files/network_log.csv
-```
-
-Useful `adb` commands:
+Checks:
 
 ```bash
-adb shell run-as com.labpracticeapp ls files
-adb shell run-as com.labpracticeapp cat files/network_log.csv
-adb exec-out run-as com.labpracticeapp cat files/network_log.csv > network_log.csv
-```
-
-## Running the App
-
-From the project root:
-
-```bash
-npm install
-```
-
-### Android Emulator
-
-```bash
-npm start
-```
-
-In another terminal:
-
-```bash
-npm run android
-```
-
-### Real Android Phone Over USB
-
-Check device connection:
-
-```bash
-adb devices
-```
-
-Forward Metro over USB:
-
-```bash
-adb reverse tcp:8081 tcp:8081
-```
-
-Start Metro:
-
-```bash
-npm start
-```
-
-In another terminal:
-
-```bash
-npm run android
-```
-
-### iOS Simulator
-
-Install pods first:
-
-```bash
-cd ios && pod install && cd ..
-```
-
-Start Metro:
-
-```bash
-npm start
-```
-
-In another terminal:
-
-```bash
-npm run ios
-```
-
-## Android Notes
-
-Current Android-specific behavior:
-
-- requests notification permission on Android 13+
-- prompts for battery optimization exemption on first open
-- uses a foreground service notification while background measurement runs
-- uses `WAKE_LOCK`
-
-If background behavior seems inconsistent on a physical Android phone, check:
-
-- notifications are allowed
-- battery optimization is disabled or unrestricted for the app
-- the phone has working internet access
-
-## Development Notes
-
-- Source app code is plain JavaScript
-- The project still contains some template TypeScript-related dev dependencies from the React Native scaffold, but the app logic is implemented in JS
-- Logging is intentionally verbose with `console.log` for debugging
-
-## Known Caveats
-
-- Android background support depends on a persistent notification
-- iOS background measurement is not implemented
-- Airplane Wi-Fi, captive portals, and unstable mobile networks can cause `Network request failed`
-- `success` is only `true` for HTTP 2xx responses
-
-## Validation Commands
-
-Useful local checks:
-
-```bash
-npx eslint App.js src __tests__/App.test.js
+npm run typecheck
+npm run lint
 npm test -- --runInBand --watchman=false
+cd android
+./gradlew :app:assembleDebug
 ```
 
-## Pending Cleanup
+For endurance tests use a bundled build so Metro is not a dependency:
 
-There is currently a local patch inside `node_modules/react-native-background-actions` to keep the Android foreground-service notification startup stable on newer Android versions. That patch is not yet persisted with a patching tool, so a future `npm install` can overwrite it.
+```bash
+cd android
+./gradlew :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+The scaffold's release variant uses the debug signing key and is for local testing only.
+
+## Milestone 1 device acceptance
+
+1. Launch and verify stopped. Start: a session ID and running status appear, along with an ongoing notification when permitted. Repeated start requests must retain the session ID.
+2. Lock the phone for 10 minutes, then repeat for 30 minutes. Reopen and refresh: verify the same session ID/start time, running status and elapsed duration. Record device/Android version, notification visibility and observations; heartbeat count alone is not an exact scheduling assertion.
+3. Press Home, reopen, then remove the activity from Recents and reopen. Verify native status without creating a new session. Also reload JS in a debug build while running.
+4. Stop from the app, then from the notification in a second session. Verify stopped status and notification removal. Repeated stop is harmless; a new start gets a new ID.
+5. On Android 13+, test both granted and denied notification permission. Confirm the denial message and functioning controls. Test a service-start rejection and confirm the UI re-enables controls and displays the error.
+6. Force-stop via Settings or `adb shell am force-stop com.labpracticeapp`, then reopen. Verify stopped status; M1 does not promise recovery after process death.
+
+Use `adb shell dumpsys activity services com.labpracticeapp` to verify the native service and `adb logcat -s MeasurementService` to inspect native lifecycle/heartbeat logs. Automated UI tests do not establish phone-lock endurance; the physical-device checks above remain necessary.
+
+### Validation recorded — 2026-09-14
+
+- `npm run typecheck` and `npm run lint`: passed.
+- Jest: 9 tests passed (status restoration, start/stop, native events, permission denial, startup failure, stale-query handling, listener cleanup, rapid taps and status-query retry).
+- `:app:assembleRelease`: passed; bundled APK at `android/app/build/outputs/apk/release/app-release.apk`.
+- Android API 36.1 ARM64 emulator: native foreground startup (`isForeground=true`), visible ongoing notification, native heartbeat during a roughly one-minute screen-off check, same session on reopen, notification Stop, app Stop, new IDs for new sessions, and stopped status after force-stop/relaunch all verified.
+- Still pending: physical-device 10–30 minute lock endurance, confirmed task-removal behavior, JS-reload runtime check, and device/OEM variation. The emulator smoke test does not satisfy those endurance criteria.
