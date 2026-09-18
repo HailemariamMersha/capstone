@@ -18,6 +18,9 @@ import {
   stopSession,
   subscribeToStatus,
 } from './src/services/measurement';
+import SessionSettings from './src/components/SessionSettings';
+import SessionHistory from './src/components/SessionHistory';
+import type { MeasurementConfig } from './src/sessions/types';
 import type { ServiceStatus } from './src/services/measurement';
 
 const message = (error: unknown) =>
@@ -25,6 +28,7 @@ const message = (error: unknown) =>
 
 export default function App() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -33,12 +37,13 @@ export default function App() {
   const revision = useRef(0);
 
   const refresh = useCallback(async () => {
-    // Ignore a query result if a newer native event arrived while it was in flight.
+    // Ignore a query result if a newer session event arrived while it was in flight.
     const requestedRevision = ++revision.current;
     try {
       const current = await getServiceStatus();
       if (mounted.current && revision.current === requestedRevision) {
         setStatus(current);
+        setHistoryRevision(value => value + 1);
         setError(null);
       }
     } catch (err) {
@@ -59,6 +64,7 @@ export default function App() {
       revision.current += 1;
       if (mounted.current) {
         setStatus(current);
+        setHistoryRevision(value => value + 1);
       }
     });
     const appState = AppState.addEventListener('change', next => {
@@ -75,7 +81,11 @@ export default function App() {
     };
   }, [refresh]);
 
-  async function control(start: boolean) {
+  async function control(
+    start: boolean,
+    config?: MeasurementConfig,
+    resumedFromId?: string,
+  ) {
     if (operation.current) {
       return;
     }
@@ -99,7 +109,7 @@ export default function App() {
         if (!mounted.current) {
           return;
         }
-        await startSession({});
+        await startSession(config, resumedFromId);
       } else {
         await stopSession();
       }
@@ -125,19 +135,20 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.eyebrow}>CAPSTONE · MILESTONE 1</Text>
+          <Text style={styles.eyebrow}>CAPSTONE · MEASUREMENT PROTOTYPE</Text>
           <Text style={styles.title}>Satellite network measurements</Text>
           <Text style={styles.description}>
-            Start a native service session to verify background operation.
-            Network probes and local history arrive in later milestones.
+            Run scheduled RTT, download and upload probes. Results are saved on
+            this device, including failed and interrupted attempts.
           </Text>
           {!isMeasurementSupported && (
             <Text accessibilityRole="alert" style={styles.error}>
-              This milestone requires the Android native build.
+              This app requires an Android or iOS build.
             </Text>
           )}
+          <Text style={styles.title}>Background measurements</Text>
           <View style={styles.card}>
-            <Text style={styles.label}>Service status</Text>
+            <Text style={styles.label}>Session status</Text>
             <Text testID="service-state" style={styles.state}>
               {status?.state ?? 'unavailable'}
             </Text>
@@ -152,20 +163,16 @@ export default function App() {
               Elapsed at last update:{' '}
               {Math.floor((status?.elapsedMs ?? 0) / 1000)} seconds
             </Text>
-            <Text>Native heartbeats: {status?.heartbeatCount ?? 0}</Text>
+            <Text>
+              Saved measurements this run: {status?.measurementCount ?? 0}
+            </Text>
+            <Text>TypeScript heartbeats: {status?.heartbeatCount ?? 0}</Text>
             <Text>
               Last heartbeat:{' '}
               {status?.lastHeartbeatAt
                 ? new Date(status.lastHeartbeatAt).toLocaleTimeString()
                 : '—'}
             </Text>
-          </View>
-          <View style={styles.button}>
-            <Button
-              title="Start session"
-              disabled={disabled || status?.state !== 'stopped'}
-              onPress={() => control(true)}
-            />
           </View>
           <View style={styles.button}>
             <Button
@@ -193,8 +200,19 @@ export default function App() {
           )}
           <Text style={styles.description}>
             Lock the phone and reopen this screen to check the same session.
-            Force-stopping the app ends this milestone’s in-memory session.
+            After a process restart, unfinished sessions are marked interrupted.
+            Saved results remain available; restart a session explicitly to
+            continue.
           </Text>
+          <SessionSettings
+            disabled={Boolean(disabled || status?.state !== 'stopped')}
+            onStart={config => control(true, config)}
+          />
+          <SessionHistory
+            revision={historyRevision}
+            canResume={!disabled && status?.state === 'stopped'}
+            onResume={session => control(true, session.config, session.id)}
+          />
         </ScrollView>
       </SafeAreaView>
     </SafeAreaProvider>

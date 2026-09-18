@@ -2,6 +2,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -13,6 +14,7 @@
       android:allowBackup="false"
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
+      android:networkSecurityConfig="@xml/network_security_config"
       android:supportsRtl="true">
       <activity
         android:name=".MainActivity"
@@ -28,13 +30,13 @@
       </activity>
 
       <service
-        android:name=".MeasurementService"
+        android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
         android:exported="false"
         android:stopWithTask="false"
         android:foregroundServiceType="specialUse">
         <property
           android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-          android:value="User-initiated continuous network measurement on moving platforms for research, with visible session controls; milestone one validates native service lifetime." />
+          android:value="User-initiated continuous network measurement on moving platforms for research, with visible session controls; shared TypeScript task validates background execution." />
       </service>
     </application>
 </manifest>

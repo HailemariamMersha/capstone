@@ -15,6 +15,9 @@ import {
   subscribeToStatus,
 } from '../src/services/measurement';
 
+jest.mock('../src/components/SessionHistory', () => () => null);
+import { DEFAULT_SESSION_CONFIG } from '../src/sessions/config';
+
 jest.mock('../src/services/measurement', () => ({
   isMeasurementSupported: true,
   getServiceStatus: jest.fn(),
@@ -39,7 +42,7 @@ const stopped = {
 const running = {
   ...stopped,
   state: 'running',
-  sessionId: 'native-session',
+  sessionId: 'shared-session',
   startedAt: 1000,
   elapsedMs: 60000,
   heartbeatCount: 2,
@@ -63,7 +66,7 @@ beforeEach(() => {
   Platform.OS = 'android';
   jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
   getServiceStatus.mockResolvedValue(stopped);
-  startSession.mockResolvedValue('native-session');
+  startSession.mockResolvedValue('shared-session');
   stopSession.mockResolvedValue(undefined);
   unsubscribe = jest.fn();
   removeAppState = jest.fn();
@@ -94,21 +97,21 @@ const render = async () => {
   });
 };
 
-test('restores an existing native session on mount without starting another', async () => {
+test('restores an existing shared session on mount without starting another', async () => {
   getServiceStatus.mockResolvedValue(running);
   await render();
   expect(state()).toBe('running');
-  expect(textIncludes('native-session')).toBe(true);
+  expect(textIncludes('shared-session')).toBe(true);
   expect(startSession).not.toHaveBeenCalled();
   expect(button('Start session').props.disabled).toBe(true);
   expect(button('Stop session').props.disabled).toBe(false);
 });
 
-test('starts and stops through the bridge and refreshes authoritative status', async () => {
+test('starts and stops through the session controller and refreshes authoritative status', async () => {
   await render();
   getServiceStatus.mockResolvedValue(running);
   await act(async () => button('Start session').props.onPress());
-  expect(startSession).toHaveBeenCalledWith({});
+  expect(startSession).toHaveBeenCalledWith(DEFAULT_SESSION_CONFIG, undefined);
   expect(state()).toBe('running');
   getServiceStatus.mockResolvedValue(stopped);
   await act(async () => button('Stop session').props.onPress());
@@ -116,7 +119,7 @@ test('starts and stops through the bridge and refreshes authoritative status', a
   expect(state()).toBe('stopped');
 });
 
-test('accepts notification stop events and refreshes when reopened', async () => {
+test('accepts session status events and refreshes when reopened', async () => {
   getServiceStatus.mockResolvedValue(running);
   await render();
   await act(async () => statusListener(stopped));
@@ -165,7 +168,7 @@ test('ignores stale status responses after a newer service event', async () => {
   expect(state()).toBe('running');
 });
 
-test('unsubscribes on unmount without stopping the native service', async () => {
+test('unsubscribes on unmount without stopping the background task', async () => {
   await render();
   await act(async () => renderer.unmount());
   renderer = undefined;
@@ -174,7 +177,7 @@ test('unsubscribes on unmount without stopping the native service', async () => 
   expect(stopSession).not.toHaveBeenCalled();
 });
 
-test('coalesces rapid taps while a native startup is pending', async () => {
+test('coalesces rapid taps while a background startup is pending', async () => {
   let resolveStart;
   startSession.mockImplementation(
     () =>
@@ -192,7 +195,7 @@ test('coalesces rapid taps while a native startup is pending', async () => {
   expect(button('Start session').props.disabled).toBe(true);
   getServiceStatus.mockResolvedValue(running);
   await act(async () => {
-    resolveStart('native-session');
+    resolveStart('shared-session');
     await first;
   });
   expect(state()).toBe('running');
