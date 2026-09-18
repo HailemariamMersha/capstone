@@ -1,63 +1,87 @@
 # Crowdsourced Satellite Network Measurements on Moving Platforms
 
-An Android capstone for collecting network performance data during flights and other mobility scenarios. The research contribution is an offline-first measurement infrastructure, a reliability evaluation, and a real or simulated mobility dataset.
+An Android capstone for measuring network performance during flights and other mobility scenarios. We ship Android this semester and develop shared React Native/TypeScript code for a later iPhone release. The research contribution is an offline-first measurement pipeline, reliability evaluation and a real or simulated mobility dataset.
 
-## Architecture and scope
+The authoritative scope and M1–M11 acceptance criteria are in the [full semester plan](docs/semester-plan.md).
+
+## Architecture
+
+**Cross-platform by default; use React Native libraries for operating-system integration.**
 
 ```text
-React Native CLI + TypeScript UI (no Expo)
-  → Kotlin native module
-  → Android foreground measurement service
-  → SQLite (OP-SQLite for RN access, WAL mode)
-  → WorkManager deferred sync
-  → FastAPI
-  → PostgreSQL + TimescaleDB
-  → Python/pandas analysis
+React Native CLI + TypeScript (no Expo)
+  UI / shared session controller / scheduled HTTP probe engine
+    → react-native-background-actions (platform background execution)
+    → OP-SQLite in WAL mode (local source of truth)
+    → deferred synchronization (planned)
+    → FastAPI → PostgreSQL + TimescaleDB → Python/pandas analysis
 ```
 
-Kotlin owns measurement execution independently of the JavaScript lifecycle. SQLite will be the local source of truth: persist every measurement before upload. Kotlin will write measurements, connectivity events, debug logs and sync-queue entries; React Native will handle session setup, settings, manual metadata and local history. Full records will be read from SQLite, not streamed through bridge events.
+Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service or bridge. `MainActivity.kt` and `MainApplication.kt` are the standard React Native Android bootstrap files, not measurement logic. Dependencies can still contain native implementations.
 
-The MVP uses controlled HTTP RTT, download and upload probes, DNS-inclusive connection timing, connectivity gaps, and backend public-IP/ASN context. Manual flight/provider details and available WiFi metadata provide context; GPS is optional supporting evidence. HTTP RTT is an application-layer metric, not ICMP latency.
+Keep probe definitions, HTTP RTT/download/upload logic, configuration, data models, database schema, API client and sync orchestration shared. Platform permissions and background execution remain isolated. iOS will reuse this application code, but its background execution and release configuration must be validated separately; continuous locked-phone measurement is not established on iOS. The library documents the distinction in its [background execution guidance](https://github.com/Rapsssito/react-native-background-actions#readme).
 
-Planned backend: FastAPI in Docker on Fly.io, one region initially, with session creation, measurement/event batch ingestion, ping/download/upload probes, client-IP and config endpoints. Planned local tables: sessions, measurements, connectivity_events, sync_queue, device_info, debug_logs, user_settings and probe_config.
+Android uses a declared `specialUse` foreground service for user-started research measurement, with foreground-service, notification and wake-lock permissions. The service type is supplied both in the manifest and library options. Play Store distribution requires review of this use case; see [Android service types](https://developer.android.com/develop/background-work/services/fgs/service-types). The pinned library version is installed through npm without local native patches.
 
-No Expo, Firebase primary storage, AsyncStorage measurement storage, third-party speed-test SDKs, required ICMP/traceroute, iOS implementation, complex login or real-time dashboard in the MVP. Multi-region probes, raw DNS timing, provider classification and public dataset publication are stretch goals.
+## Current implementation: scheduled probes and offline storage
 
-## Milestones
+The app runs **HTTP RTT, download and upload probes** through a shared TypeScript scheduler hosted by `react-native-background-actions`. Start a session while the app is visible; it continues until Stop or process/service termination. Stop remains at the top of the screen. Probes execute serially and each has its own interval. Default intervals are 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Overdue intervals are skipped and logged rather than replayed in a traffic burst. Android/OEM scheduling can delay execution; this is not a real-time scheduler.
 
-| Milestone | Deliverable and acceptance | Target |
-| --- | --- | --- |
-| 1 — Native bridge proof | Start/stop Kotlin foreground service, persistent notification, status events and recovery of live status after reopening; 10–30 minute phone-lock test | Weeks 1–3 with M2 |
-| 2 — Local data truth | SQLite/WAL, Kotlin test rows every 60 seconds, RN history, persistence and concurrent-access checks | Weeks 1–3 |
-| 3 — Core probes | Native HTTP RTT every 60 seconds, controlled throughput, connection timing, failure/gap logs, minimal FastAPI probe server; multi-hour ground run | Weeks 4–6 |
-| 4 — Backend and sync | PostgreSQL/TimescaleDB, durable queue, WorkManager retry, idempotent ingestion, single-region deployment | Weeks 7–9 |
-| 5 — Context and reliability | Manual metadata, available WiFi/IP/ASN, optional location; fake-flight harness | Weeks 10–12 |
-| 6 — Data collection | At least one flight dataset, or a controlled unstable-network/mobile fallback, through the entire pipeline | Weeks 12–13 |
-| 7 — Analysis and report | Reproducible notebook with RTT, throughput and gaps; design, evaluation and limitations | Weeks 14–15 |
+Choose a server, per-probe timeout, payload sizes and intervals (10–3600 seconds). Default payloads are 1 MiB download and 256 KiB upload, with a 30-second timeout. Download alternatives are 5/10 MiB and upload can use 1 MiB. The screen estimates payload consumption before starting. Sessions currently have no automatic data or battery cap; those safeguards belong to M5. One MiB is 1,048,576 bytes; Mbps uses decimal megabits.
 
-The fake-flight harness will cover phone lock, activity removal, process termination, WiFi toggling, airplane mode, backend outage/delay/failure, constrained bandwidth, reconnect, retry and duplicate prevention. Prove bridge and storage first; pass ground tests before relying on flight access.
+**OP-SQLite 18.2.3** stores sessions, attempts, results and events in `capstone.sqlite`. Schema version 1 enables WAL, foreign keys and synchronous FULL. Writes and reads are serialized to prevent overlapping transactions. A durable 128-bit random ID and pending attempt are committed before each probe starts. Finishing a result and enqueuing it for future sync happen in one transaction. Failed requests and cancellations are saved too. A storage failure stops collection rather than continuing with unsaved measurements.
 
-## Current implementation: Milestone 1
+On a fresh JS process, active sessions become interrupted and unfinished attempts become explicit interrupted results. The recovery event distinguishes the last observed activity from the time interruption was discovered; the precise process-death time is unknown. Recovery does not restart network traffic. **Saved sessions** provides paginated history, results and recent events. **Resume** creates a new session using the old configuration and links it to the prior session. Completed results survive ordinary app restarts; uninstalling or clearing app data removes them.
 
-The active app is TypeScript with Start, Stop and Refresh status controls. A Kotlin native module starts a native Android service with an ongoing notification, an open-app action and a Stop action. A native heartbeat provides a liveness check; it is not a network probe. Status comes from native process memory, including session ID, start time, elapsed duration and heartbeat count. UI reopening and JS reload query the existing service instead of starting another session.
+The durable sync queue is local only: ingestion, acknowledgements, retries and upload are M6 work. The schema includes `sessions`, `measurements`, `connectivity_events`, `network_snapshots`, `sync_queue`, `device_info`, `debug_logs` and `app_settings`. Session/probe/gap events are recorded now; network snapshots and monitoring remain future work. The stored install ID is random and is not a hardware identifier.
 
-The earlier JS/CSV prototype has been retired. No probes, SQLite, backend or synchronization are implemented yet. Application ID remains `com.labpracticeapp` to preserve the existing Android scaffold.
+The FastAPI server implements controlled probe endpoints. The client verifies the protocol marker, exact download size and upload acknowledgement. RTT includes response-body consumption; throughput includes request setup, body processing and acknowledgement. These are application-level measurements, not ICMP latency or raw link capacity. See [methodology and backend setup](backend/README.md).
 
-### Bridge contract
+The notification opens the app; stop there. Runtime status reflects the shared JavaScript controller, not an authoritative Android service-manager query. Stop before development JS reloads; force-stop/relaunch if a stale notification remains. Android endurance and iOS execution must still be validated on devices.
+
+## Code organization
+
+- `src/sessions/`: configuration, lifecycle state machine and serialized operations.
+- `src/background/`: background-actions adapter and task-start acknowledgement.
+- `src/measurements/`: HTTP engine, independent schedules and structured results.
+- `src/storage/`: OP-SQLite adapter, schema, transactional repository and recovery.
+- `src/components/SessionSettings.tsx`, `SessionHistory.tsx`: configuration and saved history.
+- `src/services/measurement.ts`, `App.tsx`: composition, permissions and controls.
+- `src/network/`: context types; monitoring is not implemented yet.
+- `src/api/`, `backend/`: shared protocol and local FastAPI probe server.
 
 ```ts
-startSession(config: MeasurementConfig): Promise<string> // resolves when foreground startup succeeds
-stopSession(): Promise<void> // resolves after service shutdown; safe when already stopped
+startSession(config?: MeasurementConfig, resumedFromId?: string): Promise<string>
+stopSession(): Promise<void>
 getServiceStatus(): Promise<ServiceStatus>
+subscribeToStatus(listener: (status: ServiceStatus) => void): () => void
 ```
 
-M1 accepts an empty `MeasurementConfig`; probe configuration is reserved for M3. Status states are `stopped`, `starting`, `running` and `stopping`. Repeated starts reuse the current session; starting during shutdown rejects. `MeasurementServiceStatusChanged` carries lightweight status snapshots. Start failures reject and expose an error in status. RN subscribes to events and refreshes on foreground entry; events are not durable storage.
+Status states are `stopped`, `starting`, `running` and `stopping`. Repeated starts share the active session; stop is idempotent. Startup requires native task acknowledgement. Failed platform cleanup preserves a retryable Stop control.
 
-The service uses `specialUse` with an explicit research-measurement subtype because user-initiated continuous network observation does not fit deferred data transfer. A Play Store release would require review of this declaration. See [Android service types](https://developer.android.com/develop/background-work/services/fgs/service-types). The native module uses RN's supported legacy-module interoperability layer with the existing New Architecture scaffold; see [RN 0.84 compatibility](https://reactnative.dev/blog/2026/02/11/react-native-0.84).
+## Revised semester milestones
 
-M1 uses `START_NOT_STICKY`: activity removal does not intentionally stop the service, but force-stop, Android's active-app Stop, process death and reboot end the in-memory session. A fresh process reports stopped, never a stale running flag. Durable recovery belongs to later persistence/reliability work. A foreground service is not a guarantee against OS/OEM termination, and heartbeat callbacks can pause during deep sleep; elapsed duration uses Android's monotonic clock. No wake lock or battery-exemption prompt is needed for this service-lifecycle proof.
+| Milestone | Deliverable and acceptance | Timeline |
+| --- | --- | --- |
+| M1 — Project foundation | RN CLI/TypeScript, shared interfaces and architecture, Android build and basic screen on a physical phone | Week 1 |
+| M2 — RN measurement proof | Reusable TypeScript RTT/download/upload probes, configuration, timeout/error results, temporary screen and minimal FastAPI probes | Weeks 2–3 |
+| M3 — Background execution proof | Library-backed TypeScript probes continue for 30–60 minutes locked/backgrounded, with explainable timing and session status on reopen | Weeks 3–4 |
+| M4 — Offline-first storage | SQLite/OP-SQLite with WAL; save measurements before upload; local history, session recovery, durable queue | Weeks 4–5 |
+| M5 — Complete measurement engine | Separate probe schedules, connection timing if feasible, failure/gap logs, structured context, battery/data safeguards; multi-hour ground run | Weeks 6–7 |
+| M6 — Backend and deferred sync | FastAPI ingestion, PostgreSQL/TimescaleDB, acknowledged batches, idempotent IDs, retries, first deployed region | Weeks 8–9 |
+| M7 — Network and flight context | NetInfo, available WiFi metadata, backend public IP/ASN, manual flight/provider details, optional location | Weeks 10–11 |
+| M8 — Fake-flight evaluation | Lock, background, process loss, reconnect, network interruption, backend outage/delay, failed probes/uploads, repeated sync and OS service limits | Weeks 11–12 |
+| M9 — Real-world validation | Flight dataset if available, otherwise a controlled unstable-network or mobile fallback; full phone-to-analysis path | Weeks 12–13 |
+| M10 — Analysis | Reproducible pandas/Jupyter RTT, throughput, outages, context and success-rate figures | Weeks 13–14 |
+| M11 — Finalization | Stable Android prototype, documented methods/limitations, dataset format, demo, report and presentation | Weeks 14–15 |
 
-Android 13+ notification permission is requested when starting. Denial does not prevent the service from running, but the app explains that the notification may be hidden. No location permissions are requested in M1.
+M3 is an experimental gate: an active notification alone does not prove that TypeScript probes keep executing. Validate actual timestamps and results. If the library-backed approach fails, resolve the background architecture before flight collection. Do not silently reintroduce custom native measurement logic.
+
+Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 seconds, download/upload every five minutes, metadata on change plus periodic snapshots, public IP/ASN at session start and network changes, optional low-frequency location, and sync independently when connectivity is suitable.
+
+SQLite now persists measurements before any future upload attempt; backend ingestion remains planned. Backend: FastAPI in Docker, PostgreSQL + TimescaleDB, initially one Fly.io region. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
+
+Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, traceroute, advanced provider classification, dashboard and public dataset interface are later work. No third-party speed-test SDK or complex login is required for the MVP.
 
 ## Development
 
@@ -68,7 +92,7 @@ npm ci
 npm start
 ```
 
-In another terminal, with an emulator or USB-debugging phone attached:
+With an emulator or USB-debugging phone attached, in another terminal:
 
 ```bash
 adb devices
@@ -76,41 +100,71 @@ adb reverse tcp:8081 tcp:8081
 npm run android
 ```
 
-Checks:
+Validation:
 
 ```bash
 npm run typecheck
 npm run lint
 npm test -- --runInBand --watchman=false
 cd android
-./gradlew :app:assembleDebug
-```
-
-For endurance tests use a bundled build so Metro is not a dependency:
-
-```bash
-cd android
 ./gradlew :app:assembleRelease
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-The scaffold's release variant uses the debug signing key and is for local testing only.
+The bundled release variant does not need Metro, but currently uses the scaffold's debug signing key for local testing. Application ID remains `com.labpracticeapp`. iOS simulator/device builds and signing are not validated this semester.
 
-## Milestone 1 device acceptance
+## Run scheduled measurements locally
 
-1. Launch and verify stopped. Start: a session ID and running status appear, along with an ongoing notification when permitted. Repeated start requests must retain the session ID.
-2. Lock the phone for 10 minutes, then repeat for 30 minutes. Reopen and refresh: verify the same session ID/start time, running status and elapsed duration. Record device/Android version, notification visibility and observations; heartbeat count alone is not an exact scheduling assertion.
-3. Press Home, reopen, then remove the activity from Recents and reopen. Verify native status without creating a new session. Also reload JS in a debug build while running.
-4. Stop from the app, then from the notification in a second session. Verify stopped status and notification removal. Repeated stop is harmless; a new start gets a new ID.
-5. On Android 13+, test both granted and denied notification permission. Confirm the denial message and functioning controls. Test a service-start rejection and confirm the UI re-enables controls and displays the error.
-6. Force-stop via Settings or `adb shell am force-stop com.labpracticeapp`, then reopen. Verify stopped status; M1 does not promise recovery after process death.
+From the repository root (Python 3.14 was used for validation):
 
-Use `adb shell dumpsys activity services com.labpracticeapp` to verify the native service and `adb logcat -s MeasurementService` to inspect native lifecycle/heartbeat logs. Automated UI tests do not establish phone-lock endurance; the physical-device checks above remain necessary.
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+backend/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+```
 
-### Validation recorded — 2026-09-14
+In another terminal, connect the emulator or USB-debugging phone:
 
-- `npm run typecheck` and `npm run lint`: passed.
-- Jest: 9 tests passed (status restoration, start/stop, native events, permission denial, startup failure, stale-query handling, listener cleanup, rapid taps and status-query retry).
-- `:app:assembleRelease`: passed; bundled APK at `android/app/build/outputs/apk/release/app-release.apk`.
-- Android API 36.1 ARM64 emulator: native foreground startup (`isForeground=true`), visible ongoing notification, native heartbeat during a roughly one-minute screen-off check, same session on reopen, notification Stop, app Stop, new IDs for new sessions, and stopped status after force-stop/relaunch all verified.
-- Still pending: physical-device 10–30 minute lock endurance, confirmed task-removal behavior, JS-reload runtime check, and device/OEM variation. The emulator smoke test does not satisfy those endurance criteria.
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+
+Open the app, leave the URL at `http://127.0.0.1:8000`, and tap **Start session**. View the session in **Saved sessions** to see RTT, download and upload results. Background or lock the phone, reopen it and refresh history. Stop the server to verify persisted failure results. **Stop session** aborts any in-flight probe, saves its cancellation and ends the session.
+
+Force-stop and relaunch during a session to test recovery: it should be stopped, the old session should be interrupted, and saved results should remain. Resume that history entry to start a linked session. Do not clear app data for this check.
+
+Android release networking permits HTTP only for localhost, 127.0.0.1 and the emulator host alias 10.0.2.2. Other release servers must use HTTPS. Debug builds additionally allow HTTP LAN servers for development. The local server needs no cloud account or deployment.
+
+Backend tests:
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests -q
+```
+
+## Background and recovery acceptance checklist
+
+1. Start: running only after the library task starts, with a session ID and foreground notification when allowed. Confirm actual successful probes in saved history.
+2. Stop: abort and save the current probe, stop timers/service and mark the session completed. Repeated starts/stops must not create duplicate services.
+3. Lock/background for **30 minutes, 60 minutes and two hours on a physical Android phone**, using a bundled build. Record device/OS, timestamps, gaps, results, battery and data usage. A notification or heartbeat alone does not satisfy M3.
+4. Test removal from Recents separately from force-stop. Relaunch after process loss: stopped status, interrupted previous session, preserved results and unfinished-attempt recovery. Resume must create a linked new ID.
+5. Test notification denial, startup rejection/timeout, database failure and retry.
+6. Disconnect the network and stop/delay the server: failed probes must persist, collection must remain controllable, and reconnect must permit later successful probes. Queue entries must survive restarts without claiming that upload occurred.
+
+Inspect Android service state with `adb shell dumpsys activity services com.labpracticeapp`. Unit tests cannot establish OS/OEM endurance. M3 remains an experimental gate until the physical runs pass. M5 safeguards and M6 sync are necessary before the full flight pipeline is ready.
+
+## Validation
+
+- The earlier M2 emulator test verified two RTT/download/upload batches against local FastAPI, then three structured failures with the server stopped. All 13 backend contract tests passed.
+- Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).
+- Physical-phone 30/60/120-minute background endurance, battery impact, Recents behavior and iOS builds remain pending. Emulator checks establish functionality only, not satellite performance or physical-device reliability.
+
+### M3/M4 implementation checks — 2026-09-18
+
+- TypeScript, ESLint and 54 Jest tests passed; all 13 backend tests passed.
+- Android release build passed with OP-SQLite 18.2.3 and background-actions 4.1.0; no custom Kotlin measurement implementation remains.
+- API 36.1 ARM64 emulator: actual RTT, 1 MiB download and 256 KiB upload succeeded and appeared in SQLite-backed history. Android reported the library service as foreground.
+- A resumed session completed a scheduled RTT at `11:59:40Z` during a screen-off interval of more than one minute; its initial probes ran at `11:58:40Z`. History showed the same session with four successful results.
+- Force-stop/relaunch retained results, marked the old session interrupted and left runtime status stopped. Resume created a new durable ID linked to the old session and reused its configuration.
+- With a deliberately delayed RTT endpoint, force-stop during the request recovered one explicit `interrupted` result with unconfirmed bytes, retaining earlier successes and pending queue entries.
+- Normal Stop during a delayed request persisted a `cancelled` result, completed the session and removed the foreground service (`dumpsys` showed none).
+- These bounded emulator checks support the implementation; the physical-device endurance checklist above is still open. Backend synchronization is not implemented.
