@@ -1,0 +1,24 @@
+diff --git a/node_modules/react-native-udp/android/build.gradle b/node_modules/react-native-udp/android/build.gradle
+index 251347c..5d2ad0b 100644
+--- a/node_modules/react-native-udp/android/build.gradle
++++ b/node_modules/react-native-udp/android/build.gradle
+@@ -21,6 +21,7 @@ def safeExtGet(prop, fallback) {
+ }
+ 
+ android {
++    namespace "com.tradle.react"
+     compileSdkVersion safeExtGet('compileSdkVersion', 31)
+ 
+     compileOptions {
+diff --git a/node_modules/react-native-udp/android/src/main/AndroidManifest.xml b/node_modules/react-native-udp/android/src/main/AndroidManifest.xml
+index f66d0f5..16bd8d3 100644
+--- a/node_modules/react-native-udp/android/src/main/AndroidManifest.xml
++++ b/node_modules/react-native-udp/android/src/main/AndroidManifest.xml
+@@ -1,6 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+-    package="com.tradle.react" >
++<manifest xmlns:android="http://schemas.android.com/apk/res/android" >
+     <uses-permission android:name="android.permission.INTERNET"/>
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
