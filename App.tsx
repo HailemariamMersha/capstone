@@ -19,6 +19,7 @@ import {
   subscribeToStatus,
 } from './src/services/measurement';
 import SessionSettings from './src/components/SessionSettings';
+import SyncPanel from './src/components/SyncPanel';
 import SessionHistory from './src/components/SessionHistory';
 import type { MeasurementConfig } from './src/sessions/types';
 import type { ServiceStatus } from './src/services/measurement';
@@ -28,6 +29,7 @@ const message = (error: unknown) =>
 
 export default function App() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +37,11 @@ export default function App() {
   const mounted = useRef(false);
   const operation = useRef(false);
   const revision = useRef(0);
+
+  const syncActivity = useCallback((active: boolean) => {
+    operation.current = active;
+    setSyncBusy(active);
+  }, []);
 
   const refresh = useCallback(async () => {
     // Ignore a query result if a newer session event arrived while it was in flight.
@@ -205,12 +212,19 @@ export default function App() {
             continue.
           </Text>
           <SessionSettings
-            disabled={Boolean(disabled || status?.state !== 'stopped')}
+            disabled={Boolean(
+              disabled || syncBusy || status?.state !== 'stopped',
+            )}
             onStart={config => control(true, config)}
+          />
+          <SyncPanel
+            idle={!disabled && status?.state === 'stopped'}
+            onSynced={refresh}
+            onBusyChange={syncActivity}
           />
           <SessionHistory
             revision={historyRevision}
-            canResume={!disabled && status?.state === 'stopped'}
+            canResume={!disabled && !syncBusy && status?.state === 'stopped'}
             onResume={session => control(true, session.config, session.id)}
           />
         </ScrollView>

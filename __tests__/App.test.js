@@ -15,6 +15,7 @@ import {
   subscribeToStatus,
 } from '../src/services/measurement';
 
+jest.mock('../src/components/SyncPanel', () => () => null);
 jest.mock('../src/components/SessionHistory', () => () => null);
 import { DEFAULT_SESSION_CONFIG } from '../src/sessions/config';
 

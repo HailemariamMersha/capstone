@@ -72,6 +72,7 @@ export async function runProbe(
     probeServer: input.serverUrl,
     probeRegion: null,
     networkSnapshot: null,
+    method: 'http_full_transaction',
   };
   let config: ProbeConfig;
   try {

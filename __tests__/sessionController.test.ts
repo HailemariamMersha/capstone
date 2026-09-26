@@ -160,3 +160,19 @@ test('storage failure prevents starting the platform service', async () => {
   await expect(controller.startSession()).rejects.toThrow('disk full');
   expect(executor.start).not.toHaveBeenCalled();
 });
+
+test('a naturally completed schedule closes the service and session', async () => {
+  const { controller, loop, executor, store } = setup();
+  loop.done = Promise.resolve();
+  await controller.startSession();
+  for (let i = 0; i < 20; i++) {
+    await Promise.resolve();
+  }
+  expect((await controller.getServiceStatus()).state).toBe('stopped');
+  expect(executor.stop).toHaveBeenCalledTimes(1);
+  expect(store.endSession).toHaveBeenCalledWith(
+    'session-1',
+    'completed',
+    expect.stringContaining('limit'),
+  );
+});

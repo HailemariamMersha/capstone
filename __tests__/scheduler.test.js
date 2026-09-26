@@ -98,3 +98,96 @@ test('a failed durable write halts the loop before any network traffic', async (
   await expect(loop.done).rejects.toThrow('disk full');
   expect(probe).not.toHaveBeenCalled();
 });
+
+test('payload limit stops before another request, including after a failed probe', async () => {
+  probe.mockResolvedValue({ success: false, errorType: 'network' });
+  const loop = startMeasurementLoop(
+    's',
+    { ...config, maxPayloadBytes: 4 },
+    store,
+    saved,
+    { now: () => global.performance.now(), wallNow: () => Date.now(), probe },
+  );
+  await loop.done;
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(store.addEvent).toHaveBeenCalledWith(
+    's',
+    'session_limit',
+    expect.objectContaining({ reason: 'payload_budget' }),
+  );
+});
+test('duration limit aborts and saves the in-flight attempt', async () => {
+  probe.mockImplementationOnce(
+    (_type, _config, _session, signal) =>
+      new Promise(resolve =>
+        signal.addEventListener('abort', () =>
+          resolve({ success: false, errorType: 'cancelled' }),
+        ),
+      ),
+  );
+  const loop = startMeasurementLoop(
+    's',
+    { ...config, maxDurationMs: 10000 },
+    store,
+    saved,
+    { now: () => global.performance.now(), wallNow: () => Date.now(), probe },
+  );
+  await flush();
+  await jest.advanceTimersByTimeAsync(10000);
+  await loop.done;
+  expect(store.finishAttempt).toHaveBeenCalledWith(
+    expect.objectContaining({ errorType: 'cancelled' }),
+  );
+});
+test('low battery saves context and ends collection before network probes', async () => {
+  store.saveSnapshot = jest.fn(async (_id, s) => s);
+  const loop = startMeasurementLoop('s', config, store, saved, {
+    now: () => 0,
+    wallNow: () => 0,
+    probe,
+    sample: async () => ({
+      changed: true,
+      snapshot: {
+        id: 'snap',
+        batteryPercent: 10,
+        isCharging: false,
+        type: 'wifi',
+      },
+    }),
+  });
+  await loop.done;
+  expect(probe).not.toHaveBeenCalled();
+  expect(store.addEvent).toHaveBeenCalledWith(
+    's',
+    'session_limit',
+    expect.objectContaining({ reason: 'battery' }),
+  );
+});
+
+test('a network change wakes idle sampling without inserting extra probes', async () => {
+  let changed;
+  const sample = jest.fn(async () => ({
+    changed: true,
+    snapshot: { id: 's', batteryPercent: 80, isCharging: false, type: 'wifi' },
+  }));
+  store.saveSnapshot = jest.fn(async (_id, s) => s);
+  const unsubscribe = jest.fn();
+  const loop = startMeasurementLoop('s', config, store, saved, {
+    now: () => global.performance.now(),
+    wallNow: () => Date.now(),
+    probe,
+    sample,
+    onContextChange: fn => {
+      changed = fn;
+      return unsubscribe;
+    },
+  });
+  await flush();
+  expect(sample).toHaveBeenCalledTimes(1);
+  changed();
+  await flush();
+  expect(sample).toHaveBeenCalledTimes(2);
+  expect(probe).toHaveBeenCalledTimes(3);
+  await loop.stop();
+  expect(unsubscribe).toHaveBeenCalled();
+});

@@ -52,7 +52,10 @@ export function createSessionController(
     operations = result.catch(() => undefined);
     return result;
   }
-  async function shutdown(reason: string | null = null) {
+  async function shutdown(
+    reason: string | null = null,
+    completionReason = 'Stopped by user.',
+  ) {
     if (status.state === 'stopped') {
       return;
     }
@@ -71,7 +74,7 @@ export function createSessionController(
       await store.endSession(
         id,
         failure ? 'interrupted' : 'completed',
-        failure ?? 'Stopped by user.',
+        failure ?? completionReason,
       );
       status = { ...emptyStatus(), error: failure };
     } catch (error) {
@@ -140,9 +143,21 @@ export function createSessionController(
               publish();
             }
           });
-          loop.done.catch(error =>
-            fail(id, new Error(`Measurement stopped: ${message(error)}`)),
-          );
+          loop.done
+            .then(
+              () =>
+                enqueue(async () => {
+                  if (status.sessionId === id && status.state === 'running') {
+                    await shutdown(
+                      null,
+                      'Measurement schedule completed or a session limit was reached.',
+                    );
+                  }
+                }),
+              error =>
+                fail(id, new Error(`Measurement stopped: ${message(error)}`)),
+            )
+            .catch(() => {});
           publish();
           return id;
         } catch (error) {
