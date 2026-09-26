@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, StyleSheet, Text, View } from 'react-native';
 import { measurementStore } from '../storage/database';
+import { shareSession } from '../export/shareSession';
 import type { SessionRecord } from '../sessions/types';
 import type { SessionEvent, StoredMeasurement } from '../storage/types';
 
@@ -21,7 +22,18 @@ export default function SessionHistory({
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const request = useRef(0);
+  async function exportData(id: string, format: 'csv' | 'json') {
+    setExporting(true);
+    try {
+      await shareSession(id, format);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  }
   const refresh = useCallback(async () => {
     const current = ++request.current;
     try {
@@ -60,9 +72,7 @@ export default function SessionHistory({
   return (
     <View style={styles.panel}>
       <Text style={styles.title}>Saved sessions</Text>
-      <Text>
-        {pending} records awaiting sync. Server ingestion is not enabled yet.
-      </Text>
+      <Text>{pending} records awaiting server acknowledgement.</Text>
       <Button title="Refresh history" onPress={refresh} />
       {error && <Text accessibilityRole="alert">{error}</Text>}
       {sessions.length === 0 && <Text>No saved sessions yet.</Text>}
@@ -82,6 +92,16 @@ export default function SessionHistory({
               setSelected(session.id);
               setResultLimit(50);
             }}
+          />
+          <Button
+            title={`Export CSV ${session.id.slice(0, 8)}`}
+            disabled={exporting}
+            onPress={() => exportData(session.id, 'csv')}
+          />
+          <Button
+            title={`Export JSON ${session.id.slice(0, 8)}`}
+            disabled={exporting}
+            onPress={() => exportData(session.id, 'json')}
           />
           {session.state !== 'active' && (
             <Button
@@ -117,6 +137,20 @@ export default function SessionHistory({
                 Payload: {m.transferredBytes ?? 'unconfirmed'} bytes · Region:{' '}
                 {m.probeRegion ?? '—'}
               </Text>
+              {m.targetHost && (
+                <Text>
+                  ICMP target: {m.targetHost} · TTL {m.ttl ?? '—'}
+                </Text>
+              )}
+              {m.networkSnapshot && (
+                <Text>
+                  Network: {m.networkSnapshot.type} · Battery:{' '}
+                  {m.networkSnapshot.batteryPercent ?? 'unknown'}% · Charging:{' '}
+                  {String(m.networkSnapshot.isCharging ?? 'unknown')} · Public
+                  IP: {m.networkSnapshot.publicIp ?? 'unavailable'} · ASN:{' '}
+                  {m.networkSnapshot.asn ?? 'unavailable'}
+                </Text>
+              )}
               {state === 'complete' && m.errorMessage && (
                 <Text>{m.errorMessage}</Text>
               )}

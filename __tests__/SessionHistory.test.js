@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import SessionHistory from '../src/components/SessionHistory';
 import { measurementStore } from '../src/storage/database';
 import { DEFAULT_SESSION_CONFIG } from '../src/sessions/config';
+jest.mock('../src/export/shareSession', () => ({ shareSession: jest.fn() }));
 jest.mock('../src/storage/database', () => ({
   measurementStore: {
     listSessions: jest.fn(),

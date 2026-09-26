@@ -42,7 +42,7 @@ const success = attempt => ({
 test('enables WAL, migrations and durable result/queue records', async () => {
   const id = await store.createSession(config);
   expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal');
-  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(1);
+  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(2);
   const attempt = await store.beginAttempt(
     id,
     'http_rtt',
@@ -138,4 +138,74 @@ test('future schema is refused without destroying data', async () => {
   db.exec('PRAGMA user_version=99');
   await expect(store.initialize()).rejects.toThrow('newer app');
   expect(db.prepare('PRAGMA user_version').get().user_version).toBe(99);
+});
+
+test('exports all measurements, events and snapshots without the history page limit', async () => {
+  const id = await store.createSession(config);
+  for (let i = 0; i < 55; i++) {
+    const attempt = await store.beginAttempt(
+      id,
+      'http_rtt',
+      new Date().toISOString(),
+    );
+    await store.finishAttempt(success(attempt));
+  }
+  await store.saveSnapshot(id, {
+    id: 'temporary',
+    timestamp: new Date().toISOString(),
+    type: 'wifi',
+    batteryPercent: 42,
+  });
+  const data = await store.exportSession(id);
+  expect(data.measurements).toHaveLength(55);
+  expect(data.snapshots[0]).toMatchObject({ batteryPercent: 42 });
+  expect(data.snapshots[0].id).not.toBe('temporary');
+  expect(data.events).toHaveLength(1);
+});
+test('sync excludes active sessions and applies version-specific acknowledgements', async () => {
+  const id = await store.createSession(config);
+  expect((await store.getSyncBatch()).records).toHaveLength(0);
+  await store.endSession(id, 'completed', 'test');
+  const batch = await store.getSyncBatch();
+  expect(batch.records.length).toBeGreaterThan(0);
+  await store.acknowledgeSync(
+    batch.records.map(r => ({ ...r, version: r.version - 1 })),
+  );
+  expect((await store.getSyncBatch()).records).toHaveLength(
+    batch.records.length,
+  );
+  await store.failSync(batch.records, 'offline');
+  expect((await store.getSyncBatch()).records).toHaveLength(0);
+  db.exec('UPDATE sync_queue SET next_attempt_at=0');
+  await store.acknowledgeSync(batch.records);
+  expect(await store.pendingCount()).toBe(0);
+});
+test('payload allowance counts pending and failed attempts', async () => {
+  const id = await store.createSession({ ...config, maxPayloadBytes: 8 });
+  await store.beginAttempt(id, 'http_rtt', new Date().toISOString());
+  await store.beginAttempt(id, 'http_rtt', new Date().toISOString());
+  await expect(
+    store.beginAttempt(id, 'http_rtt', new Date().toISOString()),
+  ).rejects.toThrow('budget');
+});
+test('version-one migration preserves existing records and recovers an open session', async () => {
+  const id = await store.createSession(config);
+  const attempt = await store.beginAttempt(
+    id,
+    'http_rtt',
+    new Date().toISOString(),
+  );
+  await store.finishAttempt(success(attempt));
+  db.exec(
+    'ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
+  );
+  db.close();
+  open();
+  expect(await store.getSession(id)).toMatchObject({
+    state: 'interrupted',
+    measurementCount: 1,
+  });
+  expect(
+    (await store.getSyncBatch()).records.some(r => r.id === attempt.id),
+  ).toBe(true);
 });

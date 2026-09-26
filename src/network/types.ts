@@ -8,4 +8,10 @@ export interface NetworkSnapshot {
   bssid: string | null;
   publicIp: string | null;
   asn: number | null;
+  batteryPercent?: number | null;
+  isCharging?: boolean | null;
+  isInternetReachable?: boolean | null;
+  signalStrength?: number | null;
+  publicIpObservedAt?: string | null;
+  contextError?: string | null;
 }

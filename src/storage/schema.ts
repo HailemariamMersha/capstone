@@ -1,5 +1,5 @@
 /** Version 1. Future schema upgrades must be additive migrations, never database resets. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const SCHEMA = [
   `CREATE TABLE sessions (
     id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT,
@@ -25,4 +25,10 @@ export const SCHEMA = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT REFERENCES sessions(id),
     timestamp TEXT NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL)`,
   `CREATE TABLE app_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL)`,
+];
+
+export const MIGRATION_2 = [
+  'ALTER TABLE sync_queue ADD COLUMN version INTEGER NOT NULL DEFAULT 1',
+  'ALTER TABLE sync_queue ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE sync_queue ADD COLUMN last_error TEXT',
 ];

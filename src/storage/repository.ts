@@ -1,4 +1,4 @@
-import { SCHEMA, SCHEMA_VERSION } from './schema';
+import { SCHEMA, SCHEMA_VERSION, MIGRATION_2 } from './schema';
 import type { Measurement } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
 import type {
@@ -23,7 +23,7 @@ export function createRepository(
   }
   async function queue(type: string, entityId: string) {
     await db.execute(
-      'INSERT OR IGNORE INTO sync_queue(entity_type, entity_id, created_at) VALUES (?,?,?)',
+      "INSERT INTO sync_queue(entity_type, entity_id, created_at) VALUES (?,?,?) ON CONFLICT(entity_type,entity_id) DO UPDATE SET state='pending', version=version+1, next_attempt_at=0, acknowledged_at=NULL",
       [type, entityId, now()],
     );
   }
@@ -76,11 +76,17 @@ export function createRepository(
             for (const sql of SCHEMA) {
               await db.execute(sql);
             }
-            await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
+
             await db.execute(
               'INSERT INTO device_info(id,platform,created_at) VALUES (?,?,?)',
               [await id(), platform, now()],
             );
+          }
+          if (version < 2) {
+            for (const sql of MIGRATION_2) {
+              await db.execute(sql);
+            }
+            await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
           }
           // Run once per JS process, before any new session can be started.
           const stale = (
@@ -154,6 +160,157 @@ export function createRepository(
   const sessionSelect = `SELECT s.*, (SELECT COUNT(*) FROM measurements m WHERE m.session_id=s.id AND m.state='complete') AS measurement_count FROM sessions s`;
   return {
     initialize,
+    saveSnapshot: (sessionId, snapshot) =>
+      write(async () => {
+        const saved = { ...snapshot, id: await id() };
+        await db.execute(
+          'INSERT INTO network_snapshots(id,session_id,timestamp,payload_json) VALUES (?,?,?,?)',
+          [saved.id, sessionId, saved.timestamp, JSON.stringify(saved)],
+        );
+        await queue('snapshot', saved.id);
+        return saved;
+      }),
+    exportSession: sessionId =>
+      read(async () => {
+        const row = (
+          await db.execute(`${sessionSelect} WHERE s.id=?`, [sessionId])
+        ).rows[0];
+        if (!row) {
+          throw new Error('Session not found.');
+        }
+        const measurements = (
+          await db.execute(
+            'SELECT result_json,scheduled_at,state FROM measurements WHERE session_id=? ORDER BY timestamp,rowid',
+            [sessionId],
+          )
+        ).rows.map(r => ({
+          ...JSON.parse(String(r.result_json)),
+          scheduledAt: r.scheduled_at,
+          state: r.state,
+        }));
+        const events = (
+          await db.execute(
+            'SELECT * FROM connectivity_events WHERE session_id=? ORDER BY timestamp,rowid',
+            [sessionId],
+          )
+        ).rows.map(r => ({
+          id: r.id,
+          timestamp: r.timestamp,
+          kind: r.kind,
+          details: JSON.parse(String(r.details_json)),
+        }));
+        const snapshots = (
+          await db.execute(
+            'SELECT payload_json FROM network_snapshots WHERE session_id=? ORDER BY timestamp,rowid',
+            [sessionId],
+          )
+        ).rows.map(r => JSON.parse(String(r.payload_json)));
+        return {
+          schemaVersion: SCHEMA_VERSION,
+          exportedAt: now(),
+          session: toSession(row),
+          measurements,
+          events,
+          snapshots,
+        };
+      }),
+    getSyncBatch: (limit = 50) =>
+      read(async () => {
+        const installationId = String(
+          (await db.execute('SELECT id FROM device_info LIMIT 1')).rows[0].id,
+        );
+        const candidates = (
+          await db.execute(
+            `SELECT q.* FROM sync_queue q WHERE q.state='pending' AND q.next_attempt_at<=? AND EXISTS (
+        SELECT 1 FROM sessions s WHERE s.state!='active' AND s.id=CASE q.entity_type
+          WHEN 'session' THEN q.entity_id
+          WHEN 'measurement' THEN (SELECT session_id FROM measurements WHERE id=q.entity_id)
+          WHEN 'event' THEN (SELECT session_id FROM connectivity_events WHERE id=q.entity_id)
+          WHEN 'snapshot' THEN (SELECT session_id FROM network_snapshots WHERE id=q.entity_id) END
+      ) ORDER BY q.id LIMIT ?`,
+            [Date.now(), limit],
+          )
+        ).rows;
+        const records = [];
+        for (const row of candidates) {
+          const entityId = String(row.entity_id);
+          let payload: Record<string, unknown>;
+          if (row.entity_type === 'session') {
+            payload = {
+              ...toSession(
+                (await db.execute(`${sessionSelect} WHERE s.id=?`, [entityId]))
+                  .rows[0],
+              ),
+            };
+          } else if (row.entity_type === 'measurement') {
+            const m = (
+              await db.execute(
+                'SELECT result_json,scheduled_at FROM measurements WHERE id=?',
+                [entityId],
+              )
+            ).rows[0];
+            payload = {
+              ...JSON.parse(String(m.result_json)),
+              scheduledAt: m.scheduled_at,
+            };
+          } else if (row.entity_type === 'snapshot') {
+            const r = (
+              await db.execute(
+                'SELECT session_id,payload_json FROM network_snapshots WHERE id=?',
+                [entityId],
+              )
+            ).rows[0];
+            payload = {
+              ...JSON.parse(String(r.payload_json)),
+              sessionId: r.session_id,
+            };
+          } else {
+            const r = (
+              await db.execute('SELECT * FROM connectivity_events WHERE id=?', [
+                entityId,
+              ])
+            ).rows[0];
+            payload = {
+              id: r.id,
+              sessionId: r.session_id,
+              timestamp: r.timestamp,
+              kind: r.kind,
+              details: JSON.parse(String(r.details_json)),
+            };
+          }
+          records.push({
+            type: String(row.entity_type),
+            id: entityId,
+            version: Number(row.version),
+            payload,
+          });
+        }
+        return { installationId, records };
+      }),
+    acknowledgeSync: records =>
+      write(async () => {
+        for (const record of records) {
+          await db.execute(
+            "UPDATE sync_queue SET state='acknowledged',acknowledged_at=?,last_error=NULL WHERE entity_type=? AND entity_id=? AND version=?",
+            [now(), record.type, record.id, record.version],
+          );
+        }
+      }),
+    failSync: (records, error) =>
+      write(async () => {
+        for (const record of records) {
+          await db.execute(
+            'UPDATE sync_queue SET attempts=attempts+1,last_error=?,next_attempt_at=?+MIN(3600000,1000*(1 << MIN(attempts+1,12))) WHERE entity_type=? AND entity_id=? AND version=?',
+            [
+              error.slice(0, 500),
+              Date.now(),
+              record.type,
+              record.id,
+              record.version,
+            ],
+          );
+        }
+      }),
     createSession: (config, resumedFromId) =>
       write(async () => {
         const sessionId = await id();
@@ -243,14 +400,16 @@ export function createRepository(
           type,
           durationMs: 0,
           value: null,
-          unit: type === 'http_rtt' ? 'ms' : 'Mbps',
+          unit: type.endsWith('rtt') ? 'ms' : 'Mbps',
           success: false,
           errorType: 'interrupted',
           errorMessage:
             'Probe attempt began but no result was committed before interruption.',
           httpStatus: null,
           requestedBytes:
-            type === 'http_rtt'
+            type === 'icmp_rtt'
+              ? 64
+              : type === 'http_rtt'
               ? 4
               : type === 'download'
               ? config.downloadBytes
@@ -260,6 +419,20 @@ export function createRepository(
           probeRegion: null,
           networkSnapshot: null,
         };
+        const used = Number(
+          (
+            await db.execute(
+              "SELECT COALESCE(SUM(json_extract(result_json,'$.requestedBytes')),0) AS total FROM measurements WHERE session_id=?",
+              [sessionId],
+            )
+          ).rows[0].total,
+        );
+        if (
+          config.maxPayloadBytes !== undefined &&
+          used + result.requestedBytes > config.maxPayloadBytes
+        ) {
+          throw new Error('Session payload budget reached.');
+        }
         await db.execute(
           "INSERT INTO measurements(id,session_id,timestamp,scheduled_at,type,state,result_json) VALUES (?,?,?,?,?,'pending',?)",
           [

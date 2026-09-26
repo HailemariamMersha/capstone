@@ -1,6 +1,10 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  maxDurationMs?: number;
+  maxPayloadBytes?: number;
+  minimumBatteryPercent?: number;
+  icmpHost?: string;
   rttIntervalMs: number;
   downloadIntervalMs: number;
   uploadIntervalMs: number;

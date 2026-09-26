@@ -1,6 +1,6 @@
 import type { NetworkSnapshot } from '../network/types';
 
-export type ProbeType = 'http_rtt' | 'download' | 'upload';
+export type ProbeType = 'http_rtt' | 'download' | 'upload' | 'icmp_rtt';
 export type ProbeErrorType =
   | 'timeout'
   | 'cancelled'
@@ -32,4 +32,7 @@ export interface Measurement {
   probeServer: string;
   probeRegion: string | null;
   networkSnapshot: NetworkSnapshot | null;
+  targetHost?: string;
+  ttl?: number | null;
+  method?: string;
 }

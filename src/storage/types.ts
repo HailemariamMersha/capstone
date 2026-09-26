@@ -1,3 +1,4 @@
+import type { NetworkSnapshot } from '../network/types';
 import type { Measurement, ProbeType } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
 export type SqlValue = string | number | null;
@@ -19,6 +20,14 @@ export interface SessionEvent {
   details: Record<string, unknown>;
 }
 export interface MeasurementStore {
+  saveSnapshot(
+    sessionId: string,
+    snapshot: NetworkSnapshot,
+  ): Promise<NetworkSnapshot>;
+  exportSession(sessionId: string): Promise<Record<string, unknown>>;
+  getSyncBatch(limit?: number): Promise<SyncBatch>;
+  acknowledgeSync(records: SyncRecord[]): Promise<void>;
+  failSync(records: SyncRecord[], error: string): Promise<void>;
   initialize(): Promise<void>;
   createSession(
     config: MeasurementConfig,
@@ -50,4 +59,15 @@ export interface MeasurementStore {
   ): Promise<StoredMeasurement[]>;
   listEvents(sessionId: string): Promise<SessionEvent[]>;
   pendingCount(): Promise<number>;
+}
+
+export interface SyncRecord {
+  type: string;
+  id: string;
+  version: number;
+  payload: Record<string, unknown>;
+}
+export interface SyncBatch {
+  installationId: string;
+  records: SyncRecord[];
 }
