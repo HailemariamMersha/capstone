@@ -79,3 +79,6 @@ yarn-error.log
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Local collected research data
+backend/data/

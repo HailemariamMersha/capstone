@@ -1,5 +1,7 @@
-"""Controlled, stateless M2 probe server. Ingestion and persistence arrive in M6."""
+"""Controlled probe server with durable, idempotent local ingestion."""
 import os
+
+from backend.ingestion import router
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -13,7 +15,8 @@ HEADERS = {
     "X-Capstone-Probe": "1",
     "X-Probe-Region": os.environ.get("PROBE_REGION", "local"),
 }
-app = FastAPI(title="Capstone Probe Server", version="0.1.0")
+app = FastAPI(title="Capstone Probe Server", version="0.2.0")
+app.include_router(router)
 
 
 @app.get("/api/v1/probe/ping")
