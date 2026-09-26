@@ -32,7 +32,7 @@ Download bytes come from the complete binary response. Upload bytes are counted 
 
 The client checks the protocol header and payload lengths to detect unexpected responses (including common captive-portal pages). A timeout covers both fetching and body consumption. Cancellation aborts the request and prevents later probes in the batch. Failed transfers have no throughput value or confirmed transferred-byte count. A failure may still have used network data.
 
-M2 keeps results in memory. Session/result IDs are temporary process-local identifiers. SQLite and durable IDs are M4 work; batch ingestion, deduplication and deferred synchronization are M6 work.
+The current mobile app saves measurements with durable IDs in SQLite and can export or synchronize closed sessions.
 
 ## Tests
 
@@ -41,3 +41,14 @@ backend/.venv/bin/python -m pytest backend/tests -q
 ```
 
 Tests cover exact payload sizes, protocol headers, upload acknowledgement, invalid requests and streamed-body size enforcement. Mobile probe tests live in `__tests__/runProbe.test.ts` and use fake transports/clocks for timing, cancellation and error cases. A real Android-to-server test is also required to verify the React Native transport.
+
+
+## Ingestion and network identity
+
+`POST /api/v1/ingest` accepts at most 50 versioned records / 1 MiB per batch. Records are keyed by installation ID, type and record ID. A transaction commits before acknowledgements are returned; retrying an identical batch is idempotent. Same-version conflicting payloads return 409. Newer versions replace older ones without creating duplicates.
+
+Storage defaults to `backend/data/ingestion.sqlite`; override with `CAPSTONE_INGEST_DB`. This local single-server store is a prototype adapter, not the planned PostgreSQL/TimescaleDB deployment. Inspect it with a SQLite browser or Python's sqlite3 module; data is in the `records` table, with JSON in `payload_json`.
+
+Set `CAPSTONE_SYNC_TOKEN` for remote deployments; clients send it as a bearer token. Without a token the endpoint accepts loopback connections only. Serve remote deployments over HTTPS and configure reverse-proxy trust correctly; do not expose a tokenless backend behind a loopback proxy. The mobile app does not persist the token or log it.
+
+`GET /api/v1/context` returns the observed public IP (null for local/private addresses) and ASN when enrichment is configured. To enable ASN, install `geoip2` in the backend environment and set `CAPSTONE_ASN_DB` to a local compatible ASN MMDB file. No external lookup is made, no MMDB is bundled, and missing enrichment returns null. Configure Uvicorn's trusted proxy settings explicitly when deployed behind a proxy; never trust arbitrary client-supplied forwarding headers.

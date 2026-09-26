@@ -23,31 +23,36 @@ Keep probe definitions, HTTP RTT/download/upload logic, configuration, data mode
 
 Android uses a declared `specialUse` foreground service for user-started research measurement, with foreground-service, notification and wake-lock permissions. The service type is supplied both in the manifest and library options. Play Store distribution requires review of this use case; see [Android service types](https://developer.android.com/develop/background-work/services/fgs/service-types). The pinned library version is installed through npm without local native patches.
 
-## Current implementation: scheduled probes and offline storage
+## Current implementation: controlled measurements, context, export and sync
 
-The app runs **HTTP RTT, download and upload probes** through a shared TypeScript scheduler hosted by `react-native-background-actions`. Start a session while the app is visible; it continues until Stop or process/service termination. Stop remains at the top of the screen. Probes execute serially and each has its own interval. Default intervals are 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Overdue intervals are skipped and logged rather than replayed in a traffic burst. Android/OEM scheduling can delay execution; this is not a real-time scheduler.
+The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Payloads remain 1 MiB download and 256 KiB upload; settings also offer 5/10 MiB download and 1 MiB upload. Probes run serially; missed intervals are logged and skipped instead of replayed in a burst.
 
-Choose a server, per-probe timeout, payload sizes and intervals (10–3600 seconds). Default payloads are 1 MiB download and 256 KiB upload, with a 30-second timeout. Download alternatives are 5/10 MiB and upload can use 1 MiB. The screen estimates payload consumption before starting. Sessions currently have no automatic data or battery cap; those safeguards belong to M5. One MiB is 1,048,576 bytes; Mbps uses decimal megabits.
+Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. It runs at the RTT interval and stores native RTT/TTL separately from total probe duration. ICMP does not use USB forwarding: `127.0.0.1` pings the phone itself. Compare with HTTP against the same remote host; a missing ICMP reply does not establish an internet outage.
 
-**OP-SQLite 18.2.3** stores sessions, attempts, results and events in `capstone.sqlite`. Schema version 1 enables WAL, foreign keys and synchronous FULL. Writes and reads are serialized to prevent overlapping transactions. A durable 128-bit random ID and pending attempt are committed before each probe starts. Finishing a result and enqueuing it for future sync happen in one transaction. Failed requests and cancellations are saved too. A storage failure stops collection rather than continuing with unsaved measurements.
+**Session safeguards** default to two hours, a 100 MiB planned-payload allowance, and stopping at or below 15% battery when unplugged. Attempts reserve their full payload allowance, including failures and cancellations. This is not a carrier-data counter: headers, retransmissions and context/sync traffic are outside the allowance. The first exhausted limit ends the session and records its reason. Existing session configurations are normalized when resumed.
 
-On a fresh JS process, active sessions become interrupted and unfinished attempts become explicit interrupted results. The recovery event distinguishes the last observed activity from the time interruption was discovered; the precise process-death time is unknown. Recovery does not restart network traffic. **Saved sessions** provides paginated history, results and recent events. **Resume** creates a new session using the old configuration and links it to the prior session. Completed results survive ordinary app restarts; uninstalling or clearing app data removes them.
+**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. No GPS coordinates are collected. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Context requests can warm the probe connection and are outside its timed interval.
 
-The durable sync queue is local only: ingestion, acknowledgements, retries and upload are M6 work. The schema includes `sessions`, `measurements`, `connectivity_events`, `network_snapshots`, `sync_queue`, `device_info`, `debug_logs` and `app_settings`. Session/probe/gap events are recorded now; network snapshots and monitoring remain future work. The stored install ID is random and is not a hardware identifier.
+**OP-SQLite** remains the local source of truth. Schema version 2 migrates version 1 without deleting records, enables WAL/foreign keys, and serializes transactions. An attempt is committed before its network request. Results and sync queue entries are committed together. On a new JS process, old active sessions and unfinished attempts become interrupted; recovery never restarts collection automatically. Resume creates a new linked session.
 
-The FastAPI server implements controlled probe endpoints. The client verifies the protocol marker, exact download size and upload acknowledgement. RTT includes response-body consumption; throughput includes request setup, body processing and acknowledgement. These are application-level measurements, not ICMP latency or raw link capacity. See [methodology and backend setup](backend/README.md).
+**Export CSV / Export JSON** is available for every saved session. CSV contains all measurements, including rows beyond the visible history page. JSON includes session configuration, measurements, events and context snapshots. Exports are generated from consistent repository reads; a live SQLite database file is never copied. Spreadsheet formula characters are escaped in CSV. Files remain in the app cache until replaced or cleared; sharing uses the platform share sheet.
 
-The notification opens the app; stop there. Runtime status reflects the shared JavaScript controller, not an authoritative Android service-manager query. Stop before development JS reloads; force-stop/relaunch if a stale notification remains. Android endurance and iOS execution must still be validated on devices.
+**Sync now** sends up to 50 pending records from closed sessions to the entered server. The local FastAPI server now accepts `/api/v1/ingest`, commits records to SQLite and acknowledges individual IDs/versions. Duplicate uploads do not create duplicate records. Only matching acknowledgements clear queue entries; errors and unacknowledged records get persistent exponential backoff (up to an hour). Continue tapping Sync now, or enable automatic retries every 30 seconds while the app is visible and collection is stopped. Stop collection before syncing; the UI prevents starting a measurement during sync. Sync destination/token are held only in memory for the current app run. Queue data persists across restarts.
+
+Remote sync requires HTTPS and a server token. The local server defaults to `backend/data/ingestion.sqlite`, which is gitignored. This is the local ingestion prototype; PostgreSQL/TimescaleDB, cloud deployment and closed-app background sync remain future work. Export and measurement collection do not require sync.
+
+Traceroute and the commercial SpeedChecker SDK were evaluated from their published source but are not integrated because of concrete Android compatibility/initialization blockers. See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
 
 ## Code organization
 
 - `src/sessions/`: configuration, lifecycle state machine and serialized operations.
 - `src/background/`: background-actions adapter and task-start acknowledgement.
-- `src/measurements/`: HTTP engine, independent schedules and structured results.
+- `src/measurements/`: HTTP/ICMP adapters, schedules, safeguards and structured results.
 - `src/storage/`: OP-SQLite adapter, schema, transactional repository and recovery.
 - `src/components/SessionSettings.tsx`, `SessionHistory.tsx`: configuration and saved history.
 - `src/services/measurement.ts`, `App.tsx`: composition, permissions and controls.
-- `src/network/`: context types; monitoring is not implemented yet.
+- `src/network/`: NetInfo and battery context collection.
+- `src/export/`, `src/sync/`: CSV/JSON sharing and acknowledged batch synchronization.
 - `src/api/`, `backend/`: shared protocol and local FastAPI probe server.
 
 ```ts
@@ -148,14 +153,14 @@ backend/.venv/bin/python -m pytest backend/tests -q
 3. Lock/background for **30 minutes, 60 minutes and two hours on a physical Android phone**, using a bundled build. Record device/OS, timestamps, gaps, results, battery and data usage. A notification or heartbeat alone does not satisfy M3.
 4. Test removal from Recents separately from force-stop. Relaunch after process loss: stopped status, interrupted previous session, preserved results and unfinished-attempt recovery. Resume must create a linked new ID.
 5. Test notification denial, startup rejection/timeout, database failure and retry.
-6. Disconnect the network and stop/delay the server: failed probes must persist, collection must remain controllable, and reconnect must permit later successful probes. Queue entries must survive restarts without claiming that upload occurred.
+6. Disconnect the network and stop/delay the server: failed probes must persist, collection must remain controllable, and reconnect must permit later successful probes. Queue entries must survive restarts; after sync, verify matching records exist on the server before they disappear from the pending count.
 
-Inspect Android service state with `adb shell dumpsys activity services com.labpracticeapp`. Unit tests cannot establish OS/OEM endurance. M3 remains an experimental gate until the physical runs pass. M5 safeguards and M6 sync are necessary before the full flight pipeline is ready.
+Inspect Android service state with `adb shell dumpsys activity services com.labpracticeapp`. Unit tests cannot establish OS/OEM endurance. M3 remains an experimental gate until the physical runs pass. Full M5/M6 acceptance, cloud deployment and physical reliability testing are necessary before the flight pipeline is ready.
 
 ## Validation
 
 - The earlier M2 emulator test verified two RTT/download/upload batches against local FastAPI, then three structured failures with the server stopped. All 13 backend contract tests passed.
-- Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).
+- Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection, version-one migration, export completeness, limits and acknowledged sync. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).
 - Physical-phone 30/60/120-minute background endurance, battery impact, Recents behavior and iOS builds remain pending. Emulator checks establish functionality only, not satellite performance or physical-device reliability.
 
 ### M3/M4 implementation checks — 2026-09-18
@@ -168,3 +173,23 @@ Inspect Android service state with `adb shell dumpsys activity services com.labp
 - With a deliberately delayed RTT endpoint, force-stop during the request recovered one explicit `interrupted` result with unconfirmed bytes, retaining earlier successes and pending queue entries.
 - Normal Stop during a delayed request persisted a `cancelled` result, completed the session and removed the foreground service (`dumpsys` showed none).
 - These bounded emulator checks support the implementation; the physical-device endurance checklist above is still open. Backend synchronization is not implemented.
+
+
+### Testing the new features
+
+1. Install the rebuilt release APK with `adb install -r` to retain existing data. Migration is automatic.
+2. Start the updated backend and reconnect `adb reverse tcp:8000 tcp:8000`.
+3. For a short test, set maximum duration to one minute. Optionally enter `127.0.0.1` as an explicitly local ICMP adapter test. The session should stop automatically, record its reason, and retain results/context.
+4. Export CSV and JSON from that session using the phone share sheet. Check that JSON includes configuration/events/snapshots.
+5. With collection stopped, use `http://127.0.0.1:8000` in Sync server URL and tap Sync now. Up to 50 records are acknowledged per batch; repeat or enable automatic retries to drain the queue.
+6. Stop the server, sync another completed session, restart the server, and wait for backoff before retrying. Confirm the server retains one record per installation/type/ID.
+7. For actual-network ICMP/public-IP tests, use a reachable remote probe server. USB/loopback results cannot validate those network paths. Physical-phone endurance and iOS validation remain open.
+
+### Export/context/ICMP/sync validation — 2026-09-26
+
+- TypeScript, ESLint and 72 Jest tests pass; 16 backend tests pass. Android release assembly passes with the newly pinned native libraries.
+- Existing emulator sessions from schema version 1 remain visible after the schema version 2 upgrade. Automated migration tests also verify record preservation and recovery.
+- Two one-minute emulator sessions ended automatically with `session_limit: duration` events. The ICMP-enabled session saved HTTP RTT, download, upload and one successful local ICMP sample (native RTT and TTL), plus Wi-Fi/battery/charging context.
+- Native Android share sheets opened with `session.json` and `session.csv` attachments. Automated export tests cover quoting and complete history beyond 50 rows.
+- Emulator to FastAPI ingestion: 41 records acknowledged (5 sessions, 17 measurements, 16 events, 3 snapshots), verified in the server SQLite database; pending count became zero.
+- Loopback ICMP and USB HTTP validate implementation only. Actual-network comparison, physical-phone endurance with the new dependencies, optional Wi-Fi details across manufacturers, remote ASN enrichment and iOS validation remain open.
