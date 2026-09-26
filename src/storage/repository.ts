@@ -1,4 +1,5 @@
 import { SCHEMA, SCHEMA_VERSION, MIGRATION_2 } from './schema';
+import { requestedPayload } from '../measurements/diagnosticConfig';
 import type { Measurement } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
 import type {
@@ -400,20 +401,13 @@ export function createRepository(
           type,
           durationMs: 0,
           value: null,
-          unit: type.endsWith('rtt') ? 'ms' : 'Mbps',
+          unit: type === 'download' || type === 'upload' ? 'Mbps' : 'ms',
           success: false,
           errorType: 'interrupted',
           errorMessage:
             'Probe attempt began but no result was committed before interruption.',
           httpStatus: null,
-          requestedBytes:
-            type === 'icmp_rtt'
-              ? 64
-              : type === 'http_rtt'
-              ? 4
-              : type === 'download'
-              ? config.downloadBytes
-              : config.uploadBytes,
+          requestedBytes: requestedPayload(type, config),
           transferredBytes: null,
           probeServer: config.serverUrl,
           probeRegion: null,

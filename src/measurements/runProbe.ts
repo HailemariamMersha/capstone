@@ -8,7 +8,7 @@ import type {
   Measurement,
   ProbeConfig,
   ProbeErrorType,
-  ProbeType,
+  HttpProbeType,
 } from './types';
 
 class ProbeFailure extends Error {
@@ -44,7 +44,7 @@ function uploadPayload(size: number): string {
 
 /** A complete application-level exchange, including response body consumption. */
 export async function runProbe(
-  type: ProbeType,
+  type: HttpProbeType,
   input: ProbeConfig,
   sessionId: string,
   signal?: AbortSignal,

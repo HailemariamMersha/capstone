@@ -1,5 +1,5 @@
 import { runProbe } from './runProbe';
-import type { Measurement, ProbeConfig, ProbeType } from './types';
+import type { Measurement, ProbeConfig, HttpProbeType } from './types';
 
 /** Sequential on-demand rounds; scheduling and background execution belong to M3/M5. */
 export async function runSuite(
@@ -13,7 +13,7 @@ export async function runSuite(
     throw new Error('Choose between 1 and 10 rounds.');
   }
   for (let round = 0; round < rounds && !signal.aborted; round++) {
-    for (const type of ['http_rtt', 'download', 'upload'] as ProbeType[]) {
+    for (const type of ['http_rtt', 'download', 'upload'] as HttpProbeType[]) {
       if (signal.aborted) {
         return;
       }

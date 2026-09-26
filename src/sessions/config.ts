@@ -41,6 +41,48 @@ export function validateSessionConfig(
     }
   }
   settings.icmpHost = (settings.icmpHost ?? '').trim();
+  for (const flag of [
+    'icmpBurstEnabled',
+    'tcpEnabled',
+    'loadedLatencyEnabled',
+  ] as const) {
+    if (settings[flag] !== undefined && typeof settings[flag] !== 'boolean') {
+      throw new Error(`${flag} must be enabled or disabled.`);
+    }
+  }
+  if (settings.icmpBurstEnabled && !settings.icmpHost) {
+    throw new Error('Enter an ICMP target to enable burst sampling.');
+  }
+  if (
+    settings.diagnosticsIntervalMs !== undefined &&
+    (!Number.isInteger(settings.diagnosticsIntervalMs) ||
+      settings.diagnosticsIntervalMs < 60000 ||
+      settings.diagnosticsIntervalMs > 3600000)
+  ) {
+    throw new Error('Diagnostic interval must be between 60 and 3600 seconds.');
+  }
+  if (settings.udpHost !== undefined) {
+    settings.udpHost = settings.udpHost.trim();
+  }
+  if (settings.udpHost && !/^(\d{1,3}\.){3}\d{1,3}$/.test(settings.udpHost)) {
+    throw new Error('UDP target must be the controlled server’s IPv4 address.');
+  }
+  if (
+    settings.udpHost &&
+    settings.udpHost
+      .split('.')
+      .some(part => Number(part) > 255 || String(Number(part)) !== part)
+  ) {
+    throw new Error('Enter a valid IPv4 address for UDP.');
+  }
+  if (
+    settings.udpHost &&
+    (!Number.isInteger(settings.udpPort) ||
+      settings.udpPort! < 1 ||
+      settings.udpPort! > 65535)
+  ) {
+    throw new Error('UDP port must be between 1 and 65535.');
+  }
   if (
     settings.icmpHost &&
     !/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/.test(settings.icmpHost)

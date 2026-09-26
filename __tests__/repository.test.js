@@ -39,6 +39,32 @@ const success = attempt => ({
   transferredBytes: attempt.requestedBytes,
   httpStatus: 200,
 });
+test('diagnostic payload is reserved atomically and raw samples survive export and sync', async () => {
+  const id = await store.createSession({ ...config, maxPayloadBytes: 5120 });
+  const attempt = await store.beginAttempt(
+    id,
+    'udp_echo',
+    new Date().toISOString(),
+  );
+  expect(attempt).toMatchObject({ requestedBytes: 5120, unit: 'ms' });
+  const details = {
+    protocolVersion: 1,
+    samples: [{ sequence: 0, rttMs: 12 }],
+    lossPercent: 0,
+  };
+  await store.finishAttempt({ ...success(attempt), details });
+  await expect(
+    store.beginAttempt(id, 'http_rtt', new Date().toISOString()),
+  ).rejects.toThrow('budget');
+  expect(JSON.stringify(await store.exportSession(id))).toContain(
+    'lossPercent',
+  );
+  await store.endSession(id, 'completed', 'test');
+  const batch = await store.getSyncBatch();
+  expect(
+    batch.records.find(record => record.id === attempt.id).payload.details,
+  ).toEqual(details);
+});
 test('enables WAL, migrations and durable result/queue records', async () => {
   const id = await store.createSession(config);
   expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal');

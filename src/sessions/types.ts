@@ -5,6 +5,12 @@ export interface MeasurementConfig extends ProbeConfig {
   maxPayloadBytes?: number;
   minimumBatteryPercent?: number;
   icmpHost?: string;
+  icmpBurstEnabled?: boolean;
+  tcpEnabled?: boolean;
+  udpHost?: string;
+  udpPort?: number;
+  loadedLatencyEnabled?: boolean;
+  diagnosticsIntervalMs?: number;
   rttIntervalMs: number;
   downloadIntervalMs: number;
   uploadIntervalMs: number;
