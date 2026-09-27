@@ -2,6 +2,7 @@ import { acquireActivity, currentActivity } from './activityGate';
 import type { MeasurementConfig } from '../sessions/types';
 import { runProbe } from '../measurements/runProbe';
 import { runIcmp } from '../measurements/icmp';
+import { runDiagnostic } from '../measurements/diagnostics';
 import { createContextCollector } from '../network/context';
 import { startMeasurementLoop } from '../measurements/scheduler';
 import { Platform } from 'react-native';
@@ -24,6 +25,7 @@ const controller = createSessionController(
       wallNow: () => Date.now(),
       probe: runProbe,
       icmp: runIcmp,
+      diagnostic: runDiagnostic,
       sample: collector.sample,
       onContextChange: collector.onChange,
     });

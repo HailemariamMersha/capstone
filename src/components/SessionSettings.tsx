@@ -33,6 +33,11 @@ export default function SessionSettings({
   const [budget, setBudget] = useState('100');
   const [battery, setBattery] = useState('15');
   const [icmpHost, setIcmpHost] = useState('');
+  const [icmpBurstEnabled, setIcmpBurstEnabled] = useState(false);
+  const [tcpEnabled, setTcpEnabled] = useState(false);
+  const [loadedLatencyEnabled, setLoadedLatencyEnabled] = useState(false);
+  const [udpHost, setUdpHost] = useState('');
+  const [udpPort, setUdpPort] = useState('9876');
   const [error, setError] = useState<string | null>(null);
   const fields = [
     { label: 'Probe server URL', value: url, change: setUrl },
@@ -67,7 +72,11 @@ export default function SessionSettings({
   ];
   const estimate =
     ((downloadBytes * 3600) / Number(download) +
-      (uploadBytes * 3600) / Number(upload)) /
+      (uploadBytes * 3600) / Number(upload) +
+      ((4 + (icmpHost.trim() ? (icmpBurstEnabled ? 1280 : 64) : 0)) * 3600) /
+        Number(rtt) +
+      (udpHost.trim() ? 5120 * 12 : 0) +
+      (loadedLatencyEnabled ? (downloadBytes + uploadBytes + 184) * 12 : 0)) /
     MIB;
   async function start() {
     setError(null);
@@ -77,6 +86,10 @@ export default function SessionSettings({
         maxPayloadBytes: Number(budget) * MIB,
         minimumBatteryPercent: Number(battery),
         icmpHost,
+        ...(icmpBurstEnabled ? { icmpBurstEnabled } : {}),
+        ...(tcpEnabled ? { tcpEnabled } : {}),
+        ...(loadedLatencyEnabled ? { loadedLatencyEnabled } : {}),
+        ...(udpHost.trim() ? { udpHost, udpPort: Number(udpPort) } : {}),
         serverUrl: url,
         timeoutMs: Number(timeout) * 1000,
         rttIntervalMs: Number(rtt) * 1000,
@@ -167,6 +180,59 @@ export default function SessionSettings({
         remote server host for comparisons. USB forwarding does not forward
         ICMP; 127.0.0.1 pings the phone itself. A missing ICMP reply does not
         prove the internet is down.
+      </Text>
+      <Text style={styles.title}>Optional diagnostics</Text>
+      <Button
+        title={`ICMP burst: ${icmpBurstEnabled ? '10 samples' : 'off'}`}
+        disabled={disabled}
+        onPress={() => setIcmpBurstEnabled(value => !value)}
+      />
+      <Text>
+        ICMP burst replaces the single ping with 10 samples per RTT interval.
+        Each reply waits at most 2 seconds.
+      </Text>
+      <Button
+        title={`TCP connection timing: ${tcpEnabled ? 'on' : 'off'}`}
+        disabled={disabled}
+        onPress={() => setTcpEnabled(value => !value)}
+      />
+      <Text>
+        Connects to the probe server’s port every RTT interval. Includes DNS and
+        app overhead; does not measure TLS.
+      </Text>
+      <Text>UDP server IPv4 (blank disables)</Text>
+      <TextInput
+        accessibilityLabel="UDP server IPv4"
+        style={styles.input}
+        value={udpHost}
+        onChangeText={setUdpHost}
+        editable={!disabled}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="decimal-pad"
+      />
+      <Text>UDP server port</Text>
+      <TextInput
+        accessibilityLabel="UDP server port"
+        style={styles.input}
+        value={udpPort}
+        onChangeText={setUdpPort}
+        editable={!disabled}
+        keyboardType="number-pad"
+      />
+      <Text>
+        Requires our UDP server, reachable over Wi-Fi or the internet. Sends 20
+        small packets every 5 minutes. USB forwarding does not carry UDP.
+      </Text>
+      <Button
+        title={`Loaded latency: ${loadedLatencyEnabled ? 'on' : 'off'}`}
+        disabled={disabled}
+        onPress={() => setLoadedLatencyEnabled(value => !value)}
+      />
+      <Text>
+        Every 5 minutes, adds one download and one upload at the selected sizes
+        with concurrent HTTP latency checks. These extra transfers count toward
+        the payload budget. Fast transfers may be too short for a valid sample.
       </Text>
       <Button title="Start session" disabled={disabled} onPress={start} />
       {error && <Text accessibilityRole="alert">{error}</Text>}

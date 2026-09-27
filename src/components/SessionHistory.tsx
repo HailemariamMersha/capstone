@@ -139,8 +139,51 @@ export default function SessionHistory({
               </Text>
               {m.targetHost && (
                 <Text>
-                  ICMP target: {m.targetHost} · TTL {m.ttl ?? '—'}
+                  Target: {m.targetHost} · TTL {m.ttl ?? '—'}
                 </Text>
+              )}
+              {m.details && (
+                <View>
+                  <Text>
+                    Replies: {m.details.summary.replies} · Median:{' '}
+                    {m.details.summary.medianMs?.toFixed(2) ?? '—'} ms · p95:{' '}
+                    {m.details.summary.p95Ms?.toFixed(2) ?? '—'} ms
+                  </Text>
+                  <Text>
+                    Successive RTT difference:{' '}
+                    {m.details.summary.successiveDifferenceMs?.toFixed(2) ??
+                      '—'}{' '}
+                    ms
+                  </Text>
+                  {m.details.nonResponsePercent != null && (
+                    <Text>
+                      ICMP non-response:{' '}
+                      {m.details.nonResponsePercent.toFixed(1)}%
+                    </Text>
+                  )}
+                  {m.details.lossPercent != null && (
+                    <Text>
+                      UDP round-trip loss: {m.details.lossPercent.toFixed(1)}%
+                    </Text>
+                  )}
+                  <Text>Raw samples are included in CSV and JSON exports.</Text>
+                  {m.details.baselineSummary && (
+                    <Text>
+                      Before load:{' '}
+                      {m.details.baselineSummary.medianMs?.toFixed(2) ?? '—'} ms
+                      · Fully overlapping replies:{' '}
+                      {m.details.loadedOverlapCount ?? 0}
+                    </Text>
+                  )}
+                  {m.details.load && (
+                    <Text>
+                      Load transfer:{' '}
+                      {m.details.load.success
+                        ? `${m.details.load.value?.toFixed(2)} Mbps`
+                        : `failed (${m.details.load.errorType})`}
+                    </Text>
+                  )}
+                </View>
               )}
               {m.networkSnapshot && (
                 <Text>

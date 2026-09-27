@@ -33,6 +33,68 @@ const flush = async () => {
     await Promise.resolve();
   }
 };
+test('optional diagnostics run serially and loaded tests reserve extra payload', async () => {
+  const diagnostic = jest.fn(async attempt => ({ ...attempt, success: true }));
+  const loop = startMeasurementLoop(
+    's',
+    {
+      ...config,
+      icmpHost: 'example.org',
+      icmpBurstEnabled: true,
+      tcpEnabled: true,
+      udpHost: '192.168.1.1',
+      udpPort: 9876,
+      loadedLatencyEnabled: true,
+    },
+    store,
+    saved,
+    {
+      now: () => global.performance.now(),
+      wallNow: () => Date.now(),
+      probe,
+      icmp: jest.fn(),
+      diagnostic,
+    },
+  );
+  await flush();
+  expect(diagnostic.mock.calls.map(([attempt]) => attempt.type)).toEqual([
+    'icmp_burst',
+    'tcp_connect',
+    'udp_echo',
+    'loaded_download',
+    'loaded_upload',
+  ]);
+  expect(store.beginAttempt).toHaveBeenCalledTimes(8);
+  expect(saved).toHaveBeenCalledTimes(8);
+  await loop.stop();
+});
+
+test('the first optional transfer is refused if only the baseline payload fits', async () => {
+  const diagnostic = jest.fn();
+  const loop = startMeasurementLoop(
+    's',
+    {
+      ...config,
+      loadedLatencyEnabled: true,
+      maxPayloadBytes: 4 + config.downloadBytes + config.uploadBytes,
+    },
+    store,
+    saved,
+    {
+      now: () => global.performance.now(),
+      wallNow: () => Date.now(),
+      probe,
+      diagnostic,
+    },
+  );
+  await loop.done;
+  expect(diagnostic).not.toHaveBeenCalled();
+  expect(store.addEvent).toHaveBeenCalledWith(
+    's',
+    'session_limit',
+    expect.objectContaining({ reason: 'payload_budget' }),
+  );
+});
 test('runs independent intervals and persists durable IDs before further probes', async () => {
   const loop = start();
   await flush();

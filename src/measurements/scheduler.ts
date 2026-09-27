@@ -4,6 +4,7 @@ import type { Measurement } from './types';
 import type { ProbeType } from './types';
 import type { MeasurementConfig } from '../sessions/types';
 import type { MeasurementStore } from '../storage/types';
+import { requestedPayload } from './diagnosticConfig';
 
 export interface MeasurementLoop {
   done: Promise<void>;
@@ -13,6 +14,11 @@ export interface SchedulerDependencies {
   now: () => number;
   wallNow: () => number;
   probe: typeof runProbe;
+  diagnostic?: (
+    attempt: Measurement,
+    config: MeasurementConfig,
+    signal: AbortSignal,
+  ) => Promise<Measurement>;
   onContextChange?: (callback: () => void) => () => void;
   sample?: () => Promise<{ snapshot: NetworkSnapshot; changed: boolean }>;
   icmp?: (
@@ -35,6 +41,15 @@ export function startMeasurementLoop(
   onSaved: () => void,
   dependencies: SchedulerDependencies = defaults,
 ): MeasurementLoop {
+  if (
+    (config.icmpBurstEnabled ||
+      config.tcpEnabled ||
+      config.udpHost ||
+      config.loadedLatencyEnabled) &&
+    !dependencies.diagnostic
+  ) {
+    throw new Error('Optional diagnostic executor is unavailable.');
+  }
   const abort = new AbortController();
   let wake: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -47,8 +62,35 @@ export function startMeasurementLoop(
   ];
   if (config.icmpHost && dependencies.icmp) {
     schedule.splice(1, 0, {
-      type: 'icmp_rtt',
+      type: config.icmpBurstEnabled ? 'icmp_burst' : 'icmp_rtt',
       interval: config.rttIntervalMs,
+      due: origin,
+    });
+  }
+  if (config.tcpEnabled) {
+    schedule.push({
+      type: 'tcp_connect',
+      interval: config.rttIntervalMs,
+      due: origin,
+    });
+  }
+  const diagnosticInterval = config.diagnosticsIntervalMs ?? 300000;
+  if (config.udpHost) {
+    schedule.push({
+      type: 'udp_echo',
+      interval: diagnosticInterval,
+      due: origin,
+    });
+  }
+  if (config.loadedLatencyEnabled) {
+    schedule.push({
+      type: 'loaded_download',
+      interval: diagnosticInterval,
+      due: origin,
+    });
+    schedule.push({
+      type: 'loaded_upload',
+      interval: diagnosticInterval,
       due: origin,
     });
   }
@@ -136,14 +178,7 @@ export function startMeasurementLoop(
       if (abort.signal.aborted) {
         break;
       }
-      const requested =
-        next.type === 'download'
-          ? config.downloadBytes
-          : next.type === 'upload'
-          ? config.uploadBytes
-          : next.type === 'icmp_rtt'
-          ? 64
-          : 4;
+      const requested = requestedPayload(next.type, config);
       if (
         usedBytes + requested >
         (config.maxPayloadBytes ?? 100 * 1024 * 1024)
@@ -166,12 +201,11 @@ export function startMeasurementLoop(
               config.timeoutMs,
               abort.signal,
             )
-          : await dependencies.probe(
-              next.type,
-              config,
-              sessionId,
-              abort.signal,
-            );
+          : next.type === 'http_rtt' ||
+            next.type === 'download' ||
+            next.type === 'upload'
+          ? await dependencies.probe(next.type, config, sessionId, abort.signal)
+          : await dependencies.diagnostic!(attempt, config, abort.signal);
       await store.finishAttempt({
         ...result,
         id: attempt.id,
