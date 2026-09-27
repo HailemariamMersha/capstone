@@ -25,9 +25,11 @@ Android uses a declared `specialUse` foreground service for user-started researc
 
 ## Current implementation: controlled measurements, context, export and sync
 
-The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Payloads remain 1 MiB download and 256 KiB upload; settings also offer 5/10 MiB download and 1 MiB upload. Probes run serially; missed intervals are logged and skipped instead of replayed in a burst.
+The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Payloads remain 1 MiB download and 256 KiB upload; settings also offer 5/10 MiB download and 1 MiB upload. Scheduled tests run serially; only optional loaded-latency tests intentionally overlap a transfer with latency probes. Missed intervals are logged and skipped instead of replayed in a burst.
 
 Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. It runs at the RTT interval and stores native RTT/TTL separately from total probe duration. ICMP does not use USB forwarding: `127.0.0.1` pings the phone itself. Compare with HTTP against the same remote host; a missing ICMP reply does not establish an internet outage.
+
+**Optional diagnostics** add ten-sample ICMP bursts, TCP connection timing, controlled UDP round-trip loss/latency, and HTTP latency during a bounded download/upload. They are off by default and preserve the original HTTP result types. Raw samples and summaries are saved, exported, and synced. TCP/UDP use pinned React Native libraries with reproducible Android namespace patches. See [diagnostic methods and phone-testing commands](docs/diagnostics.md), including the separate UDP server and short-transfer limitations.
 
 **Session safeguards** default to two hours, a 100 MiB planned-payload allowance, and stopping at or below 15% battery when unplugged. Attempts reserve their full payload allowance, including failures and cancellations. This is not a carrier-data counter: headers, retransmissions and context/sync traffic are outside the allowance. The first exhausted limit ends the session and records its reason. Existing session configurations are normalized when resumed.
 
@@ -41,7 +43,7 @@ Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. 
 
 Remote sync requires HTTPS and a server token. The local server defaults to `backend/data/ingestion.sqlite`, which is gitignored. This is the local ingestion prototype; PostgreSQL/TimescaleDB, cloud deployment and closed-app background sync remain future work. Export and measurement collection do not require sync.
 
-Traceroute and the commercial SpeedChecker SDK were evaluated from their published source but are not integrated because of concrete Android compatibility/initialization blockers. See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
+Traceroute and the commercial SpeedChecker SDK remain unintegrated after source review; this does not establish that all possible integrations fail. NDT7 remains a candidate for a separate optional reference test, as described in [diagnostic experiment status](docs/diagnostics.md#dependency-and-experiment-status). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
 
 ## Code organization
 

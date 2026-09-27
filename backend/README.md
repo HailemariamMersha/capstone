@@ -22,7 +22,7 @@ Connect an Android emulator or USB-debugging phone using `adb reverse tcp:8000 t
 
 Successful replies include `X-Capstone-Probe: 1`, `X-Probe-Region` and `Cache-Control: no-store, no-transform`. The download payload is random binary data generated once at server startup. No gzip middleware is enabled. The client adds a unique query parameter to each request to avoid cache reuse.
 
-The upload handler counts streamed bytes and enforces the size limit even without Content-Length. Unsupported download sizes return 400; oversized uploads return 413; unsupported media types or compressed uploads return 415. Empty uploads and mismatched declared lengths return 400. No measurements are ingested or stored here yet.
+The upload handler counts streamed bytes and enforces the size limit even without Content-Length. Unsupported download sizes return 400; oversized uploads return 413; unsupported media types or compressed uploads return 415. Empty uploads and mismatched declared lengths return 400.
 
 ## Measurement interpretation
 
@@ -52,3 +52,7 @@ Storage defaults to `backend/data/ingestion.sqlite`; override with `CAPSTONE_ING
 Set `CAPSTONE_SYNC_TOKEN` for remote deployments; clients send it as a bearer token. Without a token the endpoint accepts loopback connections only. Serve remote deployments over HTTPS and configure reverse-proxy trust correctly; do not expose a tokenless backend behind a loopback proxy. The mobile app does not persist the token or log it.
 
 `GET /api/v1/context` returns the observed public IP (null for local/private addresses) and ASN when enrichment is configured. To enable ASN, install `geoip2` in the backend environment and set `CAPSTONE_ASN_DB` to a local compatible ASN MMDB file. No external lookup is made, no MMDB is bundled, and missing enrichment returns null. Configure Uvicorn's trusted proxy settings explicitly when deployed behind a proxy; never trust arbitrary client-supplied forwarding headers.
+
+## Optional UDP diagnostics
+
+`backend/.venv/bin/python -m backend.udp_echo` starts a separate protocol-v1 UDP service on loopback port 9876. HTTP/Uvicorn does not start this service automatically. For a physical phone, configure a LAN binding and allowed source address as shown in [diagnostic testing](../docs/diagnostics.md#physical-android-testing). UDP cannot use `adb reverse`.

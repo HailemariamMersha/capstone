@@ -27,3 +27,9 @@ Primary sources: [ICMP](https://github.com/RakaDoank/ping-react-native), [NetInf
 Session export; battery/network context; payload, duration and battery safeguards; persistent records with versioned server acknowledgements and backoff. No FM hardware, SMS, GPS polling or device-specific native measurement code was copied.
 
 The sync server in this increment uses durable SQLite for local end-to-end validation. PostgreSQL/TimescaleDB deployment and background uploads while the UI is closed remain future work; this is not a declaration that all M6 acceptance criteria are complete.
+
+## Follow-up: focused diagnostic libraries
+
+`react-native-tcp-socket` 6.4.3 and `react-native-udp` 4.1.7 are integrated with reproducible Android namespace patches. Release builds and an API 36.1 emulator session passed. The session captured ten ICMP loopback replies, a TCP connection to the local server, twenty matching UDP echoes, and one fully overlapping HTTP latency reply in each load direction. All eight measurements and their raw diagnostic details were saved and synced, with sixteen total records acknowledged. These local values establish integration only. Physical Android and iOS remain untested for these additions.
+
+[Diagnostic methodology, remaining traceroute/NDT7 constraints, and phone-testing commands](diagnostics.md) supersede the earlier shortlist for these capabilities. No custom Kotlin/Java measurement implementation was added.
