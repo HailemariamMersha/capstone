@@ -26,10 +26,11 @@ JSON and CSV include a `details` object with protocol version, raw samples, sequ
 
 ## Physical Android testing
 
-Install the release build using the README instructions. Connect the Mac and phone to the same Wi-Fi for UDP; `adb reverse` forwards TCP only. From the repository root:
+Install the release build using the README instructions. Connect the Mac and phone to the same Wi-Fi for UDP; `adb reverse` forwards TCP only. The release build permits cleartext HTTP only for `localhost`, `127.0.0.1`, and the emulator alias `10.0.2.2`. For a USB-connected physical phone, run from the repository root:
 
 ```bash
-backend/.venv/bin/python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
+adb reverse tcp:8000 tcp:8000
+backend/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
 In a second terminal, start UDP. Replace the example address with the **phone's Wi-Fi IPv4 address**; `/32` permits just that source:
@@ -38,7 +39,9 @@ In a second terminal, start UDP. Replace the example address with the **phone's 
 backend/.venv/bin/python -m backend.udp_echo --host 0.0.0.0 --port 9876 --allow 192.168.1.23/32
 ```
 
-Use the **Mac's Wi-Fi IPv4 address** in the app: for example `http://192.168.1.10:8000`, UDP host `192.168.1.10`, port `9876`. Allow incoming connections in the Mac firewall if prompted. Enter the desired ICMP target independently. Start a one-minute session with optional tests enabled, inspect history, export JSON, and sync after collection stops. A larger download gives the loaded test more time, but a fast LAN may still produce too few samples.
+Use `http://127.0.0.1:8000` for both the probe and sync server URLs. Use the **Mac's Wi-Fi IPv4 address** only for the UDP host, for example `192.168.1.10`, port `9876`. Allow incoming UDP connections in the Mac firewall if prompted. Enter the desired ICMP target independently. This setup tests HTTP/TCP over USB and UDP over Wi-Fi, so their latency values do not represent the same network path. To compare protocols over Wi-Fi, use a reachable HTTPS probe endpoint with a trusted certificate; a plain HTTP URL at the Mac's LAN address is blocked in this release. Start a one-minute session with optional tests enabled, inspect history, export JSON, and sync after collection stops. A larger download gives the loaded test more time, but a fast LAN may still produce too few samples.
+
+Check that the phone uses the correct date and time before collecting field data. Elapsed measurements use a monotonic clock, but record timestamps use the phone’s wall clock.
 
 For satellite testing, connect the phone through the satellite terminal and use reachable remote HTTP/UDP servers. A Mac on the same LAN tests the LAN. USB forwarding and ICMP `127.0.0.1` are adapter checks, not satellite measurements.
 
