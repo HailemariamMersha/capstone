@@ -9,10 +9,13 @@
     "start": "react-native start",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package --error-on-fail"
+    "reference:bundle": "node scripts/build-ndt7-assets.cjs",
+    "reference:test-browser": "node scripts/test-ndt7-browser.cjs",
+    "postinstall": "patch-package --error-on-fail && npm run reference:bundle"
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "2.40.3",
+    "@m-lab/ndt7": "0.1.5",
     "@op-engineering/op-sqlite": "18.2.3",
     "@react-native-community/netinfo": "12.0.1",
     "buffer": "6.0.3",
@@ -24,7 +27,8 @@
     "react-native-safe-area-context": "^5.5.2",
     "react-native-share": "12.3.1",
     "react-native-tcp-socket": "6.4.3",
-    "react-native-udp": "4.1.7"
+    "react-native-udp": "4.1.7",
+    "react-native-webview": "14.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
