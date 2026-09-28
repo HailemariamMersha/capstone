@@ -3,6 +3,7 @@ import {
   validateProbeConfig,
 } from '../measurements/config';
 import type { MeasurementConfig } from './types';
+export const MAX_SESSION_PAYLOAD_BYTES = 10 * 1024 * 1024 * 1024;
 export const DEFAULT_SESSION_CONFIG: MeasurementConfig = {
   ...DEFAULT_PROBE_CONFIG,
   maxDurationMs: 2 * 60 * 60 * 1000,
@@ -41,7 +42,12 @@ export function validateSessionConfig(
   const settings = { ...DEFAULT_SESSION_CONFIG, ...config, ...probes };
   for (const [name, value, min, max] of [
     ['Duration', settings.maxDurationMs!, 10000, 24 * 3600000],
-    ['Payload budget', settings.maxPayloadBytes!, 1024, 1024 * 1024 * 1024],
+    [
+      'Payload budget',
+      settings.maxPayloadBytes!,
+      1024,
+      MAX_SESSION_PAYLOAD_BYTES,
+    ],
     ['Minimum battery', settings.minimumBatteryPercent!, 0, 100],
   ] as const) {
     if (!Number.isInteger(value) || value < min || value > max) {

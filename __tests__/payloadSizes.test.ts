@@ -38,3 +38,30 @@ test.each([0, -1, 1.5, NaN, Infinity, MAX_PAYLOAD_BYTES + 1])(
     }
   },
 );
+
+test('a long session may reserve a multi-GiB budget without removing its bound', () => {
+  const {
+    DEFAULT_SESSION_CONFIG,
+    MAX_SESSION_PAYLOAD_BYTES,
+    validateSessionConfig,
+  } = require('../src/sessions/config');
+  const config = {
+    ...DEFAULT_SESSION_CONFIG,
+    downloadBytes: 50 * MIB,
+    uploadBytes: 50 * MIB,
+    maxPayloadBytes: 3072 * MIB,
+  };
+  expect(validateSessionConfig(config).maxPayloadBytes).toBe(3221225472);
+  expect(
+    validateSessionConfig({
+      ...config,
+      maxPayloadBytes: MAX_SESSION_PAYLOAD_BYTES,
+    }).maxPayloadBytes,
+  ).toBe(MAX_SESSION_PAYLOAD_BYTES);
+  expect(() =>
+    validateSessionConfig({
+      ...config,
+      maxPayloadBytes: MAX_SESSION_PAYLOAD_BYTES + 1,
+    }),
+  ).toThrow('Payload budget');
+});
