@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Active reference tests only: no exported passive or automatic boot/update entrypoints. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" tools:node="remove" />
+    <application tools:replace="android:usesCleartextTraffic" android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <service android:name="com.speedchecker.android.sdk.Services.PassiveMeasurementsService" tools:node="remove" />
+        <receiver android:name="com.speedchecker.android.sdk.BroadcastReceivers.GeofenceBroadcastReceiver" tools:node="remove" />
+        <receiver android:name="com.speedchecker.android.sdk.Workers.AlarmReceiver" tools:node="remove" />
+        <receiver android:name="com.speedchecker.android.sdk.BroadcastReceivers.BootReceiver" tools:node="remove" />
+        <receiver android:name="com.speedchecker.android.sdk.BroadcastReceivers.UpdateReceiver" tools:node="remove" />
+    </application>
+</manifest>

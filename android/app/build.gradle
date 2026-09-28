@@ -2,6 +2,21 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Vendor artifact access is optional. No SDK or credentials enter the base build.
+def speedCheckerEnabled = (findProperty("enableSpeedChecker") ?: "false").toBoolean()
+if (speedCheckerEnabled) {
+    repositories {
+        maven {
+            url = uri("https://maven.speedcheckerapi.com/artifactory/libs-release")
+            content { includeGroup "com.speedchecker"; includeGroup "com.github.heremaps" }
+            credentials {
+                username = findProperty("speedCheckerMavenUsername") ?: System.getenv("SPEEDCHECKER_MAVEN_USERNAME") ?: ""
+                password = findProperty("speedCheckerMavenPassword") ?: System.getenv("SPEEDCHECKER_MAVEN_PASSWORD") ?: ""
+            }
+        }
+    }
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -79,11 +94,22 @@ android {
 
     namespace "com.labpracticeapp"
     defaultConfig {
+        buildConfigField "boolean", "SPEEDCHECKER_ENABLED", speedCheckerEnabled.toString()
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         applicationId "com.labpracticeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+    }
+    testBuildType "release"
+    if (speedCheckerEnabled) {
+        sourceSets {
+            main.java.srcDir "src/speedchecker/java"
+            // Overlay also includes the base manifest via the normal debug/release merge.
+            release.manifest.srcFile "src/speedchecker/AndroidManifest.xml"
+            debug.manifest.srcFile "src/speedchecker/AndroidManifest.xml"
+        }
     }
     signingConfigs {
         debug {
@@ -110,6 +136,13 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("me.impa:icmpenguin:1.0.0-rc.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    if (speedCheckerEnabled) {
+        implementation("com.speedchecker:android-sdk:4.2.299")
+    }
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
