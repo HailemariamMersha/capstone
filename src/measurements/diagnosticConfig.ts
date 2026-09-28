@@ -14,6 +14,13 @@ export function requestedPayload(
   config: MeasurementConfig,
 ): number {
   switch (type) {
+    case 'speedchecker_latency':
+      return 0;
+    case 'speedchecker_download':
+    case 'speedchecker_upload':
+      return 50000000;
+    case 'traceroute':
+      return (config.tracerouteMaxHops ?? 20) * 3 * 32 * 2;
     case 'ndt7_download':
     case 'ndt7_upload':
       return config.referenceByteThreshold ?? 0;

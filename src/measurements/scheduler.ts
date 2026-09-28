@@ -44,6 +44,7 @@ export function startMeasurementLoop(
   if (
     (config.icmpBurstEnabled ||
       config.tcpEnabled ||
+      config.tracerouteHost ||
       config.udpHost ||
       config.loadedLatencyEnabled) &&
     !dependencies.diagnostic
@@ -75,6 +76,9 @@ export function startMeasurementLoop(
     });
   }
   const diagnosticInterval = config.diagnosticsIntervalMs ?? 300000;
+  if (config.tracerouteHost) {
+    schedule.push({ type: 'traceroute', interval: 900000, due: origin });
+  }
   if (config.udpHost) {
     schedule.push({
       type: 'udp_echo',

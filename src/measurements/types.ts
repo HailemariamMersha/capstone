@@ -6,13 +6,17 @@ export type DiagnosticType =
   | 'tcp_connect'
   | 'udp_echo'
   | 'loaded_download'
-  | 'loaded_upload';
+  | 'loaded_upload'
+  | 'traceroute';
 export type ProbeType =
   | HttpProbeType
   | 'icmp_rtt'
   | DiagnosticType
   | 'ndt7_download'
-  | 'ndt7_upload';
+  | 'ndt7_upload'
+  | 'speedchecker_latency'
+  | 'speedchecker_download'
+  | 'speedchecker_upload';
 export type ProbeErrorType =
   | 'timeout'
   | 'cancelled'
@@ -34,7 +38,7 @@ export interface Measurement {
   type: ProbeType;
   durationMs: number;
   value: number | null;
-  unit: 'ms' | 'Mbps';
+  unit: 'ms' | 'Mbps' | 'hops';
   success: boolean;
   errorType: ProbeErrorType | null;
   errorMessage: string | null;
@@ -48,6 +52,21 @@ export interface Measurement {
   ttl?: number | null;
   method?: string;
   details?: DiagnosticDetails;
+  route?: {
+    library: 'icmpenguin';
+    version: string;
+    protocol: 'udp';
+    maxHops: number;
+    probesPerHop: number;
+    probeBytes: number;
+    timeoutPerProbeMs: number;
+    deadlineMs: number;
+    reached: boolean;
+    reachedHop: number | null;
+    complete: boolean;
+    stopReason: string;
+    samples: TraceSample[];
+  };
   reference?: {
     library: '@m-lab/ndt7';
     version: string;
@@ -59,6 +78,38 @@ export interface Measurement {
     elapsedSeconds: number | null;
     accounting: 'last_client_sample';
   };
+  speedchecker?: {
+    sdkVersion: string;
+    stopReason: string;
+    cleanupConfirmed: boolean;
+    thresholdMb: number;
+    downloadMb: number | null;
+    uploadMb: number | null;
+    downloadMbps: number | null;
+    uploadMbps: number | null;
+    pingMs: number | null;
+    jitterMs: number | null;
+  };
+}
+
+export interface TraceSample {
+  hop: number;
+  sequence: number;
+  remote: string;
+  address: string | null;
+  kind:
+    | 'reply'
+    | 'timeout'
+    | 'port_unreachable'
+    | 'host_unreachable'
+    | 'network_unreachable'
+    | 'icmp_error'
+    | 'error';
+  rttMs: number | null;
+  probeBytes: number;
+  overheadBytes: number;
+  icmpType: number | null;
+  icmpCode: number | null;
 }
 
 export interface ProbeSample {

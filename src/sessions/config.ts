@@ -16,7 +16,10 @@ export const DEFAULT_SESSION_CONFIG: MeasurementConfig = {
 export function validateSessionConfig(
   config: MeasurementConfig,
 ): MeasurementConfig {
-  if (config.mode === 'ndt7_reference') {
+  if (
+    config.mode === 'ndt7_reference' ||
+    config.mode === 'speedchecker_reference'
+  ) {
     throw new Error(
       'Reference tests must be started from the reference test panel.',
     );
@@ -46,6 +49,23 @@ export function validateSessionConfig(
     }
   }
   settings.icmpHost = (settings.icmpHost ?? '').trim();
+  settings.tracerouteHost = settings.tracerouteHost?.trim();
+  if (
+    settings.tracerouteHost &&
+    !/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/.test(settings.tracerouteHost)
+  ) {
+    throw new Error(
+      'Traceroute target must be a hostname or IP without a URL or spaces.',
+    );
+  }
+  if (
+    settings.tracerouteMaxHops !== undefined &&
+    (!Number.isInteger(settings.tracerouteMaxHops) ||
+      settings.tracerouteMaxHops < 1 ||
+      settings.tracerouteMaxHops > 30)
+  ) {
+    throw new Error('Traceroute maximum hops must be between 1 and 30.');
+  }
   for (const flag of [
     'icmpBurstEnabled',
     'tcpEnabled',

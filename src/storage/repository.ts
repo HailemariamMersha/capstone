@@ -402,8 +402,14 @@ export function createRepository(
           durationMs: 0,
           value: null,
           unit:
-            type === 'download' || type === 'upload' || type.startsWith('ndt7_')
+            type === 'download' ||
+            type === 'upload' ||
+            type.startsWith('ndt7_') ||
+            type === 'speedchecker_download' ||
+            type === 'speedchecker_upload'
               ? 'Mbps'
+              : type === 'traceroute'
+              ? 'hops'
               : 'ms',
           success: false,
           errorType: 'interrupted',

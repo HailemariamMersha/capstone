@@ -2,6 +2,7 @@ import { runIcmpBurst } from './icmpBurst';
 import { runTcpConnect } from './tcp';
 import { runUdpEcho } from './udp';
 import { runLoadedLatency } from './loadedLatency';
+import { runTraceroute } from './traceroute';
 import type { Measurement } from './types';
 import type { MeasurementConfig } from '../sessions/types';
 
@@ -11,6 +12,8 @@ export async function runDiagnostic(
   signal: AbortSignal,
 ): Promise<Measurement> {
   switch (attempt.type) {
+    case 'traceroute':
+      return runTraceroute(attempt, config, signal);
     case 'icmp_burst':
       return runIcmpBurst(attempt, config.icmpHost!, config.timeoutMs, signal);
     case 'tcp_connect':

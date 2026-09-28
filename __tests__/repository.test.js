@@ -279,3 +279,57 @@ test('NDT7 reference results survive export, sync, and interrupted attempt recov
     errorType: 'interrupted',
   });
 });
+
+test('traceroute and SpeedChecker records retain their distinct units and payloads through export and sync', async () => {
+  const id = await store.createSession({
+    ...config,
+    tracerouteHost: '127.0.0.1',
+  });
+  const attempt = await store.beginAttempt(
+    id,
+    'traceroute',
+    new Date().toISOString(),
+  );
+  expect(attempt).toMatchObject({ requestedBytes: 3840, unit: 'hops' });
+  const route = {
+    reached: true,
+    samples: [
+      { hop: 1, address: '127.0.0.1', kind: 'port_unreachable', rttMs: 0.1 },
+    ],
+  };
+  await store.finishAttempt({ ...success(attempt), route, value: 1 });
+  await store.endSession(id, 'completed', 'done');
+  expect((await store.exportSession(id)).measurements[0].route).toEqual(route);
+  const { runSpeedChecker } = require('../src/reference/speedchecker');
+  await runSpeedChecker(
+    store,
+    true,
+    new AbortController().signal,
+    async () => true,
+    {
+      start: async runId => ({
+        runId,
+        reason: 'complete',
+        cleanupConfirmed: true,
+        durationMs: 1000,
+        downloadMbps: 20,
+        uploadMbps: 10,
+        pingMs: 8,
+        jitterMs: 1,
+        downloadMb: 2,
+        uploadMb: 1,
+        server: 'probe.example.org',
+      }),
+      cancel: () => {},
+    },
+  );
+  const batch = await store.getSyncBatch();
+  expect(batch.records.find(r => r.id === attempt.id).payload.route).toEqual(
+    route,
+  );
+  const speed = batch.records.filter(
+    r => r.type === 'measurement' && r.payload.type.startsWith('speedchecker'),
+  );
+  expect(speed.map(r => r.payload.unit)).toEqual(['ms', 'Mbps', 'Mbps']);
+  expect(speed[1].payload.speedchecker.sdkVersion).toBe('4.2.299');
+});

@@ -1,7 +1,7 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
-  mode?: 'ndt7_reference';
+  mode?: 'ndt7_reference' | 'speedchecker_reference';
   referenceByteThreshold?: number;
   maxDurationMs?: number;
   maxPayloadBytes?: number;
@@ -13,6 +13,8 @@ export interface MeasurementConfig extends ProbeConfig {
   udpPort?: number;
   loadedLatencyEnabled?: boolean;
   diagnosticsIntervalMs?: number;
+  tracerouteHost?: string;
+  tracerouteMaxHops?: number;
   rttIntervalMs: number;
   downloadIntervalMs: number;
   uploadIntervalMs: number;
