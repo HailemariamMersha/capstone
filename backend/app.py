@@ -4,12 +4,12 @@ import os
 from backend.ingestion import router
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 MIB = 1024 * 1024
-DOWNLOAD_SIZES = {MIB, 5 * MIB, 10 * MIB}
-MAX_UPLOAD_BYTES = MIB
-PAYLOAD = os.urandom(max(DOWNLOAD_SIZES))
+MAX_PAYLOAD_BYTES = 100 * MIB
+# Reuse an uncompressed random block rather than allocate the whole response.
+PAYLOAD = os.urandom(MIB)
 HEADERS = {
     "Cache-Control": "no-store, no-transform",
     "X-Capstone-Probe": "1",
@@ -26,9 +26,18 @@ async def ping():
 
 @app.get("/api/v1/probe/download/{size}")
 async def download(size: int):
-    if size not in DOWNLOAD_SIZES:
-        raise HTTPException(400, "Supported sizes: 1048576, 5242880, 10485760 bytes")
-    return Response(PAYLOAD[:size], media_type="application/octet-stream", headers=HEADERS)
+    if not 1 <= size <= MAX_PAYLOAD_BYTES:
+        raise HTTPException(400, "Download size must be between 1 byte and 100 MiB")
+
+    async def chunks():
+        remaining = size
+        while remaining:
+            count = min(remaining, len(PAYLOAD))
+            yield PAYLOAD[:count]
+            remaining -= count
+
+    return StreamingResponse(chunks(), media_type="application/octet-stream",
+                             headers={**HEADERS, "Content-Length": str(size)})
 
 
 @app.post("/api/v1/probe/upload")
@@ -45,13 +54,13 @@ async def upload(request: Request):
             raise HTTPException(400, "Invalid Content-Length")
         if declared < 0:
             raise HTTPException(400, "Invalid Content-Length")
-        if declared > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, "Upload exceeds 1 MiB")
+        if declared > MAX_PAYLOAD_BYTES:
+            raise HTTPException(413, "Upload exceeds 100 MiB")
     received = 0
     async for chunk in request.stream():
         received += len(chunk)
-        if received > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, "Upload exceeds 1 MiB")
+        if received > MAX_PAYLOAD_BYTES:
+            raise HTTPException(413, "Upload exceeds 100 MiB")
     if received == 0:
         raise HTTPException(400, "Upload must not be empty")
     if length is not None and received != declared:

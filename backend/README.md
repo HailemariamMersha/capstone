@@ -17,12 +17,14 @@ Connect an Android emulator or USB-debugging phone using `adb reverse tcp:8000 t
 | Endpoint | Request | Successful response |
 | --- | --- | --- |
 | `GET /api/v1/probe/ping` | No body | Four ASCII bytes: `pong` |
-| `GET /api/v1/probe/download/{size}` | Size in bytes: 1048576, 5242880 or 10485760 | Exactly that many binary bytes |
-| `POST /api/v1/probe/upload` | `application/octet-stream`, nonempty uncompressed body, at most 1048576 bytes | JSON: `{"receivedBytes": <actual byte count>}` |
+| `GET /api/v1/probe/download/{size}` | Any integer size from 1 to 104857600 bytes (100 MiB) | Exactly that many binary bytes |
+| `POST /api/v1/probe/upload` | `application/octet-stream`, nonempty uncompressed body, at most 104857600 bytes (100 MiB) | JSON: `{"receivedBytes": <actual byte count>}` |
 
-Successful replies include `X-Capstone-Probe: 1`, `X-Probe-Region` and `Cache-Control: no-store, no-transform`. The download payload is random binary data generated once at server startup. No gzip middleware is enabled. The client adds a unique query parameter to each request to avoid cache reuse.
+Successful replies include `X-Capstone-Probe: 1`, `X-Probe-Region` and `Cache-Control: no-store, no-transform`. The download response streams slices of a reusable 1 MiB random binary block generated at startup, repeating the block for larger requests. Content-Length is the exact requested size; the backend does not allocate the entire requested response. No gzip middleware is enabled. The client adds a unique query parameter to each request to avoid cache reuse.
 
-The upload handler counts streamed bytes and enforces the size limit even without Content-Length. Unsupported download sizes return 400; oversized uploads return 413; unsupported media types or compressed uploads return 415. Empty uploads and mismatched declared lengths return 400.
+The upload handler counts streamed bytes and enforces the size limit even without Content-Length. Out-of-range download sizes return 400; oversized uploads return 413; unsupported media types or compressed uploads return 415. Empty uploads and mismatched declared lengths return 400.
+
+Restart the backend after upgrading from the preset-size implementation. Older servers reject custom downloads and uploads larger than 1 MiB. The app still verifies exact byte counts and records those rejections as failures.
 
 ## Measurement interpretation
 
