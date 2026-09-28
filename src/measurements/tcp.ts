@@ -1,6 +1,11 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { latencySummary } from './statistics';
-import type { Measurement, ProbeErrorType, ProbeSample } from './types';
+import type {
+  Measurement,
+  ProbeErrorType,
+  ProbeSample,
+  RawProbeOutput,
+} from './types';
 
 /** Includes resolver/native dispatch/callback time; does not isolate a TCP SYN RTT or TLS. */
 export async function runTcpConnect(
@@ -14,6 +19,19 @@ export async function runTcpConnect(
   const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
   const started = performance.now();
   const timestamp = new Date().toISOString();
+  const raw: RawProbeOutput = {
+    library: 'react-native-tcp-socket',
+    version: '6.4.3',
+    source: 'tcp_connect_callback',
+    request: { host, port, timeoutMs },
+    callbacks: [],
+    unavailable: [
+      'tcpSegments',
+      'synRtt',
+      'retransmissions',
+      'kernelSendReceiveTimestamps',
+    ],
+  };
   return new Promise(resolve => {
     let socket: InstanceType<typeof TcpSocket.Socket> | undefined;
     let finished = false;
@@ -28,6 +46,15 @@ export async function runTcpConnect(
       clearTimeout(timer);
       signal.removeEventListener('abort', cancel);
       const durationMs = performance.now() - started;
+      raw.callbacks.push({
+        observedAt: new Date().toISOString(),
+        elapsedMs: durationMs,
+        value: {
+          event: errorType ? 'failure' : 'connected',
+          errorType,
+          errorMessage,
+        },
+      });
       try {
         socket?.destroy();
       } catch {
@@ -45,6 +72,7 @@ export async function runTcpConnect(
         ...attempt,
         timestamp,
         method: 'tcp_connect_with_resolution',
+        raw,
         targetHost: host,
         durationMs,
         value: errorType ? null : durationMs,

@@ -143,3 +143,26 @@ test('UDP bind silence cannot hang the scheduler', async () => {
     details: { lossPercent: null, sentCount: 0 },
   });
 });
+
+test('UDP retains matching payloads and explicitly bounds duplicate observations', async () => {
+  socket.bind.mockImplementation((_p, _a, done) => done());
+  socket.send.mockImplementation((packet, _o, _l, port, address, done) => {
+    done();
+    for (let i = 0; i < 300; i++)
+      socket.emit('message', packet, { address, port });
+  });
+  const abort = new AbortController();
+  const pending = runUdpEcho(attempt, '192.0.2.1', 9876, 1000, abort.signal);
+  abort.abort();
+  const result = await pending;
+  expect(result.raw.callbacks).toHaveLength(256);
+  expect(result.raw.droppedCallbacks).toBeGreaterThan(0);
+  const sent = result.raw.callbacks.find(
+    c => c.value.event === 'send_requested',
+  ).value;
+  const received = result.raw.callbacks.find(
+    c => c.value.event === 'matched_reply',
+  ).value;
+  expect(received.payloadBase64).toBe(sent.payloadBase64);
+  expect(received.remote).toEqual({ address: '192.0.2.1', port: 9876 });
+});

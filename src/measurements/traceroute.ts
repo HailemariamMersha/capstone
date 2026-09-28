@@ -1,5 +1,10 @@
 import { NativeModules, Platform } from 'react-native';
-import type { Measurement, ProbeErrorType, TraceSample } from './types';
+import type {
+  Measurement,
+  ProbeErrorType,
+  TraceSample,
+  RawProbeOutput,
+} from './types';
 import type { MeasurementConfig } from '../sessions/types';
 
 export const TRACE_VERSION = '1.0.0-rc.3';
@@ -87,6 +92,28 @@ export async function runTraceroute(
   const started = performance.now();
   const host = config.tracerouteHost!;
   const maxHops = config.tracerouteMaxHops ?? TRACE_MAX_HOPS;
+  const raw: RawProbeOutput = {
+    library: 'icmpenguin',
+    version: TRACE_VERSION,
+    source: 'android_native_bridge',
+    request: {
+      host,
+      maxHops,
+      probesPerHop: TRACE_PROBES_PER_HOP,
+      protocol: 'udp',
+      portStart: 33434,
+      portStrategy: 'sequential',
+      probeBytes: 32,
+      timeoutPerProbeMs: 1000,
+      deadlineMs: 45000,
+    },
+    callbacks: [],
+    unavailable: [
+      'packetCapture',
+      'icmpTypeCodeForSpecializedErrorVariants',
+      'kernelSendReceiveTimestamps',
+    ],
+  };
   let response: TraceResponse | undefined;
   let errorType: ProbeErrorType | null = null;
   let errorMessage: string | null = null;
@@ -110,6 +137,12 @@ export async function runTraceroute(
       cancel();
     }
     response = await pending; // Native deadline includes DNS/probing; cleanup precedes resolution.
+    // Preserve the bridge response even when validation rejects its normalized fields.
+    raw.callbacks.push({
+      observedAt: new Date().toISOString(),
+      elapsedMs: performance.now() - started,
+      value: response,
+    });
     validateTraceResponse(response, attempt.id, maxHops);
     if (response.reason !== 'complete') {
       errorType =
@@ -154,6 +187,7 @@ export async function runTraceroute(
     unit: 'hops',
     transferredBytes: null,
     method: 'udp_traceroute_icmpenguin',
+    raw,
     targetHost: host,
     probeServer: host,
     route: {

@@ -75,3 +75,43 @@ test('cancelling between samples retains partial data without reporting packet l
     },
   });
 });
+
+test('burst retains raw failure output for later reanalysis', async () => {
+  const abort = new AbortController();
+  const raw = {
+    library: 'ping-react-native',
+    version: '2.1.1',
+    source: 'test',
+    request: {},
+    callbacks: [
+      {
+        observedAt: 'now',
+        elapsedMs: 3,
+        value: { status: -3, rawStderr: 'unreachable\n' },
+      },
+    ],
+    unavailable: ['icmpHeader'],
+  };
+  const result = await runIcmpBurst(
+    {} as Measurement,
+    '192.0.2.1',
+    1000,
+    abort.signal,
+    async attempt => {
+      abort.abort();
+      return {
+        ...attempt,
+        value: null,
+        durationMs: 3,
+        errorType: 'network',
+        errorMessage: 'unreachable',
+        raw,
+      };
+    },
+  );
+  expect(result.details!.samples[0]).toMatchObject({
+    raw,
+    durationMs: 3,
+    errorMessage: 'unreachable',
+  });
+});

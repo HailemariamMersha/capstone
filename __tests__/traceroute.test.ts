@@ -123,3 +123,27 @@ test('rejects duplicate sequences, invalid hops and mismatched run IDs', () => {
     validateTraceResponse(response([sample()]), 'other', 20),
   ).toThrow();
 });
+
+test('keeps exact native fields and the response even when normalization fails', async () => {
+  const nativeResponse = response([
+    sample({
+      hop: 99,
+      rawResult: {
+        variant: 'NetError',
+        errNo: 113,
+        errType: 11,
+        errCode: 0,
+        errInfo: 0,
+      },
+    }),
+  ]);
+  const result = await runTraceroute(
+    attempt,
+    config,
+    new AbortController().signal,
+    adapter(nativeResponse),
+  );
+  expect(result.success).toBe(false);
+  expect(result.errorType).toBe('invalid_response');
+  expect(result.raw!.callbacks[0].value).toEqual(nativeResponse);
+});

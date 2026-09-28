@@ -51,6 +51,7 @@ export interface Measurement {
   targetHost?: string;
   ttl?: number | null;
   method?: string;
+  raw?: RawProbeOutput;
   details?: DiagnosticDetails;
   route?: {
     library: 'icmpenguin';
@@ -93,6 +94,8 @@ export interface Measurement {
 }
 
 export interface TraceSample {
+  observedAtMs?: number;
+  rawResult?: Record<string, unknown>;
   hop: number;
   sequence: number;
   remote: string;
@@ -118,6 +121,20 @@ export interface ProbeSample {
   rttMs: number | null;
   errorType: ProbeErrorType | null;
   ttl?: number | null;
+  durationMs?: number;
+  errorMessage?: string | null;
+  raw?: RawProbeOutput;
+}
+
+/** Library/application observations, not a PCAP or a claim of wire-level access. */
+export interface RawProbeOutput {
+  library: string;
+  version: string;
+  source: string;
+  request: Record<string, unknown>;
+  callbacks: { observedAt: string; elapsedMs: number; value: unknown }[];
+  droppedCallbacks?: number;
+  unavailable: string[];
 }
 export interface LatencySummary {
   replies: number;

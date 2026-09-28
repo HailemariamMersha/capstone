@@ -6,7 +6,12 @@ import {
   SAMPLE_INTERVAL_MS,
 } from './diagnosticConfig';
 import { latencySummary } from './statistics';
-import type { Measurement, ProbeErrorType, ProbeSample } from './types';
+import type {
+  Measurement,
+  ProbeErrorType,
+  ProbeSample,
+  RawProbeOutput,
+} from './types';
 
 export function udpPacket(nonce: string, sequence: number): Buffer {
   return Buffer.from(
@@ -45,6 +50,34 @@ export async function runUdpEcho(
     .slice(-32)
     .padStart(32, '0');
   const graceMs = Math.min(timeoutMs, 3000);
+  const raw: RawProbeOutput = {
+    library: 'react-native-udp',
+    version: '4.1.7',
+    source: 'udp_socket_callbacks',
+    request: {
+      host,
+      port,
+      packetSize: UDP_PACKET_BYTES,
+      count: UDP_SAMPLE_COUNT,
+      graceMs,
+      nonce,
+    },
+    callbacks: [],
+    droppedCallbacks: 0,
+    unavailable: ['ipHeader', 'icmpHeader', 'kernelSendReceiveTimestamps'],
+  };
+  const observe = (value: unknown) => {
+    // Duplicate/unrelated datagrams must not grow storage without bound.
+    if (raw.callbacks.length >= 256) {
+      raw.droppedCallbacks!++;
+      return;
+    }
+    raw.callbacks.push({
+      observedAt: new Date().toISOString(),
+      elapsedMs: performance.now() - started,
+      value,
+    });
+  };
   return new Promise(resolve => {
     let socket: EchoSocket | undefined;
     let finished = false;
@@ -95,6 +128,7 @@ export async function runUdpEcho(
         timestamp,
         targetHost: host,
         method: 'udp_echo_round_trip',
+        raw,
         durationMs: performance.now() - started,
         success,
         value: success ? summary.medianMs : null,
@@ -138,6 +172,14 @@ export async function runUdpEcho(
       }
       const sequence = nextSequence++;
       const packet = udpPacket(nonce, sequence);
+      observe({
+        event: 'send_requested',
+        sequence,
+        payloadBase64: packet.toString('base64'),
+        payloadBytes: packet.length,
+        host,
+        port,
+      });
       sent.set(sequence, {
         at: performance.now(),
         timestamp: new Date().toISOString(),
@@ -149,10 +191,12 @@ export async function runUdpEcho(
             return;
           }
           if (error) {
+            observe({ event: 'send_error', sequence, error: String(error) });
             finish('network', String(error));
             return;
           }
           sent.get(sequence)!.confirmed = true;
+          observe({ event: 'send_confirmed', sequence });
           sentCount++;
           if (nextSequence < UDP_SAMPLE_COUNT) {
             sendTimer = setTimeout(send, SAMPLE_INTERVAL_MS);
@@ -169,10 +213,14 @@ export async function runUdpEcho(
     };
     try {
       socket = UdpSocket.createSocket({ type: 'udp4' }) as EchoSocket;
-      socket.on('error', error => finish('network', String(error)));
+      socket.on('error', error => {
+        observe({ event: 'socket_error', error: String(error) });
+        finish('network', String(error));
+      });
       socket.on(
         'message',
         (message: Buffer, remote: { address: string; port: number }) => {
+          if (finished) return;
           if (
             finished ||
             remote.address !== host ||
@@ -187,6 +235,15 @@ export async function runUdpEcho(
           if (!info || !message.equals(udpPacket(nonce, sequence))) {
             return;
           }
+          observe({
+            event: 'matched_reply',
+            sequence,
+            remote: { ...remote },
+            payloadBase64: message.toString('base64'),
+            payloadBytes: message.length,
+            duplicate: replies.has(sequence),
+            reordered: sequence < highestReply,
+          });
           if (replies.has(sequence)) {
             duplicateCount++;
             return;

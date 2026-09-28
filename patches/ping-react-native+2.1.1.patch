@@ -1,0 +1,208 @@
+diff --git a/node_modules/ping-react-native/android/src/main/java/com/audira/lib/reactnative/pingandroid/icmp/ICMP.kt b/node_modules/ping-react-native/android/src/main/java/com/audira/lib/reactnative/pingandroid/icmp/ICMP.kt
+--- a/node_modules/ping-react-native/android/src/main/java/com/audira/lib/reactnative/pingandroid/icmp/ICMP.kt
++++ b/node_modules/ping-react-native/android/src/main/java/com/audira/lib/reactnative/pingandroid/icmp/ICMP.kt
+@@ -1,6 +1,7 @@
+ package com.audira.lib.reactnative.pingandroid.icmp
+ 
+ import com.facebook.react.bridge.ReadableMap
++import com.facebook.react.bridge.Arguments
+ import kotlinx.coroutines.cancel
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.channels.awaitClose
+@@ -16,8 +17,6 @@
+ import java.io.BufferedReader
+ import java.io.InputStreamReader
+ 
+-private const val STR_END = "END"
+-private const val STR_ERR = "ERR"
+ 
+ class ICMP(
+ 	host: String,
+@@ -59,59 +58,37 @@
+ 
+ 	private fun pingExecute(): Flow<ReadableMap> {
+ 		return callbackFlow {
+-			val log = StringBuilder()
++			val stdout = StringBuilder()
++			val stderr = StringBuilder()
+ 			process = processBuilder.start()
+-
+ 			try {
+-				val reader = BufferedReader(
+-					InputStreamReader(process!!.inputStream)
+-				)
+-				val readerErr = BufferedReader(
+-					InputStreamReader(process!!.errorStream)
+-				)
+-				while(
+-					!reader.readLine().also {
+-						if(!it.isNullOrBlank()) {
+-							log.append("$it\n")
+-						}
+-					}.isNullOrBlank()
+-				) {
+-					// nothing
++				// One bounded ping invocation. Preserve blank lines and both streams.
++				BufferedReader(InputStreamReader(process!!.inputStream)).use { reader ->
++					while (true) {
++						val line = reader.readLine() ?: break
++						stdout.append(line).append('\n')
++					}
+ 				}
+-				while(
+-					!readerErr.readLine().also {
+-						if(!it.isNullOrBlank()) {
+-							log.append("$STR_ERR $it\n")
+-						}
+-					}.isNullOrBlank()
+-				) {
+-					// nothing
++				BufferedReader(InputStreamReader(process!!.errorStream)).use { reader ->
++					while (true) {
++						val line = reader.readLine() ?: break
++						stderr.append(line).append('\n')
++					}
+ 				}
+ 			} finally {
+ 				process?.destroy()
+-				log.append(STR_END)
+-
+-				if(log.slice(STR_END.indices) == STR_END) {
+-					// the string are only `END`
+-					trySend(
+-						createResultUnknownFailure(isEnded)
+-					)
+-				} else if(log.slice(STR_ERR.indices) == STR_ERR) {
+-					// the string started with `ERR` (Error Stream)
+-					trySend(
+-						createResultFromErrorLine(
+-							log.toString(),
+-							isEnded,
+-						)
+-					)
++				val parsed = if (stdout.isNotEmpty()) {
++					createResultFromLine(stdout.toString(), isEnded)
++				} else if (stderr.isNotEmpty()) {
++					createResultFromErrorLine(stderr.toString(), isEnded)
+ 				} else {
+-					trySend(
+-						createResultFromLine(
+-							log.toString(),
+-							isEnded,
+-						)
+-					)
++					createResultUnknownFailure(isEnded)
+ 				}
++				val result = Arguments.createMap()
++				result.merge(parsed)
++				result.putString("rawStdout", stdout.toString())
++				result.putString("rawStderr", stderr.toString())
++				trySend(result)
+ 			}
+ 
+ 			awaitClose {
+diff --git a/node_modules/ping-react-native/lib/commonjs/ICMP/ICMP.js b/node_modules/ping-react-native/lib/commonjs/ICMP/ICMP.js
+--- a/node_modules/ping-react-native/lib/commonjs/ICMP/ICMP.js
++++ b/node_modules/ping-react-native/lib/commonjs/ICMP/ICMP.js
+@@ -41,7 +41,9 @@
+             rtt: result.rtt,
+             status: result.status,
+             ttl: result.ttl,
+-            isEnded: result.isEnded
++            isEnded: result.isEnded,
++            rawStdout: result.rawStdout,
++            rawStderr: result.rawStderr
+           });
+           if (result.isEnded) {
+             this.stop();
+@@ -53,7 +55,9 @@
+             rtt: result.rtt,
+             status: result.status,
+             ttl: result.ttl,
+-            isEnded: result.isEnded
++            isEnded: result.isEnded,
++            rawStdout: result.rawStdout,
++            rawStderr: result.rawStderr
+           });
+           if (result.isEnded) {
+             this.stop();
+diff --git a/node_modules/ping-react-native/lib/module/ICMP/ICMP.js b/node_modules/ping-react-native/lib/module/ICMP/ICMP.js
+--- a/node_modules/ping-react-native/lib/module/ICMP/ICMP.js
++++ b/node_modules/ping-react-native/lib/module/ICMP/ICMP.js
+@@ -37,7 +37,9 @@
+             rtt: result.rtt,
+             status: result.status,
+             ttl: result.ttl,
+-            isEnded: result.isEnded
++            isEnded: result.isEnded,
++            rawStdout: result.rawStdout,
++            rawStderr: result.rawStderr
+           });
+           if (result.isEnded) {
+             this.stop();
+@@ -49,7 +51,9 @@
+             rtt: result.rtt,
+             status: result.status,
+             ttl: result.ttl,
+-            isEnded: result.isEnded
++            isEnded: result.isEnded,
++            rawStdout: result.rawStdout,
++            rawStderr: result.rawStderr
+           });
+           if (result.isEnded) {
+             this.stop();
+diff --git a/node_modules/ping-react-native/lib/typescript/commonjs/ICMP/ICMPResult.d.ts b/node_modules/ping-react-native/lib/typescript/commonjs/ICMP/ICMPResult.d.ts
+--- a/node_modules/ping-react-native/lib/typescript/commonjs/ICMP/ICMPResult.d.ts
++++ b/node_modules/ping-react-native/lib/typescript/commonjs/ICMP/ICMPResult.d.ts
+@@ -6,5 +6,7 @@
+     ttl: number;
+     status: ICMPStatus | PingStatus;
+     isEnded: boolean;
++    rawStdout?: string;
++    rawStderr?: string;
+ }
+ //# sourceMappingURL=ICMPResult.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/ping-react-native/lib/typescript/module/ICMP/ICMPResult.d.ts b/node_modules/ping-react-native/lib/typescript/module/ICMP/ICMPResult.d.ts
+--- a/node_modules/ping-react-native/lib/typescript/module/ICMP/ICMPResult.d.ts
++++ b/node_modules/ping-react-native/lib/typescript/module/ICMP/ICMPResult.d.ts
+@@ -6,5 +6,7 @@
+     ttl: number;
+     status: ICMPStatus | PingStatus;
+     isEnded: boolean;
++    rawStdout?: string;
++    rawStderr?: string;
+ }
+ //# sourceMappingURL=ICMPResult.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/ping-react-native/src/ICMP/ICMP.ts b/node_modules/ping-react-native/src/ICMP/ICMP.ts
+--- a/node_modules/ping-react-native/src/ICMP/ICMP.ts
++++ b/node_modules/ping-react-native/src/ICMP/ICMP.ts
+@@ -82,6 +82,8 @@
+ 						status: result.status,
+ 						ttl: result.ttl,
+ 						isEnded: result.isEnded,
++						rawStdout: result.rawStdout,
++						rawStderr: result.rawStderr,
+ 					})
+ 					if(result.isEnded) {
+ 						this.stop()
+@@ -94,6 +96,8 @@
+ 						status: result.status,
+ 						ttl: result.ttl,
+ 						isEnded: result.isEnded,
++						rawStdout: result.rawStdout,
++						rawStderr: result.rawStderr,
+ 					})
+ 					if(result.isEnded) {
+ 						this.stop()
+diff --git a/node_modules/ping-react-native/src/ICMP/ICMPResult.ts b/node_modules/ping-react-native/src/ICMP/ICMPResult.ts
+--- a/node_modules/ping-react-native/src/ICMP/ICMPResult.ts
++++ b/node_modules/ping-react-native/src/ICMP/ICMPResult.ts
+@@ -16,4 +16,6 @@
+ 	ttl: number,
+ 	status: ICMPStatus | PingStatus,
+ 	isEnded: boolean,
++	rawStdout?: string,
++	rawStderr?: string,
+ }

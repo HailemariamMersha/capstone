@@ -1,5 +1,5 @@
 import { ICMP, ICMPStatus } from 'ping-react-native';
-import type { Measurement } from './types';
+import type { Measurement, RawProbeOutput } from './types';
 
 /** A single native ICMP sample; duration includes adapter work, value is native RTT. */
 export async function runIcmp(
@@ -9,6 +9,20 @@ export async function runIcmp(
   signal: AbortSignal,
 ): Promise<Measurement> {
   const started = performance.now();
+  const raw: RawProbeOutput = {
+    library: 'ping-react-native',
+    version: '2.1.1',
+    source: 'library_callback_with_optional_android_ping_text',
+    request: {
+      host,
+      count: 1,
+      packetSize: 64,
+      ttl: 54,
+      timeoutMs: Math.min(timeoutMs, 10000),
+    },
+    callbacks: [],
+    unavailable: ['packetCapture', 'icmpHeader', 'kernelSendReceiveTimestamps'],
+  };
   const ping = new ICMP({
     host,
     count: 1,
@@ -34,6 +48,7 @@ export async function runIcmp(
         method: 'icmp_echo',
         targetHost: host,
         ttl: null,
+        raw,
         ...patch,
         durationMs: performance.now() - started,
       });
@@ -56,6 +71,14 @@ export async function runIcmp(
     }
     try {
       ping.ping(result => {
+        if (finished) {
+          return;
+        }
+        raw.callbacks.push({
+          observedAt: new Date().toISOString(),
+          elapsedMs: performance.now() - started,
+          value: { ...result },
+        });
         if (
           result.status === ICMPStatus.ECHO &&
           Number.isFinite(result.rtt) &&
