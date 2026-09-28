@@ -13,7 +13,7 @@ React Native CLI + TypeScript (no Expo)
   UI / shared session controller / scheduled HTTP probe engine
     → react-native-background-actions (platform background execution)
     → OP-SQLite in WAL mode (local source of truth)
-    → deferred synchronization (planned)
+    → deferred synchronization (closed sessions; visible app)
     → FastAPI → PostgreSQL + TimescaleDB → Python/pandas analysis
 ```
 
@@ -43,7 +43,9 @@ Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. 
 
 Remote sync requires HTTPS and a server token. The local server defaults to `backend/data/ingestion.sqlite`, which is gitignored. This is the local ingestion prototype; PostgreSQL/TimescaleDB, cloud deployment and closed-app background sync remain future work. Export and measurement collection do not require sync.
 
-Traceroute and the commercial SpeedChecker SDK remain unintegrated after source review; this does not establish that all possible integrations fail. NDT7 remains a candidate for a separate optional reference test, as described in [diagnostic experiment status](docs/diagnostics.md#dependency-and-experiment-status). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
+**Optional M-Lab NDT7 reference tests** now use the pinned official browser client inside React Native WebView. They require explicit consent, run separately from scheduled collection/sync, cancel when the app leaves the foreground, and save download/upload results through the existing history/export/sync pipeline. A reported 50 MiB per direction triggers a best-effort stop; buffered traffic can exceed it. See [reference-test methods and validation](docs/reference-tests.md). Public-service physical-phone validation remains pending.
+
+Traceroute and SpeedChecker remain unintegrated; their remaining native-bridge and vendor configuration constraints are documented in the reference-test guide. See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
 
 ## Code organization
 
@@ -86,7 +88,7 @@ M3 is an experimental gate: an active notification alone does not prove that Typ
 
 Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 seconds, download/upload every five minutes, metadata on change plus periodic snapshots, public IP/ASN at session start and network changes, optional low-frequency location, and sync independently when connectivity is suitable.
 
-SQLite now persists measurements before any future upload attempt; backend ingestion remains planned. Backend: FastAPI in Docker, PostgreSQL + TimescaleDB, initially one Fly.io region. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
+SQLite persists measurements before upload attempts; the local backend acknowledges ingestion batches. Backend: FastAPI in Docker, PostgreSQL + TimescaleDB, initially one Fly.io region. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
 
 Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, traceroute, advanced provider classification, dashboard and public dataset interface are later work. No third-party speed-test SDK or complex login is required for the MVP.
 
@@ -174,7 +176,7 @@ Inspect Android service state with `adb shell dumpsys activity services com.labp
 - Force-stop/relaunch retained results, marked the old session interrupted and left runtime status stopped. Resume created a new durable ID linked to the old session and reused its configuration.
 - With a deliberately delayed RTT endpoint, force-stop during the request recovered one explicit `interrupted` result with unconfirmed bytes, retaining earlier successes and pending queue entries.
 - Normal Stop during a delayed request persisted a `cancelled` result, completed the session and removed the foreground service (`dumpsys` showed none).
-- These bounded emulator checks support the implementation; the physical-device endurance checklist above is still open. Backend synchronization is not implemented.
+- These bounded emulator checks support the implementation; the physical-device endurance checklist above is still open. Backend synchronization was added in the later increment below.
 
 
 ### Testing the new features

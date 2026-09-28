@@ -30,6 +30,10 @@ The sync server in this increment uses durable SQLite for local end-to-end valid
 
 ## Follow-up: focused diagnostic libraries
 
-`react-native-tcp-socket` 6.4.3 and `react-native-udp` 4.1.7 are integrated with reproducible Android namespace patches. Release builds and an API 36.1 emulator session passed. The session captured ten ICMP loopback replies, a TCP connection to the local server, twenty matching UDP echoes, and one fully overlapping HTTP latency reply in each load direction. All eight measurements and their raw diagnostic details were saved and synced, with sixteen total records acknowledged. These local values establish integration only. Physical Android and iOS remain untested for these additions.
+`react-native-tcp-socket` 6.4.3 and `react-native-udp` 4.1.7 are integrated with reproducible Android namespace patches. Release builds and an API 36.1 emulator session passed. The session captured ten ICMP loopback replies, a TCP connection to the local server, twenty matching UDP echoes, and one fully overlapping HTTP latency reply in each load direction. All eight measurements and their raw diagnostic details were saved and synced, with sixteen total records acknowledged. These local values establish integration only. Physical Android subsequently passed HTTP/TCP/loaded-latency integration checks; ICMP/UDP to the Mac received no replies and still need a reachable peer network. See the dated physical follow-up in the diagnostic guide. iOS remains untested.
 
 [Diagnostic methodology, remaining traceroute/NDT7 constraints, and phone-testing commands](diagnostics.md) supersede the earlier shortlist for these capabilities. No custom Kotlin/Java measurement implementation was added.
+
+## Follow-up: NDT7 reference tests — 2026-09-28
+
+`@m-lab/ndt7` 0.1.5 and `react-native-webview` 14.0.1 are integrated for separate, foreground-only reference runs. The official client and workers are bundled locally. Consent, cancellation, timeout/close validation, approximate byte thresholds, saved results, exports and sync are implemented. Physical public-service and iOS validation remain pending. [Reference-test guide](reference-tests.md) documents methodology and the remaining traceroute/SpeedChecker constraints.
