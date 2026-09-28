@@ -25,7 +25,7 @@ Android uses a declared `specialUse` foreground service for user-started researc
 
 ## Current implementation: controlled measurements, context, export and sync
 
-The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Payloads remain 1 MiB download and 256 KiB upload; settings also offer 5/10 MiB download and 1 MiB upload. Scheduled tests run serially; only optional loaded-latency tests intentionally overlap a transfer with latency probes. Missed intervals are logged and skipped instead of replayed in a burst.
+The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Defaults remain 1 MiB download and 256 KiB upload. Enter any download/upload size in MiB before starting a session; decimals are rounded to whole bytes and the exact byte count is shown. Each direction supports 1 byte through 100 MiB, subject to the session payload budget. Stop an active session before changing its sizes. These settings also apply to loaded-latency transfers; public reference SDKs manage their own transfer sizes. Scheduled tests run serially; only optional loaded-latency tests intentionally overlap a transfer with latency probes. Missed intervals are logged and skipped instead of replayed in a burst.
 
 Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. It runs at the RTT interval and stores native RTT/TTL separately from total probe duration. ICMP does not use USB forwarding: `127.0.0.1` pings the phone itself. Compare with HTTP against the same remote host; a missing ICMP reply does not establish an internet outage.
 
@@ -46,6 +46,8 @@ Remote sync requires HTTPS and a server token. The local server defaults to `bac
 **Optional M-Lab NDT7 reference tests** now use the pinned official browser client inside React Native WebView. They require explicit consent, run separately from scheduled collection/sync, cancel when the app leaves the foreground, and save download/upload results through the existing history/export/sync pipeline. A reported 50 MiB per direction triggers a best-effort stop; buffered traffic can exceed it. See [reference-test methods and validation](docs/reference-tests.md). Public-service physical-phone validation remains pending.
 
 **Traceroute** now uses `icmpenguin` through an Android adapter, with partial hop results preserved. **SpeedChecker** SDK 4.2.299 is available in an opt-in Android build with consent before initialization, foreground cancellation and separate saved reference results. See [setup, methods and remaining physical tests](docs/native-adapters.md). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
+
+The [custom-payload phone experiment](docs/experiments/2026-09-28-custom-payloads.md) verified three 5 MiB downloads and three 2 MiB uploads, exact saved byte counts, automatic session completion and successful sync.
 
 ## Code organization
 

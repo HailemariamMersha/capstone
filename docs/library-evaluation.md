@@ -18,7 +18,7 @@ Primary sources: [ICMP](https://github.com/RakaDoank/ping-react-native), [NetInf
 - ICMP and HTTP should target the same remote host for a meaningful comparison. HTTP may resolve to a different address behind DNS load balancing; the current records do not establish identical routes or isolate TLS/server overhead by subtraction.
 - ICMP does not pass through `adb reverse`. A target of `127.0.0.1` tests the phone itself. An emulator loopback check validates the adapter only.
 - ICMP failure can mean filtering or rate limiting. It is not proof of total internet failure, and a small sample is not a packet-loss estimate.
-- Throughput stays single-request HTTP with explicit payload size; 1/5/10 MiB download and 256 KiB/1 MiB upload are selectable. Existing defaults are preserved so prior runs remain comparable. Payload units are binary MiB, not decimal MB.
+- Throughput stays single-request HTTP with explicit payload size; both download and upload now accept user-entered MiB values, rounded to whole bytes, from 1 byte through 100 MiB. Existing defaults are preserved so prior runs remain comparable. Payload units are binary MiB, not decimal MB.
 - Context calls occur outside the timed probe, before measurement, and can warm the HTTP connection. Context lookups have a three-second deadline; unavailable IP/ASN data does not stop collection.
 - A commercial reference test must be separately labeled and run outside collection, with SDK/server/version/units and byte usage recorded. Enabling it requires resolving the concrete build and initialization blockers above. No experimental SDK results have been fabricated or merged into HTTP results.
 
