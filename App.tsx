@@ -20,6 +20,7 @@ import {
 } from './src/services/measurement';
 import SessionSettings from './src/components/SessionSettings';
 import SyncPanel from './src/components/SyncPanel';
+import ReferencePanel from './src/components/ReferencePanel';
 import SessionHistory from './src/components/SessionHistory';
 import type { MeasurementConfig } from './src/sessions/types';
 import type { ServiceStatus } from './src/services/measurement';
@@ -30,6 +31,7 @@ const message = (error: unknown) =>
 export default function App() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [referenceBusy, setReferenceBusy] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +43,10 @@ export default function App() {
   const syncActivity = useCallback((active: boolean) => {
     operation.current = active;
     setSyncBusy(active);
+  }, []);
+  const referenceActivity = useCallback((active: boolean) => {
+    operation.current = active;
+    setReferenceBusy(active);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -213,18 +219,31 @@ export default function App() {
           </Text>
           <SessionSettings
             disabled={Boolean(
-              disabled || syncBusy || status?.state !== 'stopped',
+              disabled ||
+                syncBusy ||
+                referenceBusy ||
+                status?.state !== 'stopped',
             )}
             onStart={config => control(true, config)}
           />
+          <ReferencePanel
+            idle={!disabled && !syncBusy && status?.state === 'stopped'}
+            onBusyChange={referenceActivity}
+            onSaved={refresh}
+          />
           <SyncPanel
-            idle={!disabled && status?.state === 'stopped'}
+            idle={!disabled && !referenceBusy && status?.state === 'stopped'}
             onSynced={refresh}
             onBusyChange={syncActivity}
           />
           <SessionHistory
             revision={historyRevision}
-            canResume={!disabled && !syncBusy && status?.state === 'stopped'}
+            canResume={
+              !disabled &&
+              !syncBusy &&
+              !referenceBusy &&
+              status?.state === 'stopped'
+            }
             onResume={session => control(true, session.config, session.id)}
           />
         </ScrollView>

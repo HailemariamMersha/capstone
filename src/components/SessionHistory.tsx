@@ -79,6 +79,9 @@ export default function SessionHistory({
       {sessions.map(session => (
         <View key={session.id} style={styles.record}>
           <Text selectable>{session.id}</Text>
+          {session.config.mode === 'ndt7_reference' && (
+            <Text>M-Lab NDT7 reference test</Text>
+          )}
           <Text>
             {session.state} · {session.measurementCount} results ·{' '}
             {new Date(session.startedAt).toLocaleString()}
@@ -103,13 +106,14 @@ export default function SessionHistory({
             disabled={exporting}
             onPress={() => exportData(session.id, 'json')}
           />
-          {session.state !== 'active' && (
-            <Button
-              title={`Resume ${session.id.slice(0, 8)}`}
-              disabled={!canResume}
-              onPress={() => onResume(session)}
-            />
-          )}
+          {session.state !== 'active' &&
+            session.config.mode !== 'ndt7_reference' && (
+              <Button
+                title={`Resume ${session.id.slice(0, 8)}`}
+                disabled={!canResume}
+                onPress={() => onResume(session)}
+              />
+            )}
         </View>
       ))}
       {sessions.length === limit && (
@@ -184,6 +188,16 @@ export default function SessionHistory({
                     </Text>
                   )}
                 </View>
+              )}
+              {m.reference && (
+                <Text>
+                  NDT7 {m.reference.version} ·{' '}
+                  {m.reference.source ?? 'no sample'} speed source ·{' '}
+                  {m.reference.stopReason}. Reported client bytes:{' '}
+                  {m.reference.clientBytes ?? 'unknown'}; server bytes:{' '}
+                  {m.reference.serverBytes ?? 'unknown'}. Byte counts are last
+                  reported samples, not total carrier usage.
+                </Text>
               )}
               {m.networkSnapshot && (
                 <Text>

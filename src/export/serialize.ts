@@ -35,6 +35,7 @@ export function measurementCsv(records: Record<string, unknown>[]): string {
     'ttl',
     'networkSnapshot',
     'details',
+    'reference',
   ];
   return (
     [

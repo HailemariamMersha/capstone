@@ -16,6 +16,11 @@ export const DEFAULT_SESSION_CONFIG: MeasurementConfig = {
 export function validateSessionConfig(
   config: MeasurementConfig,
 ): MeasurementConfig {
+  if (config.mode === 'ndt7_reference') {
+    throw new Error(
+      'Reference tests must be started from the reference test panel.',
+    );
+  }
   const probes = validateProbeConfig(config);
   for (const [name, interval] of Object.entries({
     RTT: config.rttIntervalMs,

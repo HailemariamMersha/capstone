@@ -401,7 +401,10 @@ export function createRepository(
           type,
           durationMs: 0,
           value: null,
-          unit: type === 'download' || type === 'upload' ? 'Mbps' : 'ms',
+          unit:
+            type === 'download' || type === 'upload' || type.startsWith('ndt7_')
+              ? 'Mbps'
+              : 'ms',
           success: false,
           errorType: 'interrupted',
           errorMessage:

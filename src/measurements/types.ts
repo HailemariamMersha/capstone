@@ -7,7 +7,12 @@ export type DiagnosticType =
   | 'udp_echo'
   | 'loaded_download'
   | 'loaded_upload';
-export type ProbeType = HttpProbeType | 'icmp_rtt' | DiagnosticType;
+export type ProbeType =
+  | HttpProbeType
+  | 'icmp_rtt'
+  | DiagnosticType
+  | 'ndt7_download'
+  | 'ndt7_upload';
 export type ProbeErrorType =
   | 'timeout'
   | 'cancelled'
@@ -43,6 +48,17 @@ export interface Measurement {
   ttl?: number | null;
   method?: string;
   details?: DiagnosticDetails;
+  reference?: {
+    library: '@m-lab/ndt7';
+    version: string;
+    source: 'client' | 'server' | null;
+    stopReason: string;
+    byteThreshold: number;
+    clientBytes: number | null;
+    serverBytes: number | null;
+    elapsedSeconds: number | null;
+    accounting: 'last_client_sample';
+  };
 }
 
 export interface ProbeSample {

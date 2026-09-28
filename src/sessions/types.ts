@@ -1,6 +1,8 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  mode?: 'ndt7_reference';
+  referenceByteThreshold?: number;
   maxDurationMs?: number;
   maxPayloadBytes?: number;
   minimumBatteryPercent?: number;

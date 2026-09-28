@@ -235,3 +235,47 @@ test('version-one migration preserves existing records and recovers an open sess
     (await store.getSyncBatch()).records.some(r => r.id === attempt.id),
   ).toBe(true);
 });
+
+test('NDT7 reference results survive export, sync, and interrupted attempt recovery', async () => {
+  const { createReferenceSession } = require('../src/reference/session');
+  const run = await createReferenceSession(store, true);
+  const completed = direction => ({
+    direction,
+    host: 'ndt-test.measurement-lab.org',
+    reason: 'complete',
+    opened: true,
+    cleanClose: true,
+    clientBytes: 1000,
+    serverBytes: 900,
+    clientSeconds: 1,
+    serverSeconds: 1,
+  });
+  await run.finish([completed('download'), completed('upload')], 'complete');
+  const exported = await store.exportSession(run.id);
+  expect(exported.session.config.mode).toBe('ndt7_reference');
+  expect(exported.measurements.map(m => m.unit)).toEqual(['Mbps', 'Mbps']);
+  const batch = await store.getSyncBatch();
+  expect(
+    batch.records
+      .filter(r => r.type === 'measurement')
+      .map(r => r.payload.reference.source),
+  ).toEqual(['client', 'server']);
+  await store.acknowledgeSync(batch.records);
+  expect(await store.pendingCount()).toBe(0);
+  const interruptedId = await store.createSession(exported.session.config);
+  await store.beginAttempt(
+    interruptedId,
+    'ndt7_download',
+    new Date().toISOString(),
+  );
+  db.close();
+  open();
+  await store.initialize();
+  const recovered = await store.listMeasurements(interruptedId);
+  expect(recovered[0].measurement).toMatchObject({
+    type: 'ndt7_download',
+    unit: 'Mbps',
+    success: false,
+    errorType: 'interrupted',
+  });
+});

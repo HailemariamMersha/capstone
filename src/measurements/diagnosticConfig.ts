@@ -14,6 +14,9 @@ export function requestedPayload(
   config: MeasurementConfig,
 ): number {
   switch (type) {
+    case 'ndt7_download':
+    case 'ndt7_upload':
+      return config.referenceByteThreshold ?? 0;
     case 'http_rtt':
       return 4;
     case 'icmp_rtt':
