@@ -1,6 +1,6 @@
 # Optional M-Lab NDT7 reference test
 
-The app integrates `@m-lab/ndt7` **0.1.5** through `react-native-webview` **14.0.1**. The official browser client performs discovery and its unmodified download/upload workers generate traffic. A small browser coordinator handles cancellation, timeouts, result validation and communication with shared TypeScript code. No custom Kotlin/Java measurement logic was added.
+The app integrates `@m-lab/ndt7` **0.1.5** through `react-native-webview` **14.0.1**. The official browser client performs discovery and its unmodified download/upload workers generate traffic. A small browser coordinator handles cancellation, timeouts, result validation and communication with shared TypeScript code. NDT7 itself requires no custom Kotlin/Java measurement logic.
 
 ## Running a reference test
 
@@ -50,8 +50,8 @@ Unit/integration checks cover consent before discovery, foreground cancellation 
 
 ## Other candidates
 
-- **Traceroute:** remains unintegrated. `react-native-mtr`'s inspected release lacks the native `tracepath` bundle it tries to load and uses an obsolete Android build configuration. The alternative Android `icmpenguin` library needs a new React Native bridge and is marked unmaintained. Implementing that alternative changes the current no-custom-native-measurement-code scope. A server-side traceroute would measure a different direction/path and is not a substitute for phone-originated hops.
-- **SpeedChecker:** remains unintegrated. The [vendor's free mode](https://github.com/speedchecker/react_plugin) requires location permission and sharing data with SpeedChecker and its clients; paid configuration changes those requirements. The published 1.0.4 Android wrapper also initializes the SDK in its native module `initialize()` method, before `startTest()`. Its JavaScript license setter only assigns a field after initialization; it does not reinitialize the SDK. A JavaScript-only consent checkbox therefore does not establish consent-gated SDK initialization. Runtime adapter changes, Android build compatibility work and a selected vendor/license/privacy configuration are still needed. Adding NDT7 does not initialize SpeedChecker or request its permissions.
+- **Traceroute:** now integrated through an Android `icmpenguin` adapter as an optional scheduled diagnostic. It preserves hop errors and partial routes.
+- **SpeedChecker:** SDK 4.2.299 now has an optional direct Android bridge, with consent and permission checks before initialization, separate reference sessions and foreground cancellation. The old npm wrapper remains excluded. See [native-adapter setup, methods and validation limits](native-adapters.md).
 - **Cloudflare:** its loaded-latency methodology is already represented by our controlled HTTP tests. The browser engine is not installed. Integrating a second public speed-test engine is a separate reference-provider decision, not necessary to enable the measurements already implemented.
 
 Primary references: [official NDT7 client](https://github.com/m-lab/ndt7-js), [protocol specification](https://github.com/m-lab/ndt-server/blob/main/spec/ndt7-protocol.md), [React Native WebView](https://github.com/react-native-webview/react-native-webview).

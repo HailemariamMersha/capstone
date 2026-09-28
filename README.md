@@ -17,7 +17,7 @@ React Native CLI + TypeScript (no Expo)
     → FastAPI → PostgreSQL + TimescaleDB → Python/pandas analysis
 ```
 
-Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service or bridge. `MainActivity.kt` and `MainApplication.kt` are the standard React Native Android bootstrap files, not measurement logic. Dependencies can still contain native implementations.
+Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service. Two small Android adapters now bridge traceroute and SpeedChecker libraries, as explicitly requested; their scheduling, result interpretation, storage and UI stay in TypeScript. See [native adapters and build setup](docs/native-adapters.md).
 
 Keep probe definitions, HTTP RTT/download/upload logic, configuration, data models, database schema, API client and sync orchestration shared. Platform permissions and background execution remain isolated. iOS will reuse this application code, but its background execution and release configuration must be validated separately; continuous locked-phone measurement is not established on iOS. The library documents the distinction in its [background execution guidance](https://github.com/Rapsssito/react-native-background-actions#readme).
 
@@ -29,11 +29,11 @@ The app runs scheduled HTTP RTT, download and upload probes through `react-nativ
 
 Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. It runs at the RTT interval and stores native RTT/TTL separately from total probe duration. ICMP does not use USB forwarding: `127.0.0.1` pings the phone itself. Compare with HTTP against the same remote host; a missing ICMP reply does not establish an internet outage.
 
-**Optional diagnostics** add ten-sample ICMP bursts, TCP connection timing, controlled UDP round-trip loss/latency, and HTTP latency during a bounded download/upload. They are off by default and preserve the original HTTP result types. Raw samples and summaries are saved, exported, and synced. TCP/UDP use pinned React Native libraries with reproducible Android namespace patches. See [diagnostic methods and phone-testing commands](docs/diagnostics.md), including the separate UDP server and short-transfer limitations.
+**Optional diagnostics** add ten-sample ICMP bursts, TCP connection timing, controlled UDP round-trip loss/latency, optional UDP traceroute, and HTTP latency during a bounded download/upload. They are off by default and preserve the original HTTP result types. Raw samples and summaries are saved, exported, and synced. TCP/UDP use pinned React Native libraries with reproducible Android namespace patches. See [diagnostic methods and phone-testing commands](docs/diagnostics.md), including the separate UDP server and short-transfer limitations.
 
 **Session safeguards** default to two hours, a 100 MiB planned-payload allowance, and stopping at or below 15% battery when unplugged. Attempts reserve their full payload allowance, including failures and cancellations. This is not a carrier-data counter: headers, retransmissions and context/sync traffic are outside the allowance. The first exhausted limit ends the session and records its reason. Existing session configurations are normalized when resumed.
 
-**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. No GPS coordinates are collected. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Context requests can warm the probe connection and are outside its timed interval.
+**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. The controlled context pipeline does not collect GPS coordinates. The separately consented SpeedChecker free SDK requires location and shares data with its vendor. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Context requests can warm the probe connection and are outside its timed interval.
 
 **OP-SQLite** remains the local source of truth. Schema version 2 migrates version 1 without deleting records, enables WAL/foreign keys, and serializes transactions. An attempt is committed before its network request. Results and sync queue entries are committed together. On a new JS process, old active sessions and unfinished attempts become interrupted; recovery never restarts collection automatically. Resume creates a new linked session.
 
@@ -45,7 +45,7 @@ Remote sync requires HTTPS and a server token. The local server defaults to `bac
 
 **Optional M-Lab NDT7 reference tests** now use the pinned official browser client inside React Native WebView. They require explicit consent, run separately from scheduled collection/sync, cancel when the app leaves the foreground, and save download/upload results through the existing history/export/sync pipeline. A reported 50 MiB per direction triggers a best-effort stop; buffered traffic can exceed it. See [reference-test methods and validation](docs/reference-tests.md). Public-service physical-phone validation remains pending.
 
-Traceroute and SpeedChecker remain unintegrated; their remaining native-bridge and vendor configuration constraints are documented in the reference-test guide. See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
+**Traceroute** now uses `icmpenguin` through an Android adapter, with partial hop results preserved. **SpeedChecker** SDK 4.2.299 is available in an opt-in Android build with consent before initialization, foreground cancellation and separate saved reference results. See [setup, methods and remaining physical tests](docs/native-adapters.md). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
 
 ## Code organization
 
@@ -56,6 +56,9 @@ Traceroute and SpeedChecker remain unintegrated; their remaining native-bridge a
 - `src/components/SessionSettings.tsx`, `SessionHistory.tsx`: configuration and saved history.
 - `src/services/measurement.ts`, `App.tsx`: composition, permissions and controls.
 - `src/network/`: NetInfo and battery context collection.
+- `src/reference/`: separate NDT7 and SpeedChecker reference-test flows.
+- `android/app/src/main/java/com/labpracticeapp/diagnostics/`: Android traceroute adapter.
+- `android/app/src/speedchecker/`: opt-in vendor SDK adapter and manifest overlay.
 - `src/export/`, `src/sync/`: CSV/JSON sharing and acknowledged batch synchronization.
 - `src/api/`, `backend/`: shared protocol and local FastAPI probe server.
 
@@ -90,7 +93,7 @@ Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 secon
 
 SQLite persists measurements before upload attempts; the local backend acknowledges ingestion batches. Backend: FastAPI in Docker, PostgreSQL + TimescaleDB, initially one Fly.io region. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
 
-Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, traceroute, advanced provider classification, dashboard and public dataset interface are later work. No third-party speed-test SDK or complex login is required for the MVP.
+Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, advanced provider classification, dashboard and public dataset interface are later work. Optional Android traceroute and reference-test adapters are now implemented; field validation remains open. No third-party speed-test SDK or complex login is required for the MVP.
 
 ## Development
 

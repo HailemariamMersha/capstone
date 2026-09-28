@@ -23,6 +23,8 @@ The first implementation will target Android, while the application architecture
 
 The application will be built primarily using **React Native and TypeScript**.
 
+**Architecture clarification — 28 September 2026:** The requested traceroute and SpeedChecker implementation permits two isolated Android adapters around existing libraries. Scheduling, interpretation, storage, sync and UI remain shared TypeScript. This is a limited exception to the original library-only integration rule, not a return to a custom native measurement service. Equivalent iOS adapters remain future work. See [implementation and validation limits](native-adapters.md).
+
 ```text
 React Native / TypeScript
 │

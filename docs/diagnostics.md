@@ -50,7 +50,7 @@ For the emulator, local servers can bind `127.0.0.1`; use `10.0.2.2` as the app'
 ## Dependency and experiment status
 
 - `react-native-tcp-socket` 6.4.3 and `react-native-udp` 4.1.7 use pinned `patch-package` patches moving the Android namespace from the manifest to Gradle. `npm ci` applies them via `postinstall`. No custom Kotlin/Java measurement logic was added. [TCP source](https://github.com/Rapsssito/react-native-tcp-socket), [UDP source](https://github.com/tradle/react-native-udp).
-- Traceroute remains outside this release. The installed ping parser does not expose intermediate-hop errors; UDP's `setTTL()` is unimplemented. [icmpenguin](https://github.com/impalex/icmpenguin) exposes Android hop results but is marked unmaintained and needs a new RN wrapper. That path requires native-adapter work and physical-device validation; no runtime-impossibility claim is made.
+- Traceroute now uses `icmpenguin` 1.0.0-rc.3 through an isolated Android adapter. Enter a target to enable a UDP trace initially and every 15 minutes; partial hops are retained. The generic ICMP-error variant has no RTT. See [adapter methods, build setup and pending physical tests](native-adapters.md).
 - [M-Lab NDT7](https://github.com/m-lab/ndt7-js) is now integrated as a separate, explicitly consented WebView reference test. Public M-Lab testing publishes measurement data and collects the public IP. It is never part of scheduled diagnostics. See [reference-test methods, byte accounting and validation limits](reference-tests.md).
 - [Cloudflare's engine](https://github.com/cloudflare/speedtest) informed the loaded-latency design. We did not install its browser engine or use its public measurement service.
 
