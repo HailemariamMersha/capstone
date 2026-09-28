@@ -41,3 +41,7 @@ The sync server in this increment uses durable SQLite for local end-to-end valid
 ## Follow-up: Android adapters — 2026-09-28
 
 The requested adapter exception now integrates `icmpenguin` 1.0.0-rc.3 for scheduled UDP traceroute and optionally `com.speedchecker:android-sdk:4.2.299` for consented reference tests. The rejected `react-native-mtr` and deferred SpeedChecker npm wrapper remain uninstalled. Kotlin 2.3.0 supports the traceroute dependency while retaining Android API 36. SDK initialization is behind native consent, permission and foreground checks; passive manifest entrypoints are removed. [Native-adapter guide](native-adapters.md) describes build credentials, methods, tests and remaining public-service/physical-phone acceptance.
+
+## Follow-up: packet observations and exports — 2026-09-29
+
+[The packet-measurement review](research/packet-measurement-review.md) documents Linux mechanisms, current Android visibility, dependency justification and related research repositories. The ping wrapper now has a reproducible patch exposing Android command stdout/stderr; the traceroute bridge retains all public fields of each pinned native result variant. Expanded [CSV/JSON exports](packet-exports.md) preserve individual samples and failures. Upstream icmpenguin now declares itself unmaintained; its continued use is experimental and requires a maintenance/replacement decision before release. No missing ICMP header fields are inferred from native error labels.
