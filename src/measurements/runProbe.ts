@@ -3,7 +3,8 @@ import {
   PROBE_PROTOCOL_HEADER,
   PROBE_PROTOCOL_VERSION,
 } from '../api/probeProtocol';
-import { prototypeId, validateProbeConfig } from './config';
+import { MIB, prototypeId, validateProbeConfig } from './config';
+import { runFileDownload } from './fileDownload';
 import type {
   Measurement,
   ProbeConfig,
@@ -93,6 +94,9 @@ export async function runProbe(
       errorType: 'cancelled',
       errorMessage: 'Probe cancelled.',
     };
+  }
+  if (type === 'download' && config.downloadBytes > 8 * MIB) {
+    return runFileDownload(base, config, signal, dependencies);
   }
   const body =
     type === 'upload' ? uploadPayload(config.uploadBytes) : undefined;
