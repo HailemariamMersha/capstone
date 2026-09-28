@@ -1,8 +1,8 @@
 # One-hour diagnostic experiment — 28 September 2026
 
-**Status at launch: running; not a completed endurance result.**
+**Final status: stopped early after 17 minutes 42 seconds; not a completed one-hour endurance result.**
 
-The hour-long session started on the Samsung Galaxy A34 (SM-A346E, Android 13) at approximately **13:58:44 UTC / 17:58:44 Dubai time**. Its configured duration is 60 minutes, with planned automatic stop around **14:58:44 UTC / 18:58:44 Dubai time**. Completion, full sample counts and final sync still require verification after that time.
+The planned hour-long session started on the Samsung Galaxy A34 (SM-A346E, Android 13) at **13:58:44.824 UTC / 17:58:44 Dubai time**. Its configured duration was 60 minutes, but it ended at **14:16:27.069 UTC / 18:16:27 Dubai time**. The persisted end event says **“Stopped by user.”**, with zero unfinished probes. This identifies the app’s stop path, not who operated the control. The database labels the closed session `completed`; that does not mean the planned duration was reached.
 
 ## Configuration
 
@@ -46,4 +46,26 @@ TypeScript, lint, 139 app tests and the SDK-enabled release build passed after t
 
 Keep the Mac awake and the phone connected for the USB path. The app should stop automatically at the duration limit. Reopen it afterward and synchronize closed-session records until no acknowledgements remain pending. Verify this exact session is completed, inspect requested/confirmed byte counts, failures, missing intervals, context availability and the duration-limit event. Do not infer successful collection from a foreground notification alone.
 
-The hour-long result remains pending until these checks are performed. This document does not claim physical-network capacity or one-hour background endurance has already passed.
+## Verified saved results
+
+After the planned finish time, the stopped session was synchronized to the local backend. All 76 saved measurements are present, along with one session record, 34 events and 14 context snapshots (125 records total).
+
+| Measurement | Saved results | Outcome |
+| --- | --- | --- |
+| HTTP RTT | 18 | All successful |
+| ICMP burst | 18 | All successful; 180/180 replies |
+| TCP connection timing | 18 | All successful |
+| Standalone download | 4 | All successful; exactly 50 MiB each |
+| Standalone upload | 4 | All successful; exactly 50 MiB each |
+| Loaded download | 4 | All successful; embedded transfers exactly 50 MiB each |
+| Loaded upload | 4 | All successful; embedded transfers exactly 50 MiB each |
+| UDP echo | 4 | All timed out |
+| Traceroute | 2 | Both reached the destination at hop 12 |
+
+ICMP sample RTTs had a pooled median of **113 ms**, minimum **105 ms** and maximum **1,035 ms**. Per-burst medians ranged from **110.5 to 123.5 ms**. Every ping received a reply, but occasional latency spikes remain visible in the raw samples.
+
+Traceroutes began at **13:59:19 UTC** and **14:14:59 UTC**, taking **3.80** and **3.74 seconds** respectively. Each retained 36 probe outcomes, including three timeouts. The library labels many intermediate responses `host_unreachable` without exposing the original ICMP type/code; these labels do not establish router failure. Both traces recorded a destination response at hop 12.
+
+The 16 standalone and loaded transfers confirmed **800 MiB** of application payload in total. There were 27 schedule-gap events, with a maximum recorded start delay of **73.28 seconds**, and zero intervals marked skipped. Successful probes therefore do not establish precise schedule timing.
+
+This run verifies the saved measurements above, but **does not establish one-hour endurance**. A new uninterrupted hour-long experiment is still required. No automatic replacement session was started during result inspection.
