@@ -82,6 +82,9 @@ export default function SessionHistory({
           {session.config.mode === 'ndt7_reference' && (
             <Text>M-Lab NDT7 reference test</Text>
           )}
+          {session.config.mode === 'speedchecker_reference' && (
+            <Text>SpeedChecker reference test</Text>
+          )}
           <Text>
             {session.state} · {session.measurementCount} results ·{' '}
             {new Date(session.startedAt).toLocaleString()}
@@ -106,14 +109,13 @@ export default function SessionHistory({
             disabled={exporting}
             onPress={() => exportData(session.id, 'json')}
           />
-          {session.state !== 'active' &&
-            session.config.mode !== 'ndt7_reference' && (
-              <Button
-                title={`Resume ${session.id.slice(0, 8)}`}
-                disabled={!canResume}
-                onPress={() => onResume(session)}
-              />
-            )}
+          {session.state !== 'active' && !session.config.mode && (
+            <Button
+              title={`Resume ${session.id.slice(0, 8)}`}
+              disabled={!canResume}
+              onPress={() => onResume(session)}
+            />
+          )}
         </View>
       ))}
       {sessions.length === limit && (
@@ -197,6 +199,35 @@ export default function SessionHistory({
                   {m.reference.clientBytes ?? 'unknown'}; server bytes:{' '}
                   {m.reference.serverBytes ?? 'unknown'}. Byte counts are last
                   reported samples, not total carrier usage.
+                </Text>
+              )}
+              {m.route && (
+                <View>
+                  <Text>
+                    UDP route:{' '}
+                    {m.route.reached
+                      ? `destination at hop ${m.route.reachedHop}`
+                      : 'destination not confirmed'}{' '}
+                    · {m.route.stopReason}
+                  </Text>
+                  {m.route.samples.map(sample => (
+                    <Text key={`${sample.hop}-${sample.sequence}`}>
+                      Hop {sample.hop}: {sample.address ?? '*'} ·{' '}
+                      {sample.rttMs == null
+                        ? 'RTT unavailable'
+                        : `${sample.rttMs.toFixed(2)} ms`}{' '}
+                      · {sample.kind}
+                    </Text>
+                  ))}
+                </View>
+              )}
+              {m.speedchecker && (
+                <Text>
+                  SpeedChecker {m.speedchecker.sdkVersion} ·{' '}
+                  {m.speedchecker.stopReason}. SDK reported download:{' '}
+                  {m.speedchecker.downloadMb ?? 'unknown'} MB; upload:{' '}
+                  {m.speedchecker.uploadMb ?? 'unknown'} MB. SDK jitter:{' '}
+                  {m.speedchecker.jitterMs ?? 'unavailable'} ms.
                 </Text>
               )}
               {m.networkSnapshot && (

@@ -17,6 +17,7 @@ import {
 
 jest.mock('../src/components/SyncPanel', () => () => null);
 jest.mock('../src/components/ReferencePanel', () => () => null);
+jest.mock('../src/components/SpeedCheckerPanel', () => () => null);
 jest.mock('../src/components/SessionHistory', () => () => null);
 import { DEFAULT_SESSION_CONFIG } from '../src/sessions/config';
 

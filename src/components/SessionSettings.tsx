@@ -38,6 +38,7 @@ export default function SessionSettings({
   const [loadedLatencyEnabled, setLoadedLatencyEnabled] = useState(false);
   const [udpHost, setUdpHost] = useState('');
   const [udpPort, setUdpPort] = useState('9876');
+  const [tracerouteHost, setTracerouteHost] = useState('');
   const [error, setError] = useState<string | null>(null);
   const fields = [
     { label: 'Probe server URL', value: url, change: setUrl },
@@ -76,6 +77,7 @@ export default function SessionSettings({
       ((4 + (icmpHost.trim() ? (icmpBurstEnabled ? 1280 : 64) : 0)) * 3600) /
         Number(rtt) +
       (udpHost.trim() ? 5120 * 12 : 0) +
+      (tracerouteHost.trim() ? 3840 * 4 : 0) +
       (loadedLatencyEnabled ? (downloadBytes + uploadBytes + 184) * 12 : 0)) /
     MIB;
   async function start() {
@@ -90,6 +92,7 @@ export default function SessionSettings({
         ...(tcpEnabled ? { tcpEnabled } : {}),
         ...(loadedLatencyEnabled ? { loadedLatencyEnabled } : {}),
         ...(udpHost.trim() ? { udpHost, udpPort: Number(udpPort) } : {}),
+        ...(tracerouteHost.trim() ? { tracerouteHost } : {}),
         serverUrl: url,
         timeoutMs: Number(timeout) * 1000,
         rttIntervalMs: Number(rtt) * 1000,
@@ -234,6 +237,25 @@ export default function SessionSettings({
         with concurrent HTTP latency checks. These extra transfers count toward
         the payload budget. Fast transfers may be too short for a valid sample.
       </Text>
+      {Platform.OS === 'android' && (
+        <View>
+          <Text>Traceroute target (blank disables)</Text>
+          <TextInput
+            accessibilityLabel="Traceroute target"
+            style={styles.input}
+            value={tracerouteHost}
+            onChangeText={setTracerouteHost}
+            editable={!disabled}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text>
+            UDP trace at session start and every 15 minutes. Up to 20 hops,
+            three probes per hop and a 45-second deadline. Partial routes are
+            saved; routers may hide their replies.
+          </Text>
+        </View>
+      )}
       <Button title="Start session" disabled={disabled} onPress={start} />
       {error && <Text accessibilityRole="alert">{error}</Text>}
     </View>

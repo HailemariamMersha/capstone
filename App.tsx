@@ -21,6 +21,7 @@ import {
 import SessionSettings from './src/components/SessionSettings';
 import SyncPanel from './src/components/SyncPanel';
 import ReferencePanel from './src/components/ReferencePanel';
+import SpeedCheckerPanel from './src/components/SpeedCheckerPanel';
 import SessionHistory from './src/components/SessionHistory';
 import type { MeasurementConfig } from './src/sessions/types';
 import type { ServiceStatus } from './src/services/measurement';
@@ -32,6 +33,7 @@ export default function App() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [referenceBusy, setReferenceBusy] = useState(false);
+  const [speedCheckerBusy, setSpeedCheckerBusy] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,10 @@ export default function App() {
   const referenceActivity = useCallback((active: boolean) => {
     operation.current = active;
     setReferenceBusy(active);
+  }, []);
+  const speedCheckerActivity = useCallback((active: boolean) => {
+    operation.current = active;
+    setSpeedCheckerBusy(active);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -222,17 +228,38 @@ export default function App() {
               disabled ||
                 syncBusy ||
                 referenceBusy ||
+                speedCheckerBusy ||
                 status?.state !== 'stopped',
             )}
             onStart={config => control(true, config)}
           />
           <ReferencePanel
-            idle={!disabled && !syncBusy && status?.state === 'stopped'}
+            idle={
+              !disabled &&
+              !syncBusy &&
+              !speedCheckerBusy &&
+              status?.state === 'stopped'
+            }
             onBusyChange={referenceActivity}
             onSaved={refresh}
           />
+          <SpeedCheckerPanel
+            idle={
+              !disabled &&
+              !syncBusy &&
+              !referenceBusy &&
+              status?.state === 'stopped'
+            }
+            onBusyChange={speedCheckerActivity}
+            onSaved={refresh}
+          />
           <SyncPanel
-            idle={!disabled && !referenceBusy && status?.state === 'stopped'}
+            idle={
+              !disabled &&
+              !referenceBusy &&
+              !speedCheckerBusy &&
+              status?.state === 'stopped'
+            }
             onSynced={refresh}
             onBusyChange={syncActivity}
           />
@@ -242,6 +269,7 @@ export default function App() {
               !disabled &&
               !syncBusy &&
               !referenceBusy &&
+              !speedCheckerBusy &&
               status?.state === 'stopped'
             }
             onResume={session => control(true, session.config, session.id)}
