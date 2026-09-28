@@ -51,4 +51,15 @@ adb install -r app/build/outputs/apk/androidTest/release/app-release-androidTest
 adb shell am instrument -w com.labpracticeapp.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-Physical-phone multi-hop traceroute, a consented public SpeedChecker run, interruption during an actual SDK transfer, data-use observations, and iOS adapters remain acceptance work. Compilation and loopback tests do not establish satellite-path accuracy or public-service success.
+Repeated physical-network traceroutes, a consented public SpeedChecker run, interruption during an actual SDK transfer, data-use observations, and iOS adapters remain acceptance work. Compilation and loopback tests do not establish satellite-path accuracy or public-service success.
+
+
+### Physical Android follow-up — 28 September 2026
+
+The SDK-enabled release was installed on a Samsung Galaxy A34 (SM-A346E, Android 13), preserving saved app data. All three native instrumentation checks passed on the phone: UDP loopback and subsequent-run cleanup, cancellation/invalid limits, and SpeedChecker rejection without consent.
+
+A one-minute scheduled session ran from 13:02:16 to 13:03:16 UTC. UDP traceroute to `1.1.1.1` reached the destination at hop 12 in approximately 4.51 seconds and retained 36 observations: 31 library-classified `host_unreachable` replies, four timeouts and one destination `port_unreachable`. The destination reply RTT was 110.861 ms. These per-probe paths can vary; this is not proof that every probe followed a single fixed 12-hop route.
+
+The library's `HostUnreachable` variant does not retain the original ICMP type/code. Its name must not be interpreted as proof that each responding router is unreachable or that the path failed: this successful run contains those intermediate replies. We preserve its classification and available RTT without inventing an ICMP type.
+
+The same session passed HTTP RTT, 1 MiB download and 256 KiB upload through USB forwarding to the Mac. Those HTTP values establish app integration, not internet throughput. The session stopped at its one-minute duration limit. All 12 session/measurement/event/snapshot records were acknowledged by the local backend; the phone showed zero pending records. The existing backend records remained intact, increasing from 3,502 to 3,514.
