@@ -33,11 +33,13 @@ function uploadPayload(size: number): string {
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   const blocks: string[] = [];
   for (let offset = 0; offset < size; offset += 8192) {
-    let block = '';
-    for (let i = 0; i < Math.min(8192, size - offset); i++) {
-      block += alphabet[Math.floor(Math.random() * alphabet.length)];
+    const block = new Uint8Array(Math.min(8192, size - offset));
+    for (let i = 0; i < block.length; i++) {
+      block[i] = alphabet.charCodeAt(
+        Math.floor(Math.random() * alphabet.length),
+      );
     }
-    blocks.push(block);
+    blocks.push(String.fromCharCode(...block));
   }
   return blocks.join('');
 }

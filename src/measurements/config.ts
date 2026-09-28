@@ -1,8 +1,15 @@
 import type { ProbeConfig } from './types';
 
 export const MIB = 1024 * 1024;
-export const DOWNLOAD_SIZES = [MIB, 5 * MIB, 10 * MIB] as const;
-export const UPLOAD_SIZES = [256 * 1024, MIB] as const;
+export const MAX_PAYLOAD_BYTES = 100 * MIB;
+
+/** User-entered MiB, rounded to the nearest whole byte. Invalid text stays invalid. */
+export function payloadBytesFromMiB(value: string): number {
+  const text = value.trim();
+  return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)
+    ? Math.round(Number(text) * MIB)
+    : NaN;
+}
 export const DEFAULT_PROBE_CONFIG: ProbeConfig = {
   serverUrl: 'http://127.0.0.1:8000',
   timeoutMs: 30_000,
@@ -31,11 +38,17 @@ export function validateProbeConfig(config: ProbeConfig): ProbeConfig {
   ) {
     throw new Error('Timeout must be between 100 and 120000 milliseconds.');
   }
-  if (!(DOWNLOAD_SIZES as readonly number[]).includes(config.downloadBytes)) {
-    throw new Error('Download size must be 1, 5 or 10 MiB.');
-  }
-  if (!(UPLOAD_SIZES as readonly number[]).includes(config.uploadBytes)) {
-    throw new Error('Upload size must be 256 KiB or 1 MiB.');
+  for (const [name, bytes] of [
+    ['Download', config.downloadBytes],
+    ['Upload', config.uploadBytes],
+  ] as const) {
+    if (
+      !Number.isSafeInteger(bytes) ||
+      bytes < 1 ||
+      bytes > MAX_PAYLOAD_BYTES
+    ) {
+      throw new Error(`${name} size must be between 1 byte and 100 MiB.`);
+    }
   }
   return { ...config, serverUrl: url.href.replace(/\/$/, '') };
 }

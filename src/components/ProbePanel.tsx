@@ -11,9 +11,11 @@ import {
   DEFAULT_PROBE_CONFIG,
   MIB,
   prototypeId,
+  payloadBytesFromMiB,
   validateProbeConfig,
 } from '../measurements/config';
 import { runSuite } from '../measurements/runSuite';
+import PayloadSizeFields from './PayloadSizeFields';
 import type { Measurement } from '../measurements/types';
 
 export default function ProbePanel() {
@@ -21,12 +23,10 @@ export default function ProbePanel() {
   const [timeout, setTimeoutValue] = useState(
     String(DEFAULT_PROBE_CONFIG.timeoutMs),
   );
-  const [downloadBytes, setDownloadBytes] = useState(
-    DEFAULT_PROBE_CONFIG.downloadBytes,
-  );
-  const [uploadBytes, setUploadBytes] = useState(
-    DEFAULT_PROBE_CONFIG.uploadBytes,
-  );
+  const [downloadMiB, setDownloadMiB] = useState('1');
+  const [uploadMiB, setUploadMiB] = useState('0.25');
+  const downloadBytes = payloadBytesFromMiB(downloadMiB);
+  const uploadBytes = payloadBytesFromMiB(uploadMiB);
   const [rounds, setRounds] = useState('1');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,30 +124,13 @@ export default function ProbePanel() {
         keyboardType="number-pad"
         style={styles.input}
       />
-      <Text>Download payload</Text>
-      <View style={styles.options}>
-        {[1, 5, 10].map(size => (
-          <Button
-            key={size}
-            title={`${size} MiB${downloadBytes === size * MIB ? ' ✓' : ''}`}
-            disabled={running}
-            onPress={() => setDownloadBytes(size * MIB)}
-          />
-        ))}
-      </View>
-      <Text>Upload payload</Text>
-      <View style={styles.options}>
-        {[256 * 1024, MIB].map(size => (
-          <Button
-            key={size}
-            title={`${size === MIB ? '1 MiB' : '256 KiB'}${
-              uploadBytes === size ? ' ✓' : ''
-            }`}
-            disabled={running}
-            onPress={() => setUploadBytes(size)}
-          />
-        ))}
-      </View>
+      <PayloadSizeFields
+        downloadMiB={downloadMiB}
+        uploadMiB={uploadMiB}
+        onDownloadChange={setDownloadMiB}
+        onUploadChange={setUploadMiB}
+        disabled={running}
+      />
       <Text>Rounds (1–10)</Text>
       <TextInput
         accessibilityLabel="Probe rounds"
@@ -220,7 +203,6 @@ const styles = StyleSheet.create({
     padding: 10,
     color: '#112d42',
   },
-  options: { flexDirection: 'row', justifyContent: 'space-between' },
   error: { color: '#a51f2b' },
   result: {
     borderTopWidth: 1,

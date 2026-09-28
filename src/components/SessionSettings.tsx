@@ -12,7 +12,8 @@ import {
   DEFAULT_SESSION_CONFIG,
   validateSessionConfig,
 } from '../sessions/config';
-import { MIB } from '../measurements/config';
+import { MIB, payloadBytesFromMiB } from '../measurements/config';
+import PayloadSizeFields from './PayloadSizeFields';
 import type { MeasurementConfig } from '../sessions/types';
 
 export default function SessionSettings({
@@ -27,8 +28,10 @@ export default function SessionSettings({
   const [rtt, setRtt] = useState('60');
   const [download, setDownload] = useState('300');
   const [upload, setUpload] = useState('300');
-  const [downloadBytes, setDownloadBytes] = useState(MIB);
-  const [uploadBytes, setUploadBytes] = useState(MIB / 4);
+  const [downloadMiB, setDownloadMiB] = useState('1');
+  const [uploadMiB, setUploadMiB] = useState('0.25');
+  const downloadBytes = payloadBytesFromMiB(downloadMiB);
+  const uploadBytes = payloadBytesFromMiB(uploadMiB);
   const [duration, setDuration] = useState('120');
   const [budget, setBudget] = useState('100');
   const [battery, setBattery] = useState('15');
@@ -151,26 +154,13 @@ export default function SessionSettings({
           }
         }}
       />
-      <Text>Download payload</Text>
-      {[1, 5, 10].map(size => (
-        <Button
-          key={size}
-          title={`${size} MiB${downloadBytes === size * MIB ? ' ✓' : ''}`}
-          disabled={disabled}
-          onPress={() => setDownloadBytes(size * MIB)}
-        />
-      ))}
-      <Text>Upload payload</Text>
-      {[MIB / 4, MIB].map(size => (
-        <Button
-          key={size}
-          title={`${size === MIB ? '1 MiB' : '256 KiB'}${
-            uploadBytes === size ? ' ✓' : ''
-          }`}
-          disabled={disabled}
-          onPress={() => setUploadBytes(size)}
-        />
-      ))}
+      <PayloadSizeFields
+        downloadMiB={downloadMiB}
+        uploadMiB={uploadMiB}
+        onDownloadChange={setDownloadMiB}
+        onUploadChange={setUploadMiB}
+        disabled={disabled}
+      />
       <Text>
         Approximate payload:{' '}
         {Number.isFinite(estimate) && estimate > 0 ? estimate.toFixed(2) : '—'}{' '}

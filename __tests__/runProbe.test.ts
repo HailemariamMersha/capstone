@@ -184,7 +184,7 @@ test('cancel aborts an in-flight probe and prevents a pre-cancelled request', as
 test.each([
   { serverUrl: 'ftp://host' },
   { timeoutMs: 0 },
-  { downloadBytes: 99 },
+  { downloadBytes: 0 },
   { uploadBytes: Infinity },
 ])(
   'invalid configuration is rejected before using the network',
@@ -204,3 +204,36 @@ test.each([
     expect(dependencies.fetch).not.toHaveBeenCalled();
   },
 );
+
+test('custom payload sizes reach the request and exact-byte acknowledgement', async () => {
+  const custom = { ...config, downloadBytes: 2621441, uploadBytes: 2 * MIB };
+  const download = deps(
+    response({
+      arrayBuffer: async () => new ArrayBuffer(custom.downloadBytes),
+    }),
+  );
+  expect(
+    await runProbe('download', custom, 's', undefined, download),
+  ).toMatchObject({
+    success: true,
+    requestedBytes: 2621441,
+    transferredBytes: 2621441,
+  });
+  expect(download.fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/download/2621441?'),
+    expect.anything(),
+  );
+  const upload = deps(
+    response({ json: async () => ({ receivedBytes: custom.uploadBytes }) }),
+  );
+  expect(
+    await runProbe('upload', custom, 's', undefined, upload),
+  ).toMatchObject({
+    success: true,
+    requestedBytes: 2 * MIB,
+    transferredBytes: 2 * MIB,
+  });
+  expect(
+    (jest.mocked(upload.fetch).mock.calls[0][1]?.body as string).length,
+  ).toBe(2 * MIB);
+});
