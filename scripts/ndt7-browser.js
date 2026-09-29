@@ -63,6 +63,8 @@
       return;
     }
     phase = direction;
+    const started = Date.now();
+    let callbackCharacters = 0;
     const result = (results[direction] = {
       direction,
       reason: 'running',
@@ -73,6 +75,8 @@
       serverSeconds: null,
       opened: false,
       cleanClose: false,
+      callbacks: [],
+      droppedCallbacks: 0,
     });
     send('progress', snapshot());
     await new Promise(resolve => {
@@ -107,6 +111,25 @@
           return;
         }
         const message = event.data;
+        // Preserve worker observations, including raw ServerMessage/TCPInfo, before interpretation.
+        const callback = {
+          observedAt: new Date().toISOString(),
+          elapsedMs: Date.now() - started,
+          value: message,
+        };
+        try {
+          const encoded = JSON.stringify(callback);
+          if (
+            result.callbacks.length < 256 &&
+            callbackCharacters + encoded.length <= 262144
+          ) {
+            result.callbacks.push(JSON.parse(encoded));
+            callbackCharacters += encoded.length;
+          } else result.droppedCallbacks++;
+        } catch (_) {
+          result.droppedCallbacks++;
+        }
+
         if (!message || typeof message !== 'object') {
           end('invalid_response');
           return;

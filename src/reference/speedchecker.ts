@@ -1,7 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 import { acquireActivity } from '../services/activityGate';
 import { DEFAULT_SESSION_CONFIG } from '../sessions/config';
-import type { Measurement } from '../measurements/types';
+import type { Measurement, RawProbeOutput } from '../measurements/types';
 import type { MeasurementStore } from '../storage/types';
 
 export const SPEEDCHECKER_VERSION = '4.2.299';
@@ -17,6 +17,8 @@ export interface SpeedCheckerResult {
   downloadMb: number | null;
   uploadMb: number | null;
   server: string | null;
+  callbacks?: RawProbeOutput['callbacks'];
+  droppedCallbacks?: number;
 }
 export interface SpeedCheckerAdapter {
   start(runId: string, consent: boolean): Promise<SpeedCheckerResult>;
@@ -84,6 +86,7 @@ export async function runSpeedChecker(
   const release = acquireActivity('reference');
   let id: string | undefined;
   let result: SpeedCheckerResult | undefined;
+  let rawReply: SpeedCheckerResult | undefined;
   let safeToRelease = true;
   let error: string | null = null;
   const attempts: Measurement[] = [];
@@ -155,6 +158,7 @@ export async function runSpeedChecker(
           }, 100000);
         }),
       ]);
+      rawReply = reply;
       validateSpeedCheckerResult(reply, id);
       result = reply;
       safeToRelease = reply.cleanupConfirmed;
@@ -218,6 +222,29 @@ export async function runSpeedChecker(
               reason === 'complete' ? 'missing metric' : reason
             }.`,
         method: 'speedchecker_sdk_reference',
+        raw: {
+          library: 'SpeedChecker Android SDK',
+          version: SPEEDCHECKER_VERSION,
+          source: 'sdk_listener_and_adapter_response',
+          request: { runId: id },
+          callbacks: [
+            ...(Array.isArray(rawReply?.callbacks) ? rawReply.callbacks : []),
+            ...(rawReply
+              ? [
+                  {
+                    observedAt: new Date().toISOString(),
+                    elapsedMs: rawReply.durationMs,
+                    value: rawReply,
+                  },
+                ]
+              : []),
+          ],
+          droppedCallbacks: rawReply?.droppedCallbacks ?? 0,
+          unavailable: [
+            'sdkInternalPacketCapture',
+            'hardwareTransmitTimestamp',
+          ],
+        },
         probeServer: result?.server ?? 'SpeedChecker selected server',
         transferredBytes:
           !latency && mb != null ? Math.round(mb * 1000000) : null,

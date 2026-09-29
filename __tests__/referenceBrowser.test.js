@@ -180,3 +180,22 @@ test('whole-run watchdog bounds stalled discovery', async () => {
   jest.advanceTimersByTime(45000);
   expect(messages.at(-1).reason).toBe('timeout');
 });
+
+test('retains raw server TCP telemetry and reports callback overflow', async () => {
+  await start();
+  const raw = {
+    MsgType: 'measurement',
+    Source: 'server',
+    ServerMessage: JSON.stringify({
+      TCPInfo: { RTT: 1234, TotalRetrans: 2 },
+      AppInfo: { NumBytes: 1, ElapsedTime: 1000 },
+    }),
+  };
+  emit(raw);
+  expect(messages.at(-1).results[0].callbacks[0].value).toEqual(raw);
+  for (let i = 0; i < 260; i++) emit({ MsgType: 'start' });
+  context.window.stopReference();
+  const result = messages.at(-1).results[0];
+  expect(result.callbacks).toHaveLength(256);
+  expect(result.droppedCallbacks).toBe(5);
+});

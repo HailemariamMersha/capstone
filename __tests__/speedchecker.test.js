@@ -22,13 +22,11 @@ beforeEach(() => {
   store = {
     createSession: jest.fn().mockResolvedValue('speed'),
     addEvent: jest.fn().mockResolvedValue(),
-    beginAttempt: jest
-      .fn()
-      .mockImplementation(async (sessionId, type) => ({
-        id: type,
-        sessionId,
-        type,
-      })),
+    beginAttempt: jest.fn().mockImplementation(async (sessionId, type) => ({
+      id: type,
+      sessionId,
+      type,
+    })),
     finishAttempt: jest.fn().mockResolvedValue(),
     endSession: jest.fn().mockResolvedValue(),
   };
@@ -172,4 +170,27 @@ test('unconfirmed native cleanup quarantines the shared activity gate', async ()
   expect(gate.currentActivity()).toBe('reference');
   expect(() => gate.acquireActivity('measurement')).toThrow('Wait');
   jest.resetModules();
+});
+
+test('keeps SDK callback arguments and the adapter response alongside summaries', async () => {
+  const callbacks = [
+    {
+      observedAt: '2026-09-29T00:00:00Z',
+      elapsedMs: 10,
+      value: { callback: 'onPingFinished', arguments: { ping: 22, jitter: 3 } },
+    },
+  ];
+  const reply = result({ callbacks, droppedCallbacks: 1 });
+  native.start.mockResolvedValue(reply);
+  await runSpeedChecker(
+    store,
+    true,
+    new AbortController().signal,
+    permission,
+    native,
+  );
+  const saved = store.finishAttempt.mock.calls[0][0];
+  expect(saved.raw.callbacks[0]).toEqual(callbacks[0]);
+  expect(saved.raw.callbacks.at(-1).value).toEqual(reply);
+  expect(saved.raw.droppedCallbacks).toBe(1);
 });

@@ -35,6 +35,20 @@ class SpeedCheckerModule(context: ReactApplicationContext) : ReactContextBaseJav
         var downloadMb = 0.0
         var uploadMb = 0.0
         var server: String? = null
+        val callbacks = mutableListOf<Map<String, Any?>>()
+        var droppedCallbacks = 0
+        var callbackCharacters = 0
+        fun record(name: String, args: Map<String, Any?> = emptyMap()) {
+            val safeArgs = args.mapValues { (_, value) -> if (value is Double && !value.isFinite()) value.toString() else value }
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+            formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val item = mapOf("observedAt" to formatter.format(java.util.Date()),
+                "elapsedMs" to (SystemClock.elapsedRealtime() - started).toDouble(),
+                "value" to mapOf("callback" to name, "arguments" to safeArgs))
+            val size = org.json.JSONObject(item).toString().length
+            if (callbacks.size < 256 && callbackCharacters + size <= 262144) { callbacks.add(item); callbackCharacters += size }
+            else droppedCallbacks++
+        }
         val deadline = Runnable { stop("timeout") }
         val cleanupDeadline = Runnable { finish("cleanup_unconfirmed", false) }
         fun stop(reason: String) {
@@ -67,6 +81,8 @@ class SpeedCheckerModule(context: ReactApplicationContext) : ReactContextBaseJav
                 number("pingMs", pingMs); number("jitterMs", jitterMs)
                 number("downloadMb", downloadMb); number("uploadMb", uploadMb)
                 putString("server", server)
+                putArray("callbacks", Arguments.makeNativeArray(callbacks))
+                putInt("droppedCallbacks", droppedCallbacks)
             })
         }
     }
@@ -98,29 +114,38 @@ class SpeedCheckerModule(context: ReactApplicationContext) : ReactContextBaseJav
                 SpeedcheckerSDK.setBackgroundNetworkTesting(reactApplicationContext, false)
                 SpeedcheckerSDK.init(reactApplicationContext)
                 SpeedcheckerSDK.SpeedTest.setOnSpeedTestListener(object : SpeedTestListener {
-                    override fun onTestStarted() = Unit
-                    override fun onFindingBestServerStarted() = Unit
-                    override fun onPingStarted() = Unit
-                    override fun onDownloadTestStarted() = Unit
-                    override fun onUploadTestStarted() = Unit
-                    override fun onTestWarning(warning: String?) = Unit
-                    override fun onFetchServerFailed(code: Int?) = onMain(run) { run.finish("server_unavailable") }
-                    override fun onTestFatalError(error: String?) = onMain(run) { run.finish("network") }
-                    override fun onTestInterrupted(error: String?) = onMain(run) { run.finish("cancelled") }
+                    override fun onTestStarted() = onMain(run) { run.record("onTestStarted") }
+                    override fun onFindingBestServerStarted() = onMain(run) { run.record("onFindingBestServerStarted") }
+                    override fun onPingStarted() = onMain(run) { run.record("onPingStarted") }
+                    override fun onDownloadTestStarted() = onMain(run) { run.record("onDownloadTestStarted") }
+                    override fun onUploadTestStarted() = onMain(run) { run.record("onUploadTestStarted") }
+                    override fun onTestWarning(warning: String?) = onMain(run) { run.record("onTestWarning", mapOf("warning" to warning)) }
+                    override fun onFetchServerFailed(code: Int?) = onMain(run) { run.record("onFetchServerFailed", mapOf("code" to code)); run.finish("server_unavailable") }
+                    override fun onTestFatalError(error: String?) = onMain(run) { run.record("onTestFatalError", mapOf("error" to error)); run.finish("network") }
+                    override fun onTestInterrupted(error: String?) = onMain(run) { run.record("onTestInterrupted", mapOf("error" to error)); run.finish("cancelled") }
                     override fun onPingFinished(ping: Int, jitter: Int) = onMain(run) {
+                        run.record("onPingFinished", mapOf("ping" to ping, "jitter" to jitter))
                         run.pingMs = ping.toDouble(); run.jitterMs = jitter.toDouble()
                     }
                     override fun onDownloadTestProgress(percent: Int, speedMbs: Double, transferredMb: Double) = onMain(run) {
+                        run.record("onDownloadTestProgress", mapOf("percent" to percent, "speedMbs" to speedMbs, "transferredMb" to transferredMb))
                         if (transferredMb.isFinite() && transferredMb >= 0) run.downloadMb = transferredMb
                         run.checkThreshold()
                     }
                     override fun onUploadTestProgress(percent: Int, speedMbs: Double, transferredMb: Double) = onMain(run) {
+                        run.record("onUploadTestProgress", mapOf("percent" to percent, "speedMbs" to speedMbs, "transferredMb" to transferredMb))
                         if (transferredMb.isFinite() && transferredMb >= 0) run.uploadMb = transferredMb
                         run.checkThreshold()
                     }
-                    override fun onDownloadTestFinished(speedMbs: Double) = onMain(run) { run.downloadMbps = speedMbs }
-                    override fun onUploadTestFinished(speedMbs: Double) = onMain(run) { run.uploadMbps = speedMbs }
+                    override fun onDownloadTestFinished(speedMbs: Double) = onMain(run) { run.record("onDownloadTestFinished", mapOf("speedMbs" to speedMbs)); run.downloadMbps = speedMbs }
+                    override fun onUploadTestFinished(speedMbs: Double) = onMain(run) { run.record("onUploadTestFinished", mapOf("speedMbs" to speedMbs)); run.uploadMbps = speedMbs }
                     override fun onTestFinished(result: SpeedTestResult) = onMain(run) {
+                        run.record("onTestFinished", mapOf(
+                            "downloadSpeed" to result.downloadSpeed?.toDouble(), "uploadSpeed" to result.uploadSpeed?.toDouble(),
+                            "ping" to result.ping?.toDouble(), "jitter" to result.jitter?.toDouble(),
+                            "downloadTransferredMb" to result.downloadTransferredMb, "uploadTransferredMb" to result.uploadTransferredMb,
+                            "isDownloadSpeedValid" to result.isDownloadSpeedValid, "isUploadSpeedValid" to result.isUploadSpeedValid,
+                            "isPingValid" to result.isPingValid, "serverDomain" to result.server?.Domain))
                         run.downloadMbps = if (result.isDownloadSpeedValid) result.downloadSpeed?.toDouble() else null
                         run.uploadMbps = if (result.isUploadSpeedValid) result.uploadSpeed?.toDouble() else null
                         run.pingMs = if (result.isPingValid) result.ping?.toDouble() else null

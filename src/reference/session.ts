@@ -114,6 +114,18 @@ export async function createReferenceSession(
                 : attempt.probeServer,
               targetHost: result?.host,
               method: 'ndt7_webview_reference',
+              raw: {
+                library: '@m-lab/ndt7',
+                version: NDT7_VERSION,
+                source: 'web_worker_messages',
+                request: { direction, host: result?.host },
+                callbacks: result?.callbacks ?? [],
+                droppedCallbacks: result?.droppedCallbacks ?? 0,
+                unavailable: [
+                  'clientIpPacketCapture',
+                  'hardwareTransmitTimestamp',
+                ],
+              },
               reference: {
                 library: '@m-lab/ndt7',
                 version: NDT7_VERSION,

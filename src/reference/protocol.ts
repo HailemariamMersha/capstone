@@ -1,3 +1,4 @@
+import type { RawProbeOutput } from '../measurements/types';
 export type Direction = 'download' | 'upload';
 export interface ReferenceResult {
   direction: Direction;
@@ -9,6 +10,8 @@ export interface ReferenceResult {
   serverSeconds: number | null;
   opened: boolean;
   cleanClose: boolean;
+  callbacks?: RawProbeOutput['callbacks'];
+  droppedCallbacks?: number;
 }
 export interface ReferenceMessage {
   version: 1;
@@ -32,7 +35,7 @@ export function parseReferenceMessage(
   raw: string,
   runId: string,
 ): ReferenceMessage {
-  if (raw.length > 8192) {
+  if (raw.length > 1024 * 1024) {
     throw new Error('Reference message is too large.');
   }
   const value = JSON.parse(raw);
@@ -60,6 +63,27 @@ export function parseReferenceMessage(
     ) {
       throw new Error('Invalid reference result.');
     }
+    if (
+      result.callbacks !== undefined &&
+      (!Array.isArray(result.callbacks) ||
+        result.callbacks.length > 256 ||
+        JSON.stringify(result.callbacks).length > 263000 ||
+        result.callbacks.some(
+          (callback: Record<string, unknown>) =>
+            !callback ||
+            typeof callback.observedAt !== 'string' ||
+            typeof callback.elapsedMs !== 'number' ||
+            !Number.isFinite(callback.elapsedMs) ||
+            callback.elapsedMs < 0,
+        ))
+    )
+      throw new Error('Invalid reference callback log.');
+    if (
+      result.droppedCallbacks !== undefined &&
+      (!Number.isSafeInteger(result.droppedCallbacks) ||
+        result.droppedCallbacks < 0)
+    )
+      throw new Error('Invalid reference callback count.');
     directions.add(result.direction);
     for (const field of [
       'clientBytes',

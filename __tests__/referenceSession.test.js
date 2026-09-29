@@ -21,13 +21,11 @@ beforeEach(() => {
   store = {
     createSession: jest.fn().mockResolvedValue('reference'),
     addEvent: jest.fn().mockResolvedValue(),
-    beginAttempt: jest
-      .fn()
-      .mockImplementation(async (id, type) => ({
-        id: type,
-        sessionId: id,
-        type,
-      })),
+    beginAttempt: jest.fn().mockImplementation(async (id, type) => ({
+      id: type,
+      sessionId: id,
+      type,
+    })),
     finishAttempt: jest.fn().mockResolvedValue(),
     endSession: jest.fn().mockResolvedValue(),
   };
@@ -134,4 +132,30 @@ test('bridge rejects wrong run IDs, duplicate directions, and invalid counters',
       'run',
     ),
   ).toThrow();
+});
+
+test('preserves raw worker messages through validation and persistence', async () => {
+  const callbacks = [
+    {
+      observedAt: '2026-09-29T00:00:00Z',
+      elapsedMs: 10,
+      value: { ServerMessage: '{"TCPInfo":{"RTT":17}}' },
+    },
+  ];
+  const message = parseReferenceMessage(
+    JSON.stringify({
+      version: 1,
+      runId: 'raw',
+      type: 'finished',
+      reason: 'complete',
+      results: [{ ...complete('download'), callbacks, droppedCallbacks: 2 }],
+    }),
+    'raw',
+  );
+  const run = await createReferenceSession(store, true);
+  await run.finish(message.results, 'complete');
+  expect(store.finishAttempt.mock.calls[0][0].raw).toMatchObject({
+    callbacks,
+    droppedCallbacks: 2,
+  });
 });
