@@ -117,7 +117,7 @@ test('exports separate samples including failures, baseline and every hop withou
   );
   expect(JSON.parse(files['session.json'])).toEqual({
     ...data,
-    exportFormatVersion: 2,
+    exportFormatVersion: 3,
   });
   const samples = parseCsv(files['samples.csv']);
   expect(samples).toHaveLength(6);
@@ -162,5 +162,83 @@ test('empty sessions export headers and legacy results remain unchanged in JSON'
   expect(parseCsv(files.find(f => f.name === 'samples.csv').content)).toEqual(
     [],
   );
-  expect(files).toHaveLength(6);
+  expect(files).toHaveLength(7);
+});
+
+test('packet CSV and JSONL retain headers, precise timestamps and native observations', () => {
+  const packet = {
+    runId: 'trace-0',
+    outcome: 'icmp_error',
+    ipVersion: 4,
+    probeTtl: 1,
+    sendMonotonicNs: '12345678901234567',
+    sendBufferHex: 'abcd',
+    response: {
+      icmpType: 11,
+      icmpCode: 0,
+      replyTtl: 64,
+      responderAddress: '192.0.2.1',
+      receivedHex: 'abcd',
+      receivedScope: 'error_queue_original_payload',
+      extendedError: { errno: 113, origin: 2, info: 0, data: 0 },
+      kernelReceiveRealtimeNs: '1723456789012345678',
+      ancillary: [{ level: 0, type: 11, dataHex: 'ff00' }],
+    },
+    observations: [{ matched: true, futureField: 'retained' }],
+  };
+  const files = Object.fromEntries(
+    sessionExportFiles({
+      session: { id: 's' },
+      measurements: [
+        {
+          id: 'trace',
+          sessionId: 's',
+          type: 'traceroute',
+          route: { samples: [{ hop: 1, sequence: 0, packet }] },
+        },
+        {
+          id: 'tcp',
+          sessionId: 's',
+          type: 'tcp_connect',
+          packet: {
+            outcome: 'connected',
+            tcpInfoAfter: {
+              tcpi_rtt: 15,
+              tcpi_total_retrans: 0,
+              structHex: '0000',
+            },
+          },
+          details: { samples: [{ sequence: 0 }] },
+        },
+        { id: 'legacy', type: 'icmp_rtt', value: 42 },
+      ],
+    }).map(f => [f.name, f.content]),
+  );
+  const rows = parseCsv(files['samples.csv']);
+  expect(rows[0]).toMatchObject({
+    icmpType: '11',
+    icmpCode: '0',
+    replyTtl: '64',
+    probeTtl: '1',
+    socketErrno: '113',
+    errorOrigin: '2',
+    sendMonotonicNs: packet.sendMonotonicNs,
+    kernelReceiveRealtimeNs: packet.response.kernelReceiveRealtimeNs,
+    receivedHex: 'abcd',
+  });
+  expect(JSON.parse(rows[0].packetRawJson)).toEqual(packet);
+  expect(rows[1]).toMatchObject({
+    tcpKernelRttUs: '15',
+    tcpTotalRetransmissions: '0',
+  });
+  const lines = files['packets.jsonl'].trim().split('\n').map(JSON.parse);
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toEqual({
+    sessionId: 's',
+    measurementId: 'trace',
+    measurementType: 'traceroute',
+    sequence: 0,
+    hop: 1,
+    packet,
+  });
 });

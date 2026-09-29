@@ -136,8 +136,8 @@ export default function SessionHistory({
               </Text>
               <Text>Scheduled: {scheduledAt}</Text>
               <Text>
-                Started: {m.timestamp} · {m.durationMs.toFixed(1)} ms · HTTP{' '}
-                {m.httpStatus ?? '—'}
+                Started: {m.timestamp} · {m.durationMs.toFixed(1)} ms
+                {m.httpStatus != null ? ` · HTTP ${m.httpStatus}` : ''}
               </Text>
               <Text>
                 Payload: {m.transferredBytes ?? 'unconfirmed'} bytes · Region:{' '}
@@ -146,6 +146,13 @@ export default function SessionHistory({
               {m.targetHost && (
                 <Text>
                   Target: {m.targetHost} · TTL {m.ttl ?? '—'}
+                </Text>
+              )}
+              {m.packet?.tcpInfoAfter && (
+                <Text>
+                  TCP kernel RTT: {m.packet.tcpInfoAfter.tcpi_rtt ?? '—'} μs ·
+                  Retransmissions:{' '}
+                  {m.packet.tcpInfoAfter.tcpi_total_retrans ?? '—'}
                 </Text>
               )}
               {m.details && (
@@ -172,7 +179,30 @@ export default function SessionHistory({
                       UDP round-trip loss: {m.details.lossPercent.toFixed(1)}%
                     </Text>
                   )}
-                  <Text>Raw samples are included in CSV and JSON exports.</Text>
+                  {m.details.samples
+                    .filter(sample => sample.packet)
+                    .map(sample => (
+                      <Text key={sample.sequence}>
+                        Probe {sample.sequence}: {sample.packet!.outcome}
+                        {sample.packet!.response?.icmpType != null
+                          ? ` · ICMP ${sample.packet!.response!.icmpType}/${
+                              sample.packet!.response!.icmpCode
+                            }`
+                          : ''}
+                        {sample.packet!.response?.icmpSequence != null
+                          ? ` · sequence ${
+                              sample.packet!.response!.icmpSequence
+                            }`
+                          : ''}
+                        {sample.packet!.response?.responderAddress
+                          ? ` · ${sample.packet!.response!.responderAddress}`
+                          : ''}
+                      </Text>
+                    ))}
+                  <Text>
+                    Full socket results and payload bytes are included in the
+                    export bundle.
+                  </Text>
                   {m.details.baselineSummary && (
                     <Text>
                       Before load:{' '}
@@ -217,6 +247,9 @@ export default function SessionHistory({
                         ? 'RTT unavailable'
                         : `${sample.rttMs.toFixed(2)} ms`}{' '}
                       · {sample.kind}
+                      {sample.icmpType != null
+                        ? ` · ICMP ${sample.icmpType}/${sample.icmpCode}`
+                        : ''}
                     </Text>
                   ))}
                 </View>

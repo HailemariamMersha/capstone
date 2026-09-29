@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import { createRepository } from '../src/storage/repository';
 import { DEFAULT_SESSION_CONFIG as config } from '../src/sessions/config';
 const { DatabaseSync } = require('node:sqlite');
@@ -332,4 +333,44 @@ test('traceroute and SpeedChecker records retain their distinct units and payloa
   );
   expect(speed.map(r => r.payload.unit)).toEqual(['ms', 'Mbps', 'Mbps']);
   expect(speed[1].payload.speedchecker.sdkVersion).toBe('4.2.299');
+});
+
+test('large raw records sync intact in byte-bounded batches', async () => {
+  const session = await store.createSession(config);
+  const packets = new Map();
+  for (let i = 0; i < 3; i++) {
+    const attempt = await store.beginAttempt(
+      session,
+      'icmp_rtt',
+      new Date().toISOString(),
+    );
+    const packet = {
+      runId: attempt.id,
+      outcome: 'reply',
+      receivedHex: 'ab'.repeat(i === 2 ? 600000 : 180000),
+    };
+    packets.set(attempt.id, packet);
+    await store.finishAttempt({ ...success(attempt), packet });
+  }
+  await store.endSession(session, 'completed', 'test');
+  db.close();
+  open(); // Raw results must survive a process restart too.
+  let drained = 0;
+  for (let i = 0; i < 10; i++) {
+    const batch = await store.getSyncBatch();
+    if (!batch.records.length) break;
+    if (batch.records.length > 1)
+      expect(
+        Buffer.byteLength(JSON.stringify(batch), 'utf8'),
+      ).toBeLessThanOrEqual(512 * 1024);
+    for (const record of batch.records) {
+      if (packets.has(record.id)) {
+        expect(record.payload.packet).toEqual(packets.get(record.id));
+        drained++;
+      }
+    }
+    await store.acknowledgeSync(batch.records);
+  }
+  expect(drained).toBe(3);
+  expect((await store.getSyncBatch()).records).toHaveLength(0);
 });

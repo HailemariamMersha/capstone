@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import { SCHEMA, SCHEMA_VERSION, MIGRATION_2 } from './schema';
 import { requestedPayload } from '../measurements/diagnosticConfig';
 import type { Measurement } from '../measurements/types';
@@ -233,6 +234,12 @@ export function createRepository(
           )
         ).rows;
         const records = [];
+        // Keep normal uploads small; an individual raw probe record travels intact.
+        let batchBytes = Buffer.byteLength(
+          JSON.stringify({ installationId, records: [] }),
+          'utf8',
+        );
+        const targetBytes = 512 * 1024;
         for (const row of candidates) {
           const entityId = String(row.entity_id);
           let payload: Record<string, unknown>;
@@ -279,12 +286,18 @@ export function createRepository(
               details: JSON.parse(String(r.details_json)),
             };
           }
-          records.push({
+          const record = {
             type: String(row.entity_type),
             id: entityId,
             version: Number(row.version),
             payload,
-          });
+          };
+          const recordBytes =
+            Buffer.byteLength(JSON.stringify(record), 'utf8') +
+            (records.length ? 1 : 0);
+          if (records.length && batchBytes + recordBytes > targetBytes) break;
+          records.push(record);
+          batchBytes += recordBytes;
         }
         return { installationId, records };
       }),

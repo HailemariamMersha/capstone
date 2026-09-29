@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 test('CSV action writes and shares the full bundle including authoritative JSON', async () => {
   await shareSession('s', 'csv');
-  expect(FS.writeFile).toHaveBeenCalledTimes(6);
+  expect(FS.writeFile).toHaveBeenCalledTimes(7);
   expect(Share.open).toHaveBeenCalledWith(
     expect.objectContaining({
       urls: expect.arrayContaining([
@@ -31,13 +31,13 @@ test('CSV action writes and shares the full bundle including authoritative JSON'
       ]),
     }),
   );
-  expect(Share.open.mock.calls[0][0].urls).toHaveLength(6);
+  expect(Share.open.mock.calls[0][0].urls).toHaveLength(7);
 });
 test('JSON action writes only the complete JSON export', async () => {
   await shareSession('s', 'json');
   expect(FS.writeFile).toHaveBeenCalledTimes(1);
   expect(JSON.parse(FS.writeFile.mock.calls[0][1])).toMatchObject({
-    exportFormatVersion: 2,
+    exportFormatVersion: 3,
     session: { id: 's' },
   });
 });

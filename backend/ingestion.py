@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 router = APIRouter()
-MAX_BATCH_BYTES = 1024 * 1024
+MAX_BATCH_BYTES = 8 * 1024 * 1024
 
 
 class Record(BaseModel):
@@ -44,7 +44,7 @@ async def ingest(request: Request):
     async for chunk in request.stream():
         body.extend(chunk)
         if len(body) > MAX_BATCH_BYTES:
-            raise HTTPException(413, 'Batch exceeds 1 MiB')
+            raise HTTPException(413, 'Batch exceeds 8 MiB')
     try:
         batch = Batch.model_validate_json(bytes(body))
     except ValidationError:

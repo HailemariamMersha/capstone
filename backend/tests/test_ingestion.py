@@ -1,6 +1,7 @@
 import sqlite3
 from fastapi.testclient import TestClient
 from backend.app import app
+from backend.ingestion import MAX_BATCH_BYTES
 
 
 def batch():
@@ -32,7 +33,7 @@ def test_validation_and_auth(tmp_path, monkeypatch):
         invalid = batch()
         invalid['records'][0]['payload']['state'] = 'active'
         assert client.post('/api/v1/ingest',json=invalid,headers=headers).status_code == 422
-        assert client.post('/api/v1/ingest',content=b'x'*(1024*1024+1),headers=headers).status_code == 413
+        assert client.post('/api/v1/ingest',content=b'x'*(MAX_BATCH_BYTES+1),headers=headers).status_code == 413
         assert client.post('/api/v1/ingest',json=batch(),headers=headers).status_code == 200
 
 
@@ -41,3 +42,19 @@ def test_local_context_does_not_claim_public_ip_or_asn():
         response = client.get('/api/v1/context')
         assert response.status_code == 200
         assert response.json() == {'publicIp':None,'asn':None}
+
+
+def test_large_packet_record_is_preserved(tmp_path, monkeypatch):
+    import json
+    path = tmp_path / 'records.sqlite'
+    monkeypatch.setenv('CAPSTONE_INGEST_DB', str(path))
+    monkeypatch.delenv('CAPSTONE_SYNC_TOKEN', raising=False)
+    data = batch()
+    record = data['records'][0]
+    record['type'] = 'measurement'
+    record['payload'] = {'id': record['id'], 'packet': {'receivedHex': 'ab' * 600000}}
+    with TestClient(app) as client:
+        assert client.post('/api/v1/ingest', json=data).status_code == 200
+    with sqlite3.connect(path) as connection:
+        saved = json.loads(connection.execute('SELECT payload_json FROM records').fetchone()[0])
+        assert saved == record['payload']

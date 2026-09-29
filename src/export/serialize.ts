@@ -54,6 +54,101 @@ function pingOutput(raw: Row): Row {
     rawStderr: value.rawStderr,
   };
 }
+const packetColumns = [
+  'packetOutcome',
+  'ipVersion',
+  'localAddress',
+  'localPort',
+  'targetAddress',
+  'packetTargetPort',
+  'sendMonotonicNs',
+  'receiveMonotonicNs',
+  'kernelReceiveRealtimeNs',
+  'sentSocketBytes',
+  'receivedSocketBytes',
+  'sendBufferScope',
+  'sendBufferHex',
+  'receivedScope',
+  'receivedHex',
+  'icmpIdentifier',
+  'icmpSequence',
+  'icmpChecksum',
+  'socketErrno',
+  'errorOrigin',
+  'errorData',
+  'recvmsgFlags',
+  'tcpKernelRttUs',
+  'tcpRttVarianceUs',
+  'tcpTotalRetransmissions',
+  'tcpCongestionWindowSegments',
+  'packetRawJson',
+];
+function packetFields(value: unknown): Row {
+  const p = object(value);
+  if (!Object.keys(p).length) return {};
+  const r = object(p.response),
+    e = object(r.extendedError),
+    tcp = object(p.tcpInfoAfter);
+  return {
+    packetOutcome: p.outcome,
+    ipVersion: p.ipVersion,
+    localAddress: p.localAddress,
+    localPort: p.localPort,
+    targetAddress: p.targetAddress ?? p.resolvedAddress,
+    packetTargetPort: p.targetPort,
+    probeTtl: p.probeTtl,
+    replyTtl: r.replyTtl,
+    responderAddress: r.responderAddress,
+    sendMonotonicNs: p.sendMonotonicNs,
+    receiveMonotonicNs: r.receiveMonotonicNs,
+    kernelReceiveRealtimeNs: r.kernelReceiveRealtimeNs,
+    sentSocketBytes: p.sentSocketBytes,
+    receivedSocketBytes: r.receivedSocketBytes,
+    sendBufferScope: p.sendBufferScope,
+    sendBufferHex: p.sendBufferHex,
+    receivedScope: r.receivedScope,
+    receivedHex: r.receivedHex,
+    icmpType: r.icmpType,
+    icmpCode: r.icmpCode,
+    icmpIdentifier: r.icmpIdentifier,
+    icmpSequence: r.icmpSequence,
+    icmpChecksum: r.icmpChecksum,
+    socketErrno: e.errno ?? p.errno,
+    errorOrigin: e.origin,
+    errorInfo: e.info,
+    errorData: e.data,
+    recvmsgFlags: r.recvmsgFlags,
+    tcpKernelRttUs: tcp.tcpi_rtt,
+    tcpRttVarianceUs: tcp.tcpi_rttvar,
+    tcpTotalRetransmissions: tcp.tcpi_total_retrans,
+    tcpCongestionWindowSegments: tcp.tcpi_snd_cwnd,
+    packetRawJson: p,
+  };
+}
+export function packetJsonLines(records: Row[]): string {
+  const lines: string[] = [];
+  for (const m of records) {
+    const d = object(m.details),
+      route = object(m.route);
+    const samples = [...rows(d.samples), ...rows(route.samples)].filter(
+      s => s.packet,
+    );
+    if (m.packet && !samples.length)
+      samples.push({ sequence: 0, packet: m.packet });
+    for (const s of samples)
+      lines.push(
+        JSON.stringify({
+          sessionId: m.sessionId,
+          measurementId: m.id,
+          measurementType: m.type,
+          sequence: s.sequence,
+          hop: s.hop,
+          packet: s.packet,
+        }),
+      );
+  }
+  return lines.length ? lines.join('\n') + '\n' : '';
+}
 const measurementColumns = [
   'id',
   'sessionId',
@@ -101,6 +196,7 @@ const measurementColumns = [
   'route',
   'speedchecker',
   'raw',
+  ...packetColumns,
   'rawRecordJson',
 ];
 export function measurementCsv(records: Row[]): string {
@@ -138,6 +234,7 @@ export function measurementCsv(records: Row[]): string {
         routeStopReason: route.stopReason,
         loadTransferredBytes: load.transferredBytes,
         loadMbps: load.value,
+        ...packetFields(m.packet),
         rawRecordJson: m,
       };
     }),
@@ -184,6 +281,7 @@ const sampleColumns = [
   'rawStderr',
   'replyDataBase64',
   ...contextColumns,
+  ...packetColumns,
   'rawSampleJson',
 ];
 /** One row per recorded sample, including timeout/error outcomes. No invented packets. */
@@ -242,9 +340,30 @@ export function sampleCsv(records: Row[]): string {
           errorInfo: native.errInfo,
           ...pingOutput(raw),
           replyDataBase64: native.dataBase64,
+          ...packetFields(s.packet ?? m.packet),
           rawSampleJson: s,
         });
       }
+    }
+    if (m.reference || m.speedchecker) {
+      rows(parentRaw.callbacks).forEach((callback, sequence) =>
+        samples.push({
+          ...context(m.networkSnapshot),
+          sessionId: m.sessionId,
+          measurementId: m.id,
+          measurementType: m.type,
+          method: m.method,
+          sampleGroup: 'reference_callback',
+          sequence,
+          measurementTimestamp: m.timestamp,
+          sampleTimestamp: callback.observedAt,
+          durationMs: callback.elapsedMs,
+          library: parentRaw.library,
+          libraryVersion: parentRaw.version,
+          rawSource: parentRaw.source,
+          rawSampleJson: callback,
+        }),
+      );
     }
     // A standalone ICMP result is itself one probe; historical records remain exportable.
     if (m.type === 'icmp_rtt' && !rows(d.samples).length) {
@@ -272,6 +391,7 @@ export function sampleCsv(records: Row[]): string {
         probeTtl: object(parentRaw.request).ttl,
         probeBytes: object(parentRaw.request).packetSize,
         ...pingOutput(parentRaw),
+        ...packetFields(m.packet),
         rawSampleJson: m,
       });
     }
@@ -283,7 +403,7 @@ export interface ExportFile {
   content: string;
 }
 export function sessionJson(data: Row): string {
-  return JSON.stringify({ ...data, exportFormatVersion: 2 }, null, 2);
+  return JSON.stringify({ ...data, exportFormatVersion: 3 }, null, 2);
 }
 /** Raw JSON is authoritative; CSVs are convenient, explicitly versioned projections. */
 export function sessionExportFiles(data: Row): ExportFile[] {
@@ -296,6 +416,7 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     },
     { name: 'measurements.csv', content: measurementCsv(measurements) },
     { name: 'samples.csv', content: sampleCsv(measurements) },
+    { name: 'packets.jsonl', content: packetJsonLines(measurements) },
     {
       name: 'events.csv',
       content: csv(
@@ -327,7 +448,7 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     },
     {
       name: 'README.txt',
-      content: `Capstone export format 2\n\nsession.json preserves the complete saved session, measurements, events and context.\nCSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
+      content: `Capstone export format 3\n\nsession.json preserves the complete saved session, measurements, events and context.\npackets.jsonl contains each native probe observation without aggregation.\nCSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nNanosecond timestamps are strings: import them as text in spreadsheets.\nNative send buffers may be modified by the kernel; see sendBufferScope. Received bytes have an explicit receivedScope.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
     },
   ];
 }

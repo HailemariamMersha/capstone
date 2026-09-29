@@ -47,7 +47,7 @@ Tests cover exact payload sizes, protocol headers, upload acknowledgement, inval
 
 ## Ingestion and network identity
 
-`POST /api/v1/ingest` accepts at most 50 versioned records / 1 MiB per batch. Records are keyed by installation ID, type and record ID. A transaction commits before acknowledgements are returned; retrying an identical batch is idempotent. Same-version conflicting payloads return 409. Newer versions replace older ones without creating duplicates.
+`POST /api/v1/ingest` accepts at most 50 versioned records / 8 MiB per batch. Records are keyed by installation ID, type and record ID. A transaction commits before acknowledgements are returned; retrying an identical batch is idempotent. Same-version conflicting payloads return 409. Newer versions replace older ones without creating duplicates.
 
 Storage defaults to `backend/data/ingestion.sqlite`; override with `CAPSTONE_INGEST_DB`. This local single-server store is a prototype adapter, not the planned PostgreSQL/TimescaleDB deployment. Inspect it with a SQLite browser or Python's sqlite3 module; data is in the `records` table, with JSON in `payload_json`.
 
@@ -58,3 +58,5 @@ Set `CAPSTONE_SYNC_TOKEN` for remote deployments; clients send it as a bearer to
 ## Optional UDP diagnostics
 
 `backend/.venv/bin/python -m backend.udp_echo` starts a separate protocol-v1 UDP service on loopback port 9876. HTTP/Uvicorn does not start this service automatically. For a physical phone, configure a LAN binding and allowed source address as shown in [diagnostic testing](../docs/diagnostics.md#physical-android-testing). UDP cannot use `adb reverse`.
+
+The app targets 512 KiB sync batches, sending a larger individual raw measurement alone. The server accepts up to 8 MiB per batch; oversize records are retained locally and rejected explicitly, never trimmed to fit.
