@@ -114,7 +114,16 @@ test('starts and stops through the session controller and refreshes authoritativ
   await render();
   getServiceStatus.mockResolvedValue(running);
   await act(async () => button('Start session').props.onPress());
-  expect(startSession).toHaveBeenCalledWith(DEFAULT_SESSION_CONFIG, undefined);
+  expect(startSession).toHaveBeenCalledWith(
+    {
+      ...DEFAULT_SESSION_CONFIG,
+      httpEnabled: false,
+      icmpHost: '1.1.1.1',
+      icmpBurstEnabled: true,
+      tracerouteHost: '1.1.1.1',
+    },
+    undefined,
+  );
   expect(state()).toBe('running');
   getServiceStatus.mockResolvedValue(stopped);
   await act(async () => button('Stop session').props.onPress());

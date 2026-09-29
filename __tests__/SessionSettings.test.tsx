@@ -10,6 +10,12 @@ test('custom sizes are saved as bytes and invalid edits cannot start a session',
   await act(async () => {
     renderer = create(<SessionSettings disabled={false} onStart={start} />);
   });
+  await act(async () => {
+    renderer.root
+      .findAllByType(Button)
+      .find(n => n.props.title === 'HTTP measurements: off')!
+      .props.onPress();
+  });
   const input = (label: string) =>
     renderer.root
       .findAllByType(TextInput)

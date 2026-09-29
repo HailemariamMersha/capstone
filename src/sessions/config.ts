@@ -54,11 +54,12 @@ export function validateSessionConfig(
       throw new Error(`${name} is outside its supported range.`);
     }
   }
+  settings.udpHost = settings.udpHost?.trim();
   settings.icmpHost = (settings.icmpHost ?? '').trim();
   settings.tracerouteHost = settings.tracerouteHost?.trim();
   if (
     settings.tracerouteHost &&
-    !/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/.test(settings.tracerouteHost)
+    !/^[a-zA-Z0-9:][a-zA-Z0-9.:-]{0,252}$/.test(settings.tracerouteHost)
   ) {
     throw new Error(
       'Traceroute target must be a hostname or IP without a URL or spaces.',
@@ -73,6 +74,7 @@ export function validateSessionConfig(
     throw new Error('Traceroute maximum hops must be between 1 and 30.');
   }
   for (const flag of [
+    'httpEnabled',
     'icmpBurstEnabled',
     'tcpEnabled',
     'loadedLatencyEnabled',
@@ -80,6 +82,18 @@ export function validateSessionConfig(
     if (settings[flag] !== undefined && typeof settings[flag] !== 'boolean') {
       throw new Error(`${flag} must be enabled or disabled.`);
     }
+  }
+  if (settings.httpEnabled === false && settings.loadedLatencyEnabled) {
+    throw new Error('Enable HTTP measurements to run HTTP loaded latency.');
+  }
+  if (
+    settings.httpEnabled === false &&
+    !settings.icmpHost &&
+    !settings.tracerouteHost &&
+    !settings.udpHost &&
+    !settings.tcpEnabled
+  ) {
+    throw new Error('Select at least one packet probe target.');
   }
   if (settings.icmpBurstEnabled && !settings.icmpHost) {
     throw new Error('Enter an ICMP target to enable burst sampling.');
@@ -116,7 +130,7 @@ export function validateSessionConfig(
   }
   if (
     settings.icmpHost &&
-    !/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/.test(settings.icmpHost)
+    !/^[a-zA-Z0-9:][a-zA-Z0-9.:-]{0,252}$/.test(settings.icmpHost)
   ) {
     throw new Error(
       'ICMP target must be a hostname or IP address without a URL, port or spaces.',

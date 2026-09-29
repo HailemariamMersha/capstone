@@ -56,11 +56,18 @@ export function startMeasurementLoop(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const origin = dependencies.now();
   const wallOrigin = dependencies.wallNow();
-  const schedule: { type: ProbeType; interval: number; due: number }[] = [
-    { type: 'http_rtt', interval: config.rttIntervalMs, due: origin },
-    { type: 'download', interval: config.downloadIntervalMs, due: origin },
-    { type: 'upload', interval: config.uploadIntervalMs, due: origin },
-  ];
+  const schedule: { type: ProbeType; interval: number; due: number }[] =
+    config.httpEnabled === false
+      ? []
+      : [
+          { type: 'http_rtt', interval: config.rttIntervalMs, due: origin },
+          {
+            type: 'download',
+            interval: config.downloadIntervalMs,
+            due: origin,
+          },
+          { type: 'upload', interval: config.uploadIntervalMs, due: origin },
+        ];
   if (config.icmpHost && dependencies.icmp) {
     schedule.splice(1, 0, {
       type: config.icmpBurstEnabled ? 'icmp_burst' : 'icmp_rtt',
@@ -86,7 +93,7 @@ export function startMeasurementLoop(
       due: origin,
     });
   }
-  if (config.loadedLatencyEnabled) {
+  if (config.loadedLatencyEnabled && config.httpEnabled !== false) {
     schedule.push({
       type: 'loaded_download',
       interval: diagnosticInterval,
@@ -98,6 +105,7 @@ export function startMeasurementLoop(
       due: origin,
     });
   }
+  if (!schedule.length) throw new Error('No measurement probes are enabled.');
   let snapshot: NetworkSnapshot | null = null;
   let lastSample = -Infinity;
   let usedBytes = 0;

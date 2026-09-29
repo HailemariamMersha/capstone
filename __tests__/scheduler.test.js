@@ -253,3 +253,33 @@ test('a network change wakes idle sampling without inserting extra probes', asyn
   await loop.stop();
   expect(unsubscribe).toHaveBeenCalled();
 });
+
+test('packet-only session schedules no HTTP transactions', async () => {
+  const diagnostic = jest.fn(async attempt => ({ ...attempt, success: true }));
+  const loop = startMeasurementLoop(
+    'packet-session',
+    {
+      ...config,
+      httpEnabled: false,
+      icmpHost: '192.0.2.1',
+      icmpBurstEnabled: true,
+      tracerouteHost: '192.0.2.1',
+    },
+    store,
+    saved,
+    {
+      now: () => global.performance.now(),
+      wallNow: () => Date.now(),
+      probe,
+      icmp: jest.fn(),
+      diagnostic,
+    },
+  );
+  await flush();
+  expect(probe).not.toHaveBeenCalled();
+  expect(diagnostic.mock.calls.map(([attempt]) => attempt.type)).toEqual([
+    'icmp_burst',
+    'traceroute',
+  ]);
+  await loop.stop();
+});

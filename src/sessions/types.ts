@@ -1,6 +1,8 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  /** Absent on historical sessions: retain their HTTP schedule. New UI defaults to false. */
+  httpEnabled?: boolean;
   mode?: 'ndt7_reference' | 'speedchecker_reference';
   referenceByteThreshold?: number;
   maxDurationMs?: number;

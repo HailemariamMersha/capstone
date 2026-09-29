@@ -19,7 +19,10 @@ const controller = createSessionController(
   createBackgroundExecutor(),
   measurementStore,
   (id, config, store, onSaved) => {
-    const collector = createContextCollector(config.serverUrl);
+    const collector = createContextCollector(
+      config.serverUrl,
+      config.httpEnabled !== false,
+    );
     const loop = startMeasurementLoop(id, config, store, onSaved, {
       now: () => performance.now(),
       wallNow: () => Date.now(),

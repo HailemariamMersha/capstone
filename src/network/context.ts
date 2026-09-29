@@ -7,7 +7,7 @@ NetInfo.configure({
   useNativeReachability: true,
   reachabilityShouldRun: () => false,
 });
-export function createContextCollector(serverUrl: string) {
+export function createContextCollector(serverUrl: string, httpEnabled = true) {
   let state: Awaited<ReturnType<typeof NetInfo.fetch>> | undefined;
   let fingerprint = '';
   let changed = true;
@@ -62,7 +62,10 @@ export function createContextCollector(serverUrl: string) {
         DeviceInfo.getBatteryLevel().catch(() => -1),
         DeviceInfo.isBatteryCharging().catch(() => null),
       ]);
-      if (wasChanged || Date.now() - lastIdentity > 5 * 60000) {
+      if (
+        httpEnabled &&
+        (wasChanged || Date.now() - lastIdentity > 5 * 60000)
+      ) {
         lastIdentity = Date.now();
         publicIp = null;
         asn = null;

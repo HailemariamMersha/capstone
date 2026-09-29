@@ -23,6 +23,7 @@ export default function SessionSettings({
   disabled: boolean;
   onStart: (config: MeasurementConfig) => Promise<void>;
 }) {
+  const [httpEnabled, setHttpEnabled] = useState(false);
   const [url, setUrl] = useState(DEFAULT_SESSION_CONFIG.serverUrl);
   const [timeout, setTimeoutValue] = useState('30');
   const [rtt, setRtt] = useState('60');
@@ -35,13 +36,15 @@ export default function SessionSettings({
   const [duration, setDuration] = useState('120');
   const [budget, setBudget] = useState('100');
   const [battery, setBattery] = useState('15');
-  const [icmpHost, setIcmpHost] = useState('');
-  const [icmpBurstEnabled, setIcmpBurstEnabled] = useState(false);
+  const [icmpHost, setIcmpHost] = useState('1.1.1.1');
+  const [icmpBurstEnabled, setIcmpBurstEnabled] = useState(true);
   const [tcpEnabled, setTcpEnabled] = useState(false);
   const [loadedLatencyEnabled, setLoadedLatencyEnabled] = useState(false);
   const [udpHost, setUdpHost] = useState('');
   const [udpPort, setUdpPort] = useState('9876');
-  const [tracerouteHost, setTracerouteHost] = useState('');
+  const [tracerouteHost, setTracerouteHost] = useState(
+    Platform.OS === 'android' ? '1.1.1.1' : '',
+  );
   const [error, setError] = useState<string | null>(null);
   const fields = [
     { label: 'Probe server URL', value: url, change: setUrl },
@@ -75,9 +78,13 @@ export default function SessionSettings({
     },
   ];
   const estimate =
-    ((downloadBytes * 3600) / Number(download) +
-      (uploadBytes * 3600) / Number(upload) +
-      ((4 + (icmpHost.trim() ? (icmpBurstEnabled ? 1280 : 64) : 0)) * 3600) /
+    ((httpEnabled
+      ? (downloadBytes * 3600) / Number(download) +
+        (uploadBytes * 3600) / Number(upload)
+      : 0) +
+      (((httpEnabled ? 4 : 0) +
+        (icmpHost.trim() ? (icmpBurstEnabled ? 1280 : 64) : 0)) *
+        3600) /
         Number(rtt) +
       (udpHost.trim() ? 5120 * 12 : 0) +
       (tracerouteHost.trim() ? 3840 * 4 : 0) +
@@ -87,15 +94,16 @@ export default function SessionSettings({
     setError(null);
     try {
       const config = validateSessionConfig({
+        httpEnabled,
         maxDurationMs: Number(duration) * 60000,
         maxPayloadBytes: Number(budget) * MIB,
         minimumBatteryPercent: Number(battery),
         icmpHost,
-        ...(icmpBurstEnabled ? { icmpBurstEnabled } : {}),
+        icmpBurstEnabled,
         ...(tcpEnabled ? { tcpEnabled } : {}),
         ...(loadedLatencyEnabled ? { loadedLatencyEnabled } : {}),
         ...(udpHost.trim() ? { udpHost, udpPort: Number(udpPort) } : {}),
-        ...(tracerouteHost.trim() ? { tracerouteHost } : {}),
+        tracerouteHost,
         serverUrl: url,
         timeoutMs: Number(timeout) * 1000,
         rttIntervalMs: Number(rtt) * 1000,
@@ -111,26 +119,55 @@ export default function SessionSettings({
   }
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>Session settings</Text>
-      {fields.map((field, index) => (
-        <View key={field.label}>
-          <Text>{field.label}</Text>
-          <TextInput
-            style={styles.input}
-            accessibilityLabel={field.label}
-            value={field.value}
-            onChangeText={field.change}
-            editable={!disabled}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType={
-              index === 0 || field.label.startsWith('ICMP')
-                ? 'url'
-                : 'number-pad'
-            }
-          />
-        </View>
-      ))}
+      <Text style={styles.title}>Packet measurement session</Text>
+      <Text>
+        Collect ICMP replies and UDP traceroute responses, including packet
+        bytes and network errors. HTTP transfers are a separate optional
+        measurement.
+      </Text>
+      <Button
+        title={`HTTP measurements: ${httpEnabled ? 'on' : 'off'}`}
+        disabled={disabled}
+        onPress={() => {
+          setHttpEnabled(value => !value);
+          setLoadedLatencyEnabled(false);
+        }}
+      />
+      {fields
+        .filter(
+          field =>
+            httpEnabled ||
+            ![
+              'Download interval (seconds)',
+              'Upload interval (seconds)',
+              ...(tcpEnabled ? [] : ['Probe server URL']),
+            ].includes(field.label),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.label.startsWith('ICMP')) -
+            Number(a.label.startsWith('ICMP')),
+        )
+        .map(field => (
+          <View key={field.label}>
+            <Text>{field.label}</Text>
+            <TextInput
+              style={styles.input}
+              accessibilityLabel={field.label}
+              value={field.value}
+              onChangeText={field.change}
+              editable={!disabled}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType={
+                field.label === 'Probe server URL' ||
+                field.label.startsWith('ICMP')
+                  ? 'url'
+                  : 'number-pad'
+              }
+            />
+          </View>
+        ))}
       <Button
         title="Allow optional Wi-Fi details"
         disabled={disabled}
@@ -154,13 +191,15 @@ export default function SessionSettings({
           }
         }}
       />
-      <PayloadSizeFields
-        downloadMiB={downloadMiB}
-        uploadMiB={uploadMiB}
-        onDownloadChange={setDownloadMiB}
-        onUploadChange={setUploadMiB}
-        disabled={disabled}
-      />
+      {httpEnabled && (
+        <PayloadSizeFields
+          downloadMiB={downloadMiB}
+          uploadMiB={uploadMiB}
+          onDownloadChange={setDownloadMiB}
+          onUploadChange={setUploadMiB}
+          disabled={disabled}
+        />
+      )}
       <Text>
         Approximate payload:{' '}
         {Number.isFinite(estimate) && estimate > 0 ? estimate.toFixed(2) : '—'}{' '}
@@ -174,7 +213,7 @@ export default function SessionSettings({
         ICMP; 127.0.0.1 pings the phone itself. A missing ICMP reply does not
         prove the internet is down.
       </Text>
-      <Text style={styles.title}>Optional diagnostics</Text>
+      <Text style={styles.title}>Packet probes</Text>
       <Button
         title={`ICMP burst: ${icmpBurstEnabled ? '10 samples' : 'off'}`}
         disabled={disabled}
@@ -185,13 +224,16 @@ export default function SessionSettings({
         Each reply waits at most 2 seconds.
       </Text>
       <Button
-        title={`TCP connection timing: ${tcpEnabled ? 'on' : 'off'}`}
+        title={`TCP connection and kernel statistics: ${
+          tcpEnabled ? 'on' : 'off'
+        }`}
         disabled={disabled}
         onPress={() => setTcpEnabled(value => !value)}
       />
       <Text>
-        Connects to the probe server’s port every RTT interval. Includes DNS and
-        app overhead; does not measure TLS.
+        Connects to the probe server’s port every RTT interval. Records native
+        connect duration and available kernel RTT, retransmission and congestion
+        statistics. Does not measure TLS.
       </Text>
       <Text>UDP server IPv4 (blank disables)</Text>
       <TextInput
@@ -219,7 +261,7 @@ export default function SessionSettings({
       </Text>
       <Button
         title={`Loaded latency: ${loadedLatencyEnabled ? 'on' : 'off'}`}
-        disabled={disabled}
+        disabled={disabled || !httpEnabled}
         onPress={() => setLoadedLatencyEnabled(value => !value)}
       />
       <Text>

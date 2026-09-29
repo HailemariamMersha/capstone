@@ -157,8 +157,8 @@ export default function App() {
           <Text style={styles.eyebrow}>CAPSTONE · MEASUREMENT PROTOTYPE</Text>
           <Text style={styles.title}>Satellite network measurements</Text>
           <Text style={styles.description}>
-            Run scheduled RTT, download and upload probes. Results are saved on
-            this device, including failed and interrupted attempts.
+            Collect packet-level ICMP, traceroute, UDP and TCP observations. Raw
+            results and failed attempts are saved on this device.
           </Text>
           {!isMeasurementSupported && (
             <Text accessibilityRole="alert" style={styles.error}>
