@@ -52,9 +52,10 @@ export interface Measurement {
   ttl?: number | null;
   method?: string;
   raw?: RawProbeOutput;
+  packet?: PacketObservation;
   details?: DiagnosticDetails;
   route?: {
-    library: 'icmpenguin';
+    library: 'icmpenguin' | 'capstone-linux-sockets';
     version: string;
     protocol: 'udp';
     maxHops: number;
@@ -94,6 +95,7 @@ export interface Measurement {
 }
 
 export interface TraceSample {
+  packet?: PacketObservation;
   observedAtMs?: number;
   rawResult?: Record<string, unknown>;
   hop: number;
@@ -106,6 +108,7 @@ export interface TraceSample {
     | 'port_unreachable'
     | 'host_unreachable'
     | 'network_unreachable'
+    | 'time_exceeded'
     | 'icmp_error'
     | 'error';
   rttMs: number | null;
@@ -124,6 +127,7 @@ export interface ProbeSample {
   durationMs?: number;
   errorMessage?: string | null;
   raw?: RawProbeOutput;
+  packet?: PacketObservation;
 }
 
 /** Library/application observations, not a PCAP or a claim of wire-level access. */
@@ -159,4 +163,31 @@ export interface DiagnosticDetails {
   baselineSummary?: LatencySummary;
   load?: Measurement;
   loadedOverlapCount?: number;
+}
+
+/** Exact native socket observations; unknown fields remain preserved for future analysis. */
+export interface PacketObservation extends Record<string, unknown> {
+  runId: string;
+  outcome: string;
+  targetAddress?: string;
+  resolvedAddress?: string;
+  errorMessage?: string;
+  connectDurationUs?: number;
+  sentSocketBytes?: number;
+  ipVersion?: number;
+  tcpInfoAfter?: {
+    tcpi_rtt?: number;
+    tcpi_total_retrans?: number;
+    [key: string]: unknown;
+  };
+  response?: {
+    icmpSequence?: number;
+    elapsedUs?: number;
+    replyTtl?: number;
+    responderAddress?: string;
+    icmpType?: number;
+    icmpCode?: number;
+    extendedError?: { origin?: number; [key: string]: unknown };
+    [key: string]: unknown;
+  };
 }

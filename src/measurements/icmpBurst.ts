@@ -33,6 +33,7 @@ export async function runIcmpBurst(
       durationMs: result.durationMs,
       errorMessage: result.errorMessage,
       raw: result.raw,
+      packet: result.packet,
     });
     if (sequence + 1 < ICMP_SAMPLE_COUNT) {
       await pause(SAMPLE_INTERVAL_MS, signal);

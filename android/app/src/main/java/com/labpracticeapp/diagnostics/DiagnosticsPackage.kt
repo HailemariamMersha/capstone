@@ -9,7 +9,7 @@ import com.labpracticeapp.BuildConfig
 class DiagnosticsPackage : ReactPackage {
     override fun createNativeModules(context: ReactApplicationContext): List<NativeModule> =
         buildList {
-            add(TracerouteModule(context))
+            add(PacketProbeModule(context))
             if (BuildConfig.SPEEDCHECKER_ENABLED) {
                 val module = Class.forName("com.labpracticeapp.diagnostics.SpeedCheckerModule")
                     .getConstructor(ReactApplicationContext::class.java).newInstance(context) as NativeModule

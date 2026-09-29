@@ -25,41 +25,6 @@ class AdapterSmokeTest {
     }
     private fun context() = BridgeReactContext(ApplicationProvider.getApplicationContext())
 
-    @Test fun udpLoopbackReachesDestinationAndCleansUp() {
-        val module = TracerouteModule(context())
-        try {
-            val first = Reply()
-            module.trace("loopback", "127.0.0.1", 3, 1, first.promise)
-            first.await()
-            assertNull(first.error)
-            val result = first.result!!
-            assertEquals("complete", result.getString("reason"))
-            val samples = result.getArray("samples")!!
-            assertTrue("No loopback probe result", samples.size() > 0)
-            val destination = (0 until samples.size()).map { samples.getMap(it)!! }.any {
-                it.getString("kind") == "port_unreachable" && it.getString("address") == "127.0.0.1"
-            }
-            assertTrue("Loopback UDP did not expose destination port-unreachable", destination)
-            val next = Reply()
-            module.trace("next", "127.0.0.1", 1, 1, next.promise)
-            next.await()
-            assertNull("Previous native resources still busy", next.error)
-        } finally { module.invalidate() }
-    }
-    @Test fun cancellationSettlesAndInvalidParametersSendNoProbes() {
-        val module = TracerouteModule(context())
-        try {
-            val invalid = Reply()
-            module.trace("invalid", "127.0.0.1", 1000, 3, invalid.promise)
-            invalid.await()
-            assertEquals("invalid_config", invalid.error!!.getString("code"))
-            val running = Reply()
-            module.trace("cancel", "192.0.2.1", 20, 3, running.promise)
-            module.cancel("cancel")
-            running.await()
-            assertEquals("cancelled", running.result!!.getString("reason"))
-        } finally { module.invalidate() }
-    }
     @Test fun speedCheckerRejectsMissingConsentWithoutStartingSdk() {
         if (!BuildConfig.SPEEDCHECKER_ENABLED) return
         val module = DiagnosticsPackage().createNativeModules(context()).first { it.name == "CapstoneSpeedChecker" }

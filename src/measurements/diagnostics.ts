@@ -2,7 +2,8 @@ import { runIcmpBurst } from './icmpBurst';
 import { runTcpConnect } from './tcp';
 import { runUdpEcho } from './udp';
 import { runLoadedLatency } from './loadedLatency';
-import { runTraceroute } from './traceroute';
+import { runPacketTrace, runPacketTcp, runPacketUdp } from './packet';
+import { Platform } from 'react-native';
 import type { Measurement } from './types';
 import type { MeasurementConfig } from '../sessions/types';
 
@@ -13,13 +14,18 @@ export async function runDiagnostic(
 ): Promise<Measurement> {
   switch (attempt.type) {
     case 'traceroute':
-      return runTraceroute(attempt, config, signal);
+      return runPacketTrace(attempt, config, signal);
     case 'icmp_burst':
       return runIcmpBurst(attempt, config.icmpHost!, config.timeoutMs, signal);
     case 'tcp_connect':
-      return runTcpConnect(attempt, config.serverUrl, config.timeoutMs, signal);
+      return (Platform.OS === 'android' ? runPacketTcp : runTcpConnect)(
+        attempt,
+        config.serverUrl,
+        config.timeoutMs,
+        signal,
+      );
     case 'udp_echo':
-      return runUdpEcho(
+      return (Platform.OS === 'android' ? runPacketUdp : runUdpEcho)(
         attempt,
         config.udpHost!,
         config.udpPort!,

@@ -102,6 +102,9 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    externalNativeBuild {
+        cmake { path "src/main/jni/CMakeLists.txt"; version "3.22.1" }
+    }
     testBuildType "release"
     if (speedCheckerEnabled) {
         sourceSets {
@@ -136,7 +139,6 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-    implementation("me.impa:icmpenguin:1.0.0-rc.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     if (speedCheckerEnabled) {
         implementation("com.speedchecker:android-sdk:4.2.299")
