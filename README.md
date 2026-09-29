@@ -2,7 +2,7 @@
 
 An Android capstone for measuring network performance during flights and other mobility scenarios. We ship Android this semester and develop shared React Native/TypeScript code for a later iPhone release. The research contribution is an offline-first measurement pipeline, reliability evaluation and a real or simulated mobility dataset.
 
-The authoritative scope and M1–M11 acceptance criteria are in the [full semester plan](docs/semester-plan.md).
+The semester milestones are in the [full semester plan](docs/semester-plan.md). The [packet-engine update](docs/packet-engine.md) records the subsequently requested packet-level methods and replaces the earlier HTTP-first collection defaults.
 
 ## Architecture
 
@@ -10,14 +10,14 @@ The authoritative scope and M1–M11 acceptance criteria are in the [full semest
 
 ```text
 React Native CLI + TypeScript (no Expo)
-  UI / shared session controller / scheduled HTTP probe engine
+  UI / shared session controller / packet probes + optional HTTP
     → react-native-background-actions (platform background execution)
     → OP-SQLite in WAL mode (local source of truth)
     → deferred synchronization (closed sessions; visible app)
     → FastAPI → PostgreSQL + TimescaleDB → Python/pandas analysis
 ```
 
-Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service. Two small Android adapters now bridge traceroute and SpeedChecker libraries, as explicitly requested; their scheduling, result interpretation, storage and UI stay in TypeScript. See [native adapters and build setup](docs/native-adapters.md).
+Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service. A thin Android JNI adapter now exposes ICMP/UDP socket observations and TCP_INFO, and an optional adapter integrates SpeedChecker; their scheduling, result interpretation, storage and UI stay in TypeScript. See [native adapters and build setup](docs/native-adapters.md).
 
 Keep probe definitions, HTTP RTT/download/upload logic, configuration, data models, database schema, API client and sync orchestration shared. Platform permissions and background execution remain isolated. iOS will reuse this application code, but its background execution and release configuration must be validated separately; continuous locked-phone measurement is not established on iOS. The library documents the distinction in its [background execution guidance](https://github.com/Rapsssito/react-native-background-actions#readme).
 
@@ -25,29 +25,28 @@ Android uses a declared `specialUse` foreground service for user-started researc
 
 ## Current implementation: controlled measurements, context, export and sync
 
-The app runs scheduled HTTP RTT, download and upload probes through `react-native-background-actions`. Default intervals remain 60 seconds for RTT and five minutes for download/upload, with an immediate initial batch. Defaults remain 1 MiB download and 256 KiB upload. Enter any download/upload size in MiB before starting a session; decimals are rounded to whole bytes and the exact byte count is shown. Each direction supports 1 byte through 100 MiB, subject to the session payload budget. Stop an active session before changing its sizes. These settings also apply to loaded-latency transfers; public reference SDKs manage their own transfer sizes. Scheduled tests run serially; only optional loaded-latency tests intentionally overlap a transfer with latency probes. Missed intervals are logged and skipped instead of replayed in a burst.
+New UI sessions default to **packet measurements**: ten-sample ICMP bursts and UDP traceroute. Android ICMP, UDP and TCP tests use our [native socket engine](docs/packet-engine.md), with actual ICMP fields, payload bytes, error queues and kernel TCP_INFO. HTTP is opt-in. React Native/TypeScript still owns the UI, scheduling, interpretation, storage and exports.
 
+Enable **HTTP measurements** for controlled RTT/download/upload or loaded latency. Transfer sizes remain editable from 1 byte to 100 MiB per direction (defaults: 1 MiB download, 256 KiB upload), within the session budget. Old saved configurations preserve their original schedules. Tests run serially except explicit loaded-latency transfers; missed intervals are logged and skipped.
 Downloads larger than 8 MiB use the existing filesystem library to stream into a temporary cache file, avoiding React Native full-body/base64 memory copies. These results use method `http_download_to_file`, including disk-write time; smaller downloads retain `http_full_transaction`. Native transfer completion is awaited before cleanup or the next probe.
 
-Optional **ICMP RTT** uses `ping-react-native` when you enter a hostname or IP. It runs at the RTT interval and stores native RTT/TTL separately from total probe duration. ICMP does not use USB forwarding: `127.0.0.1` pings the phone itself. Compare with HTTP against the same remote host; a missing ICMP reply does not establish an internet outage.
-
-**Optional diagnostics** add ten-sample ICMP bursts, TCP connection timing, controlled UDP round-trip loss/latency, optional UDP traceroute, and HTTP latency during a bounded download/upload. They are off by default and preserve the original HTTP result types. Raw samples and summaries are saved, exported, and synced. TCP/UDP use pinned React Native libraries with reproducible Android namespace patches. See [diagnostic methods and phone-testing commands](docs/diagnostics.md), including the separate UDP server and short-transfer limitations.
+**ICMP, TCP, UDP and traceroute** retain individual native observations, failures and raw buffers. ICMP bursts correlate echo identifiers, sequence numbers and payloads. Traceroute preserves original ICMP type/code from the kernel error queue, distinguishing Time Exceeded from unreachable errors. TCP stores kernel RTT/retransmission/congestion statistics separately from connect duration. Controlled UDP echo needs a reachable UDP server. This is observation of our active probe sockets, not full IP packet capture. See [methods, limits and testing](docs/packet-engine.md).
 
 **Session safeguards** default to two hours, a 100 MiB planned-payload allowance, and stopping at or below 15% battery when unplugged. The configurable session allowance supports up to 10 GiB for long experiments; the per-probe maximum remains 100 MiB. Attempts reserve their full payload allowance, including failures and cancellations. This is not a carrier-data counter: headers, retransmissions and context/sync traffic are outside the allowance. The first exhausted limit ends the session and records its reason. Existing session configurations are normalized when resumed.
 
-**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. The controlled context pipeline does not collect GPS coordinates. The separately consented SpeedChecker free SDK requires location and shares data with its vendor. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Context requests can warm the probe connection and are outside its timed interval.
+**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. The controlled context pipeline does not collect GPS coordinates. The separately consented SpeedChecker free SDK requires location and shares data with its vendor. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Packet-only sessions skip HTTP context requests, leaving public IP/ASN null. When enabled, context requests can warm the probe connection and are outside its timed interval.
 
 **OP-SQLite** remains the local source of truth. Schema version 2 migrates version 1 without deleting records, enables WAL/foreign keys, and serializes transactions. An attempt is committed before its network request. Results and sync queue entries are committed together. On a new JS process, old active sessions and unfinished attempts become interrupted; recovery never restarts collection automatically. Resume creates a new linked session.
 
-**Export CSV / Export JSON** is available for every saved session. CSV now shares a bundle of measurement, individual sample, event and network-context tables, together with the full saved JSON and a field guide. Android ping command output and exposed traceroute result fields are retained for newly collected data; these are library observations, not packet captures. Exports include all rows beyond the visible history page and preserve failures and missing values. See [export fields and computer-side conversion](docs/packet-exports.md) and [Linux mechanisms, library justification and related papers](docs/research/packet-measurement-review.md). Exports use consistent repository reads; a live SQLite database is never copied. Spreadsheet formula characters are escaped in CSV. Stable cache files are shared through the OS share sheet.
+**Export CSV / Export JSON** is available for every saved session. CSV now shares a bundle of measurement, individual sample, event and network-context tables, together with the full saved JSON and a field guide. The seven-file bundle includes `packets.jsonl`, full socket observations, per-probe CSV fields and bounded reference callback logs. Buffer scopes distinguish application payloads, ICMP messages and kernel error quotations. Exports include all rows beyond the visible history page and preserve failures and missing values. See [export fields and computer-side conversion](docs/packet-exports.md) and [Linux mechanisms, library justification and related papers](docs/research/packet-measurement-review.md). Exports use consistent repository reads; a live SQLite database is never copied. Spreadsheet formula characters are escaped in CSV. Stable cache files are shared through the OS share sheet.
 
-**Sync now** sends up to 50 pending records from closed sessions to the entered server. The local FastAPI server now accepts `/api/v1/ingest`, commits records to SQLite and acknowledges individual IDs/versions. Duplicate uploads do not create duplicate records. Only matching acknowledgements clear queue entries; errors and unacknowledged records get persistent exponential backoff (up to an hour). Continue tapping Sync now, or enable automatic retries every 30 seconds while the app is visible and collection is stopped. Stop collection before syncing; the UI prevents starting a measurement during sync. Sync destination/token are held only in memory for the current app run. Queue data persists across restarts.
+**Sync now** sends up to 50 pending records, targeting 512 KiB batches and sending larger raw records individually, from closed sessions to the entered server. The local FastAPI server now accepts `/api/v1/ingest`, commits records to SQLite and acknowledges individual IDs/versions. Duplicate uploads do not create duplicate records. Only matching acknowledgements clear queue entries; errors and unacknowledged records get persistent exponential backoff (up to an hour). Continue tapping Sync now, or enable automatic retries every 30 seconds while the app is visible and collection is stopped. Stop collection before syncing; the UI prevents starting a measurement during sync. Sync destination/token are held only in memory for the current app run. Queue data persists across restarts.
 
 Remote sync requires HTTPS and a server token. The local server defaults to `backend/data/ingestion.sqlite`, which is gitignored. This is the local ingestion prototype; PostgreSQL/TimescaleDB, cloud deployment and closed-app background sync remain future work. Export and measurement collection do not require sync.
 
 **Optional M-Lab NDT7 reference tests** now use the pinned official browser client inside React Native WebView. They require explicit consent, run separately from scheduled collection/sync, cancel when the app leaves the foreground, and save download/upload results through the existing history/export/sync pipeline. A reported 50 MiB per direction triggers a best-effort stop; buffered traffic can exceed it. See [reference-test methods and validation](docs/reference-tests.md). Public-service physical-phone validation remains pending.
 
-**Traceroute** now uses `icmpenguin` through an Android adapter, with partial hop results preserved. **SpeedChecker** SDK 4.2.299 is available in an opt-in Android build with consent before initialization, foreground cancellation and separate saved reference results. See [setup, methods and remaining physical tests](docs/native-adapters.md). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
+**Traceroute** uses the repository-owned Linux-socket engine; `icmpenguin` has been removed. Partial results and original kernel error fields are preserved. **SpeedChecker** SDK 4.2.299 is available in an opt-in Android build with consent before initialization, foreground cancellation and separate saved reference results. See [setup, methods and remaining physical tests](docs/native-adapters.md). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
 
 The [custom-payload phone experiment](docs/experiments/2026-09-28-custom-payloads.md) verified three 5 MiB downloads and three 2 MiB uploads, exact saved byte counts, automatic session completion and successful sync.
 
@@ -61,7 +60,8 @@ The [custom-payload phone experiment](docs/experiments/2026-09-28-custom-payload
 - `src/services/measurement.ts`, `App.tsx`: composition, permissions and controls.
 - `src/network/`: NetInfo and battery context collection.
 - `src/reference/`: separate NDT7 and SpeedChecker reference-test flows.
-- `android/app/src/main/java/com/labpracticeapp/diagnostics/`: Android traceroute adapter.
+- `android/app/src/main/java/com/labpracticeapp/diagnostics/`: Thin Android packet-engine bridge.
+- `android/app/src/main/jni/`: C++ active ICMP/UDP/TCP socket engine.
 - `android/app/src/speedchecker/`: opt-in vendor SDK adapter and manifest overlay.
 - `src/export/`, `src/sync/`: CSV/JSON sharing and acknowledged batch synchronization.
 - `src/api/`, `backend/`: shared protocol and local FastAPI probe server.
@@ -91,7 +91,7 @@ Status states are `stopped`, `starting`, `running` and `stopping`. Repeated star
 | M10 — Analysis | Reproducible pandas/Jupyter RTT, throughput, outages, context and success-rate figures | Weeks 13–14 |
 | M11 — Finalization | Stable Android prototype, documented methods/limitations, dataset format, demo, report and presentation | Weeks 14–15 |
 
-M3 is an experimental gate: an active notification alone does not prove that TypeScript probes keep executing. Validate actual timestamps and results. If the library-backed approach fails, resolve the background architecture before flight collection. Do not silently reintroduce custom native measurement logic.
+M3 is an experimental gate: an active notification alone does not prove that TypeScript probes keep executing. Validate actual timestamps and results. If the library-backed approach fails, resolve the background architecture before flight collection. The explicitly requested native packet adapter supplies OS socket evidence; it does not replace the shared background/session controller.
 
 Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 seconds, download/upload every five minutes, metadata on change plus periodic snapshots, public IP/ASN at session start and network changes, optional low-frequency location, and sync independently when connectivity is suitable.
 
@@ -145,7 +145,7 @@ In another terminal, connect the emulator or USB-debugging phone:
 adb reverse tcp:8000 tcp:8000
 ```
 
-Open the app, leave the URL at `http://127.0.0.1:8000`, and tap **Start session**. View the session in **Saved sessions** to see RTT, download and upload results. Background or lock the phone, reopen it and refresh history. Stop the server to verify persisted failure results. **Stop session** aborts any in-flight probe, saves its cancellation and ends the session.
+To test HTTP, first enable **HTTP measurements**. Leave the URL at `http://127.0.0.1:8000`, and tap **Start session**. View the session in **Saved sessions** to see RTT, download and upload results. Background or lock the phone, reopen it and refresh history. Stop the server to verify persisted failure results. **Stop session** aborts any in-flight probe, saves its cancellation and ends the session.
 
 Force-stop and relaunch during a session to test recovery: it should be stopped, the old session should be interrupted, and saved results should remain. Resume that history entry to start a linked session. Do not clear app data for this check.
 
@@ -169,6 +169,8 @@ backend/.venv/bin/python -m pytest backend/tests -q
 Inspect Android service state with `adb shell dumpsys activity services com.labpracticeapp`. Unit tests cannot establish OS/OEM endurance. M3 remains an experimental gate until the physical runs pass. Full M5/M6 acceptance, cloud deployment and physical reliability testing are necessary before the flight pipeline is ready.
 
 ## Validation
+
+- The current packet engine passed seven real loopback tests on the Android API 36.1 emulator; the SDK-enabled build also passed consent rejection (nine native tests total, including the bundled app launch). Physical-network and endurance validation of this replacement are pending. See [current validation details](docs/packet-engine.md).
 
 - The earlier M2 emulator test verified two RTT/download/upload batches against local FastAPI, then three structured failures with the server stopped. All 13 backend contract tests passed.
 - Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection, version-one migration, export completeness, limits and acknowledged sync. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).

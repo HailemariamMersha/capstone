@@ -1,5 +1,16 @@
 # Packet observations and library justification
 
+## Implementation update — 2026-09-29
+
+The requested native work is now implemented for our Android active probes. The repository-owned C++ engine preserves ICMP echo headers/payloads, UDP error-queue `sock_extended_err` fields and ancillary bytes, per-probe monotonic/software receive timestamps, and TCP_INFO. `icmpenguin` was removed. New UI sessions default to ICMP bursts plus traceroute; HTTP is opt-in. NDT7 worker messages and SpeedChecker callback arguments are also archived within explicit limits. Format 3 adds `packets.jsonl` and detailed packet/reference rows. See [the current field dictionary](../packet-exports.md) and [engine design, source links and validation](../packet-engine.md).
+
+**Why a native engine:** The old wrappers reduced kernel evidence to text/variants/callback timings. A small JNI socket layer gives us the actual error origin/type/code and buffer scope while retaining shared React Native scheduling/storage/UI. This is a maintained-in-repository component with explicit tests, not a claim of universal OS/network compatibility. Existing RN ping/TCP/UDP packages now serve non-Android fallbacks; iOS is unvalidated. HTTP, NDT7 and SpeedChecker remain separate application-level/reference measurements.
+
+Seven loopback packet tests and SDK consent rejection passed on the Android 16 emulator. Physical-router Time Exceeded, OEM behavior and uninterrupted background endurance remain pending. Full PCAP/outer IP/TCP headers, other apps' traffic and hardware timestamps remain outside the implementation. The September 28 data and initial review below describe the **previous collector**; their absent packet fields cannot be reconstructed.
+
+## Historical findings and research basis
+
+
 Reviewed 29 September 2026. This is the working methods brief for next week's review. Implementation evidence comes from the pinned dependencies and our saved phone results; related projects are methodological references, not proof that our app is correct.
 
 ## What we have already demonstrated
@@ -29,7 +40,7 @@ A hop RTT includes the outward path and return of that hop's response. It is not
 
 Sources: [iputils](https://github.com/iputils/iputils), [ping manual](https://man7.org/linux/man-pages/man8/ping.8.html), [Linux error-queue documentation](https://man7.org/linux/man-pages/man2/recvmsg.2.html), [raw-socket privilege requirements](https://man7.org/linux/man-pages/man7/raw.7.html), [Android VPN guide](https://developer.android.com/develop/connectivity/vpn). Raw sockets normally require `CAP_NET_RAW`; successful datagram-based diagnostics do not imply unrestricted packet capture access.
 
-A useful next native change is to preserve `sock_extended_err` fields (`ee_origin`, `ee_type`, `ee_code`, `ee_errno`, `ee_info`, `ee_data`), offender address and quoted datagram before the library maps them into specialized errors. This requires inspecting/changing the native engine, not adding CSV columns. It remains unimplemented. Unknown fields must remain null; do not reconstruct an ICMP code from `HostUnreachable` or assume an ICMP message exists for every packet.
+A useful next native change is to preserve `sock_extended_err` fields (`ee_origin`, `ee_type`, `ee_code`, `ee_errno`, `ee_info`, `ee_data`), offender address and quoted datagram before the library maps them into specialized errors. This requires inspecting/changing the native engine, not adding CSV columns. This was unimplemented at the initial review; the replacement engine described above now preserves those fields. Unknown fields must remain null; do not reconstruct an ICMP code from `HostUnreachable` or assume an ICMP message exists for every packet.
 
 ## Why each dependency exists
 
@@ -77,4 +88,4 @@ Before presenting new phone data:
 5. For actual packet headers, capture only the controlled test traffic at a Linux endpoint/router under our control. Compare timestamps, ICMP type/code and matching identifiers at that capture point; record placement and clock limitations.
 6. Complete an uninterrupted hour on the phone, first without large transfers and then with them. Compare schedule lateness, screen-locked behavior and sample counts. Our prior user-stopped run cannot satisfy this check.
 
-The priority is reproducible observations and an honest field dictionary. Full arbitrary packet capture, complete ICMP headers for all traceroute variants, hardware timestamps, continuous SDK callback archives and iOS validation remain separate implementation work.
+The initial review identified these gaps. The update above now implements bounded SDK callback archives and kernel extended-error preservation; full arbitrary packet capture, complete outer ICMP error headers, hardware timestamps and iOS validation remain separate work.

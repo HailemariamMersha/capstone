@@ -1,5 +1,8 @@
 # Optional M-Lab NDT7 reference test
 
+**Packet-level update — 2026-09-29:** New Android sessions now default to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. See [current methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
+
+
 The app integrates `@m-lab/ndt7` **0.1.5** through `react-native-webview` **14.0.1**. The official browser client performs discovery and its unmodified download/upload workers generate traffic. A small browser coordinator handles cancellation, timeouts, result validation and communication with shared TypeScript code. NDT7 itself requires no custom Kotlin/Java measurement logic.
 
 ## Running a reference test

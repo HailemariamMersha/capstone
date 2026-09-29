@@ -1,5 +1,7 @@
 # Library evaluation — 2026-09-26
 
+**Current implementation update — 2026-09-29:** Android ICMP, UDP, TCP and traceroute now use the repository-owned [packet engine](packet-engine.md). `icmpenguin` was removed. The React Native ping/TCP/UDP packages remain for non-Android fallbacks; iOS is unvalidated. HTTP is opt-in for new UI sessions. The table below records the earlier shortlist assessment.
+
 The attached proposal is an evaluation shortlist. HTTP probes remain the controlled research baseline. The following assessment uses the actual published npm packages and their native source, not download counts or an assumption that advertised platform support guarantees compatibility.
 
 | Candidate | Decision | Evidence and scope |

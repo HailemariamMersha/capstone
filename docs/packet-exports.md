@@ -1,16 +1,17 @@
 # Probe-level exports
 
-Export format **2** keeps the saved JSON as the source of truth and supplies convenient CSV projections. This does not change the SQLite schema: optional raw fields live inside existing measurement JSON. Old sessions still export; missing historical values are not backfilled from current library versions or invented.
+Export format **3** keeps the saved JSON as the source of truth and supplies convenient CSV projections. This does not change the SQLite schema: optional raw fields live inside existing measurement JSON. Old sessions still export; missing historical values are not backfilled from current library versions or invented.
 
 ## Files
 
-Use **Export CSV** on a saved session to share all six files together:
+Use **Export CSV** on a saved session to share all seven files together:
 
 | File | Granularity / contents |
 | --- | --- |
-| `session.json` | Complete saved session/configuration, measurements, events and context, plus `exportFormatVersion: 2` |
+| `session.json` | Complete saved session/configuration, measurements, events and context, plus `exportFormatVersion: 3` |
 | `measurements.csv` | One row per attempt, including failures; flat summaries, context, embedded load-transfer values and the complete `rawRecordJson` |
 | `samples.csv` | One row per stored diagnostic sample, baseline HTTP sample or traceroute probe; includes missing replies and errors |
+| `packets.jsonl` | One full native packet-probe object per line, with session/measurement/sequence/hop keys; historical records without packet fields produce no lines |
 | `events.csv` | Session lifecycle, schedule gaps, failures and other saved events, including details/raw JSON |
 | `network-context.csv` | Context observations, their IDs/timestamps, connectivity, Wi-Fi and battery fields, plus full raw JSON |
 | `README.txt` | Units, missing-value and interpretation rules |
@@ -30,7 +31,7 @@ Use a Node version supporting TypeScript type stripping (the development environ
 | Columns | Meaning |
 | --- | --- |
 | `sessionId`, `measurementId`, `measurementType`, `method` | Join keys and measurement method |
-| `sampleGroup` | `probe`, `baseline`, or `traceroute`; HTTP baseline/loaded samples are transactions, not individual packets |
+| `sampleGroup` | `probe`, `baseline`, `traceroute`, or `reference_callback`; HTTP baseline/loaded samples are transactions, not individual packets |
 | `sequence` | Sample index supplied by our app/library, **not necessarily the ICMP header sequence**. Each Android single-ping process may reset its own header sequence. |
 | `measurementScheduledAt`, `measurementTimestamp`, `sampleTimestamp` | Scheduled/start wall-clock timestamps where stored; they are not kernel transmit timestamps |
 | `observedAtMs` | Native traceroute callback wall-clock time in Unix milliseconds, when available |
@@ -50,11 +51,16 @@ Use a Node version supporting TypeScript type stripping (the development environ
 
 ## What “raw” means here
 
-- **ICMP:** Callback fields (`rtt`, `ttl`, numeric `status`, `isEnded`) are retained verbatim, with application callback time and elapsed duration. The reproducible `ping-react-native+2.1.1.patch` additionally exposes Android command stdout/stderr when available. It reads through blank lines so command summaries are retained. Text line endings are normalized by the reader; this is not byte-for-byte packet capture. Some cancellation/native timeout paths may return no text. The JavaScript deadline cannot recreate native output it never received.
-- **Traceroute:** The bridge retains every public field of the pinned `ProbeResult` variant: variant name, sequence, remote, sizes, offender, microsecond elapsed time, reply TTL/data (Base64), error number/type/code/info or error string as applicable. The entire bridge response is saved before validation, including invalid responses. Specialized `HostUnreachable`/`ConnectionRefused` variants lack original ICMP type/code; no values are inferred from their names.
-- **UDP:** The raw observation log stores send requests with payload Base64, send confirmations and correlated replies with source endpoint, payload, duplicate/reordered indicators and callback times. Unrelated/nonmatching datagrams are not included. A 256-callback cap bounds duplicate storms and records `droppedCallbacks`; this is explicitly not an unlimited capture. The sample CSV retains every attempted sequence's outcome.
-- **TCP:** The connection request and terminal callback outcome are saved. These remain application callback observations, not TCP segment headers or SYN/SYN-ACK timestamps.
-- **HTTP and reference SDKs:** Existing measurements, nested latency samples and available reference metrics are preserved. This change does not add HTTP packet capture or a complete raw callback stream for SpeedChecker/NDT7.
+New Android sessions use the [native packet engine](packet-engine.md). The complete object returned by the adapter is stored in `packet`, without discarding unknown fields. Each burst/trace sample has its own object. `packets.jsonl` keeps observations and ancillary messages nested under their probe, including timeouts and errors. `session.json` remains authoritative for the entire session.
+
+- **ICMP:** Received ICMP message bytes, actual header type/code/checksum/identifier/sequence, payload, endpoint, TTL/hop-limit and timestamps where supplied. The send buffer precedes the kernel's identifier/checksum updates; it is explicitly labelled, not represented as captured wire bytes.
+- **Traceroute:** Original `sock_extended_err` errno/origin/type/code/info/data and offender, socket-associated quoted payload, TTL and timing. Only origins ICMP/ICMP6 populate ICMP fields. Intermediate Time Exceeded differs from Destination Unreachable. This is UDP traceroute, not Paris traceroute.
+- **UDP:** Exact send/received application payload hex and raw normal/error-queue observations. New native probes are sequential and do not estimate burst reordering/duplicates. Socket data omits outer IP/UDP headers.
+- **TCP:** Native connect duration plus before/after `TCP_INFO` including the returned struct bytes and supported parsed fields. Kernel smoothed RTT is distinct from connect duration. No TCP segments are captured.
+- **Reference tests:** NDT7 worker callbacks retain the original server message (including server-side TCP telemetry when provided); SpeedChecker listener callbacks retain primitive arguments and selected final public result fields. These are SDK observations, not handset packet captures or undocumented SDK internals. Each log is bounded to 256 callbacks and 262,144 serialized characters per direction/run, with `droppedCallbacks` reported.
+- **Historical/fallback results:** Prior shell-ping stdout/stderr, icmpenguin variants and JavaScript UDP/TCP callback logs remain exportable. Their missing packet fields stay blank; new captures cannot reconstruct old records.
+
+Additional packet columns include `packetOutcome`, `ipVersion`, local/remote endpoints, `icmpIdentifier`, `icmpSequence`, `icmpChecksum`, `socketErrno`, `errorOrigin`, raw buffer scopes/hex, received flags, `tcpKernelRttUs`, retransmissions, congestion window and `packetRawJson`. Nanosecond timestamps are decimal strings: import them as **text** in spreadsheets to avoid precision loss. Monotonic timestamps and kernel realtime timestamps use different clocks and must not be subtracted from each other. Buffers and ancillary data have explicit truncation indicators; excess observations have `droppedObservations`.
 
 Blank CSV fields mean missing/not applicable. Numeric zero and boolean false remain explicit. CSV quoting preserves commas, quotes and multiline text. Potential spreadsheet formulas receive an apostrophe prefix; JSON preserves the original string. A spreadsheet may impose its own cell-size limit, so retain `session.json` even when using the CSVs for analysis.
 
@@ -62,6 +68,6 @@ Blank CSV fields mean missing/not applicable. Numeric zero and boolean false rem
 
 Automated tests exercise raw callback retention, failure preservation, invalid traceroute responses, CSV round trips with multiline output, zero-versus-missing values, sample grouping and legacy records. Android compilation checks the native bridge and ping patch. A real export reconstructed from the synchronized September 28 session contains 76 measurement rows, 456 diagnostic sample rows (180 ICMP and 72 traceroute samples), 34 events and 14 context observations. Python’s CSV reader verified row structure and the full JSON was compared with its source. These historical records have no retroactive command output.
 
-New physical-device capture and multi-file sharing still require validation on the rebuilt app; an older installed APK cannot provide the new raw fields.
+Seven real loopback native tests pass on the Android 16/API 36.1 emulator, including IPv4/IPv6 ICMP and error queues, UDP echo/timeout, TCP_INFO, cancellation and bridge cleanup. New physical-device packet collection and multi-file sharing still require validation on the rebuilt app; an older installed APK cannot provide the new raw fields.
 
 For interpretation and library choices, see [the packet-measurement review](research/packet-measurement-review.md).

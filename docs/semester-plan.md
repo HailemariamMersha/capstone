@@ -1,5 +1,8 @@
 # Capstone Semester Plan
 
+**Packet-level update — 2026-09-29:** New Android sessions now default to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. See [current methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
+
+
 ## Crowdsourced Satellite Network Measurements on Moving Platforms
 
 ## 1. Project Goal
