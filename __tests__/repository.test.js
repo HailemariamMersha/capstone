@@ -374,3 +374,31 @@ test('large raw records sync intact in byte-bounded batches', async () => {
   expect(drained).toBe(3);
   expect((await store.getSyncBatch()).records).toHaveLength(0);
 });
+
+test('TCP attempts retain their own endpoint while old sessions use the HTTP endpoint', async () => {
+  for (const tcpServerUrl of ['https://google.com', undefined]) {
+    const session = await store.createSession({
+      ...config,
+      tcpEnabled: true,
+      ...(tcpServerUrl ? { tcpServerUrl } : {}),
+    });
+    const tcp = await store.beginAttempt(
+      session,
+      'tcp_connect',
+      new Date().toISOString(),
+    );
+    const http = await store.beginAttempt(
+      session,
+      'http_rtt',
+      new Date().toISOString(),
+    );
+    expect(tcp.probeServer).toBe(tcpServerUrl ?? config.serverUrl);
+    expect(http.probeServer).toBe(config.serverUrl);
+    expect(
+      (await store.exportSession(session)).measurements.find(
+        m => m.id === tcp.id,
+      ).probeServer,
+    ).toBe(tcp.probeServer);
+    await store.endSession(session, 'completed', 'test');
+  }
+});

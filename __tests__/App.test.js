@@ -118,9 +118,9 @@ test('starts and stops through the session controller and refreshes authoritativ
     {
       ...DEFAULT_SESSION_CONFIG,
       httpEnabled: false,
-      icmpHost: '1.1.1.1',
+      icmpHost: 'google.com',
       icmpBurstEnabled: true,
-      tracerouteHost: '1.1.1.1',
+      tracerouteHost: 'google.com',
     },
     undefined,
   );

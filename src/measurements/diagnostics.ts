@@ -17,13 +17,15 @@ export async function runDiagnostic(
       return runPacketTrace(attempt, config, signal);
     case 'icmp_burst':
       return runIcmpBurst(attempt, config.icmpHost!, config.timeoutMs, signal);
-    case 'tcp_connect':
+    case 'tcp_connect': {
+      const target = config.tcpServerUrl ?? config.serverUrl;
       return (Platform.OS === 'android' ? runPacketTcp : runTcpConnect)(
-        attempt,
-        config.serverUrl,
+        { ...attempt, probeServer: target },
+        target,
         config.timeoutMs,
         signal,
       );
+    }
     case 'udp_echo':
       return (Platform.OS === 'android' ? runPacketUdp : runUdpEcho)(
         attempt,

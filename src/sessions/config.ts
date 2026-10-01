@@ -26,6 +26,18 @@ export function validateSessionConfig(
     );
   }
   const probes = validateProbeConfig(config);
+  if (config.tcpServerUrl !== undefined) {
+    if (typeof config.tcpServerUrl !== 'string')
+      throw new Error('TCP target must be an HTTP(S) URL.');
+    // Reuse URL validation without changing the controlled HTTP endpoint.
+    config = {
+      ...config,
+      tcpServerUrl: validateProbeConfig({
+        ...config,
+        serverUrl: config.tcpServerUrl,
+      }).serverUrl,
+    };
+  }
   for (const [name, interval] of Object.entries({
     RTT: config.rttIntervalMs,
     download: config.downloadIntervalMs,

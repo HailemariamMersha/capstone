@@ -431,7 +431,10 @@ export function createRepository(
           httpStatus: null,
           requestedBytes: requestedPayload(type, config),
           transferredBytes: null,
-          probeServer: config.serverUrl,
+          probeServer:
+            type === 'tcp_connect'
+              ? config.tcpServerUrl ?? config.serverUrl
+              : config.serverUrl,
           probeRegion: null,
           networkSnapshot: null,
         };

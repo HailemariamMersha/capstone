@@ -11,6 +11,8 @@ export interface MeasurementConfig extends ProbeConfig {
   icmpHost?: string;
   icmpBurstEnabled?: boolean;
   tcpEnabled?: boolean;
+  /** Separate TCP endpoint; historical sessions fall back to serverUrl. */
+  tcpServerUrl?: string;
   udpHost?: string;
   udpPort?: number;
   loadedLatencyEnabled?: boolean;

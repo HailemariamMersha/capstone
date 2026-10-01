@@ -1,10 +1,10 @@
 import React from 'react';
-import { Button, TextInput } from 'react-native';
+import { Button, TextInput, Platform } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
 import SessionSettings from '../src/components/SessionSettings';
 
-test('custom sizes are saved as bytes and invalid edits cannot start a session', async () => {
+test('session saves independent targets and byte sizes, and rejects invalid edits', async () => {
   const start = jest.fn().mockResolvedValue(undefined);
   let renderer!: ReactTestRenderer;
   await act(async () => {
@@ -33,8 +33,45 @@ test('custom sizes are saved as bytes and invalid edits cannot start a session',
       await button().props.onPress();
     });
     expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({ downloadBytes: 2621440, uploadBytes: 2097152 }),
+      expect.objectContaining({
+        downloadBytes: 2621440,
+        uploadBytes: 2097152,
+        icmpHost: 'google.com',
+        tracerouteHost: Platform.OS === 'android' ? 'google.com' : '',
+      }),
     );
+    await act(async () => {
+      renderer.root
+        .findAllByType(Button)
+        .find(
+          n => n.props.title === 'TCP connection and kernel statistics: off',
+        )!
+        .props.onPress();
+      input('Probe server URL').props.onChangeText('http://127.0.0.1:9000');
+    });
+    await act(async () => {
+      await button().props.onPress();
+    });
+    expect(start).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tcpEnabled: true,
+        tcpServerUrl: 'https://google.com',
+        serverUrl: 'http://127.0.0.1:9000',
+      }),
+    );
+    start.mockClear();
+    await act(async () => {
+      input('TCP target URL').props.onChangeText(
+        'https://user:password@google.com',
+      );
+    });
+    await act(async () => {
+      await button().props.onPress();
+    });
+    expect(start).not.toHaveBeenCalled();
+    await act(async () => {
+      input('TCP target URL').props.onChangeText('https://google.com');
+    });
     start.mockClear();
     await act(async () => {
       input('Upload size (MiB)').props.onChangeText('');

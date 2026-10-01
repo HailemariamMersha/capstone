@@ -36,14 +36,15 @@ export default function SessionSettings({
   const [duration, setDuration] = useState('120');
   const [budget, setBudget] = useState('100');
   const [battery, setBattery] = useState('15');
-  const [icmpHost, setIcmpHost] = useState('1.1.1.1');
+  const [icmpHost, setIcmpHost] = useState('google.com');
   const [icmpBurstEnabled, setIcmpBurstEnabled] = useState(true);
   const [tcpEnabled, setTcpEnabled] = useState(false);
+  const [tcpServerUrl, setTcpServerUrl] = useState('https://google.com');
   const [loadedLatencyEnabled, setLoadedLatencyEnabled] = useState(false);
   const [udpHost, setUdpHost] = useState('');
   const [udpPort, setUdpPort] = useState('9876');
   const [tracerouteHost, setTracerouteHost] = useState(
-    Platform.OS === 'android' ? '1.1.1.1' : '',
+    Platform.OS === 'android' ? 'google.com' : '',
   );
   const [error, setError] = useState<string | null>(null);
   const fields = [
@@ -100,7 +101,7 @@ export default function SessionSettings({
         minimumBatteryPercent: Number(battery),
         icmpHost,
         icmpBurstEnabled,
-        ...(tcpEnabled ? { tcpEnabled } : {}),
+        ...(tcpEnabled ? { tcpEnabled, tcpServerUrl } : {}),
         ...(loadedLatencyEnabled ? { loadedLatencyEnabled } : {}),
         ...(udpHost.trim() ? { udpHost, udpPort: Number(udpPort) } : {}),
         tracerouteHost,
@@ -140,7 +141,7 @@ export default function SessionSettings({
             ![
               'Download interval (seconds)',
               'Upload interval (seconds)',
-              ...(tcpEnabled ? [] : ['Probe server URL']),
+              'Probe server URL',
             ].includes(field.label),
         )
         .sort(
@@ -230,8 +231,23 @@ export default function SessionSettings({
         disabled={disabled}
         onPress={() => setTcpEnabled(value => !value)}
       />
+      {tcpEnabled && (
+        <View>
+          <Text>TCP target URL</Text>
+          <TextInput
+            accessibilityLabel="TCP target URL"
+            style={styles.input}
+            value={tcpServerUrl}
+            onChangeText={setTcpServerUrl}
+            editable={!disabled}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+        </View>
+      )}
       <Text>
-        Connects to the probe server’s port every RTT interval. Records native
+        Connects to the TCP target’s port every RTT interval. Records native
         connect duration and available kernel RTT, retransmission and congestion
         statistics. Does not measure TLS.
       </Text>
