@@ -3,7 +3,7 @@ import {
   validateProbeConfig,
 } from '../measurements/config';
 import type { MeasurementConfig } from './types';
-export const MAX_SESSION_PAYLOAD_BYTES = 10 * 1024 * 1024 * 1024;
+export const MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024 * 1024;
 export const DEFAULT_SESSION_CONFIG: MeasurementConfig = {
   ...DEFAULT_PROBE_CONFIG,
   maxDurationMs: 2 * 60 * 60 * 1000,
