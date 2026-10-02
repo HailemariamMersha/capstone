@@ -170,7 +170,7 @@ Inspect Android service state with `adb shell dumpsys activity services com.labp
 
 ## Validation
 
-- The current packet engine passed seven real loopback tests on the Android API 36.1 emulator; the SDK-enabled build also passed consent rejection (nine native tests total, including the bundled app launch). Physical-network and endurance validation of this replacement are pending. See [current validation details](docs/packet-engine.md).
+- The packet engine passed all nine native checks on the physical Galaxy A34. A [two-minute Google-target phone run](docs/experiments/2026-10-03-google-phone.md) received 20/20 ICMP replies, connected TCP twice and reached Google at traceroute hop 10 with original ICMP type/code values preserved. All records synced and raw exports were verified. Long-run/locked-screen and satellite-path validation remain pending. See [current validation details](docs/packet-engine.md).
 
 - The earlier M2 emulator test verified two RTT/download/upload batches against local FastAPI, then three structured failures with the server stopped. All 13 backend contract tests passed.
 - Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection, version-one migration, export completeness, limits and acknowledged sync. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).
