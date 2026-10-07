@@ -51,7 +51,8 @@ export async function runLibraryIcmp(
       'completeIpPacketCapture',
       'kernelSendReceiveTimestamps',
       'kernelAssignedRequestIdentifier',
-      'icmpTypeCodeForSpecializedErrorVariants',
+      'icmpTypeForAllErrorVariants',
+      'observedReplySourceAddress',
     ],
   };
   let errorType: ProbeErrorType | null = null;
@@ -119,7 +120,6 @@ export async function runLibraryIcmp(
           receivedHex: bytes.toString('hex'),
           receivedScope: 'icmp_message_from_library',
           receivedSocketBytes: bytes.length,
-          responderAddress: row.remote,
           replyTtl: typeof native.ttl === 'number' ? native.ttl : undefined,
           matched: matches,
           correlation: 'sequence_payload_not_request_identifier',

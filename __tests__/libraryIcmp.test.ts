@@ -72,6 +72,7 @@ test('decodes actual reply bytes from the library and retains the complete callb
   });
   expect(result.raw!.callbacks).toHaveLength(1);
   expect(result.packet!.response!.kernelReceiveRealtimeNs).toBeUndefined();
+  expect(result.packet!.response!.responderAddress).toBeUndefined();
 });
 test('wrong payload fails correlation without discarding returned bytes', async () => {
   const result = await runLibraryIcmp(
