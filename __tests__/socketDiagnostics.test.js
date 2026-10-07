@@ -166,3 +166,31 @@ test('UDP retains matching payloads and explicitly bounds duplicate observations
   expect(received.payloadBase64).toBe(sent.payloadBase64);
   expect(received.remote).toEqual({ address: '192.0.2.1', port: 9876 });
 });
+
+test('TCP retains library endpoint and application counters without claiming kernel telemetry', async () => {
+  Object.assign(socket, {
+    localAddress: '192.0.2.2',
+    localPort: 4567,
+    remoteAddress: '192.0.2.1',
+    remotePort: 443,
+    remoteFamily: 'IPv4',
+    bytesRead: 0,
+    bytesWritten: 0,
+    readyState: 'open',
+  });
+  socket.connect.mockImplementation((_options, done) => done());
+  const result = await runTcpConnect(
+    attempt,
+    'https://192.0.2.1',
+    1000,
+    new AbortController().signal,
+  );
+  expect(result.raw.callbacks[0].value).toMatchObject({
+    localAddress: '192.0.2.2',
+    remoteAddress: '192.0.2.1',
+    remotePort: 443,
+    bytesRead: 0,
+  });
+  expect(result.raw.unavailable).toContain('tcpInfo');
+  expect(result.packet).toBeUndefined();
+});

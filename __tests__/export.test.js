@@ -162,7 +162,7 @@ test('empty sessions export headers and legacy results remain unchanged in JSON'
   expect(parseCsv(files.find(f => f.name === 'samples.csv').content)).toEqual(
     [],
   );
-  expect(files).toHaveLength(7);
+  expect(files).toHaveLength(8);
 });
 
 test('packet CSV and JSONL retain headers, precise timestamps and native observations', () => {
@@ -241,4 +241,50 @@ test('packet CSV and JSONL retain headers, precise timestamps and native observa
     hop: 1,
     packet,
   });
+});
+
+test('library JSONL preserves callbacks and unavailable fields from individual burst samples', () => {
+  const callback = {
+    observedAt: '2026-10-08T00:00:00Z',
+    elapsedMs: 5,
+    value: { result: { rawResult: { dataBase64: 'AAE=' } } },
+  };
+  const files = Object.fromEntries(
+    sessionExportFiles({
+      session: { id: 's' },
+      measurements: [
+        {
+          id: 'm',
+          sessionId: 's',
+          type: 'icmp_burst',
+          details: {
+            samples: [
+              {
+                sequence: 0,
+                raw: {
+                  library: 'icmpenguin',
+                  version: '1.0.0-rc.3',
+                  request: { host: '127.0.0.1' },
+                  callbacks: [callback],
+                  unavailable: ['kernelTimestamp'],
+                  droppedCallbacks: 2,
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }).map(f => [f.name, f.content]),
+  );
+  const rows = files['library-callbacks.jsonl']
+    .trim()
+    .split('\n')
+    .map(JSON.parse);
+  expect(rows[0]).toMatchObject({
+    sequence: 0,
+    kind: 'library_request',
+    droppedCallbacks: 2,
+    unavailable: ['kernelTimestamp'],
+  });
+  expect(rows[1]).toMatchObject({ kind: 'library_callback', ...callback });
 });

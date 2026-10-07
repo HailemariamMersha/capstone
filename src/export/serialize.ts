@@ -405,6 +405,48 @@ export interface ExportFile {
 export function sessionJson(data: Row): string {
   return JSON.stringify({ ...data, exportFormatVersion: 3 }, null, 2);
 }
+/** Preserve every retained library callback, including failures and nonmatching datagrams. */
+export function libraryCallbackJsonLines(measurements: Row[]): string {
+  const output: Row[] = [];
+  for (const m of measurements) {
+    const sources = [
+      { sequence: null as unknown, raw: m.raw },
+      ...rows(object(m.details).samples).map(s => ({
+        sequence: s.sequence,
+        raw: s.raw,
+      })),
+    ];
+    for (const source of sources) {
+      const raw = object(source.raw);
+      if (!Object.keys(raw).length) continue;
+      output.push({
+        sessionId: m.sessionId,
+        measurementId: m.id,
+        measurementType: m.type,
+        sequence: source.sequence,
+        kind: 'library_request',
+        library: raw.library,
+        version: raw.version,
+        source: raw.source,
+        request: raw.request,
+        unavailable: raw.unavailable,
+        droppedCallbacks: raw.droppedCallbacks ?? 0,
+      });
+      for (const callback of rows(raw.callbacks))
+        output.push({
+          sessionId: m.sessionId,
+          measurementId: m.id,
+          measurementType: m.type,
+          sequence: source.sequence,
+          kind: 'library_callback',
+          library: raw.library,
+          version: raw.version,
+          ...callback,
+        });
+    }
+  }
+  return output.map(row => JSON.stringify(row) + '\n').join('');
+}
 /** Raw JSON is authoritative; CSVs are convenient, explicitly versioned projections. */
 export function sessionExportFiles(data: Row): ExportFile[] {
   const measurements = rows(data.measurements),
@@ -417,6 +459,10 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     { name: 'measurements.csv', content: measurementCsv(measurements) },
     { name: 'samples.csv', content: sampleCsv(measurements) },
     { name: 'packets.jsonl', content: packetJsonLines(measurements) },
+    {
+      name: 'library-callbacks.jsonl',
+      content: libraryCallbackJsonLines(measurements),
+    },
     {
       name: 'events.csv',
       content: csv(
@@ -448,7 +494,7 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     },
     {
       name: 'README.txt',
-      content: `Capstone export format 3\n\nsession.json preserves the complete saved session, measurements, events and context.\npackets.jsonl contains each native probe observation without aggregation.\nCSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nNanosecond timestamps are strings: import them as text in spreadsheets.\nNative send buffers may be modified by the kernel; see sendBufferScope. Received bytes have an explicit receivedScope.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
+      content: `Capstone export format 3\n\nsession.json preserves the complete saved session, measurements, events and context.\npackets.jsonl contains each available decoded/native probe observation without aggregation.\nlibrary-callbacks.jsonl contains retained library requests, callbacks, unavailable fields and dropped counts. TCP/UDP callback timing is not kernel timing; TCP bytesRead/bytesWritten are application counters, not wire bytes.\nCSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nNanosecond timestamps are strings: import them as text in spreadsheets.\nNative send buffers may be modified by the kernel; see sendBufferScope. Received bytes have an explicit receivedScope.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
     },
   ];
 }
