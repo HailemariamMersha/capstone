@@ -157,8 +157,9 @@ export default function App() {
           <Text style={styles.eyebrow}>CAPSTONE · MEASUREMENT PROTOTYPE</Text>
           <Text style={styles.title}>Satellite network measurements</Text>
           <Text style={styles.description}>
-            Collect packet-level ICMP, traceroute, UDP and TCP observations. Raw
-            results and failed attempts are saved on this device.
+            Library comparison build: collect ICMP reply bytes, traceroute
+            results, UDP datagrams and TCP connection callbacks. Raw library
+            output and failed attempts are saved on this device.
           </Text>
           {!isMeasurementSupported && (
             <Text accessibilityRole="alert" style={styles.error}>

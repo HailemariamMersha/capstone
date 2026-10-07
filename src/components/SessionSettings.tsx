@@ -122,9 +122,9 @@ export default function SessionSettings({
     <View style={styles.panel}>
       <Text style={styles.title}>Packet measurement session</Text>
       <Text>
-        Collect ICMP replies and UDP traceroute responses, including packet
-        bytes and network errors. HTTP transfers are a separate optional
-        measurement.
+        Use available libraries to collect ICMP reply bytes, UDP datagrams and
+        per-hop traceroute results. Fields the libraries do not expose remain
+        unavailable. HTTP transfers are a separate optional measurement.
       </Text>
       <Button
         title={`HTTP measurements: ${httpEnabled ? 'on' : 'off'}`}
@@ -225,9 +225,7 @@ export default function SessionSettings({
         Each reply waits at most 2 seconds.
       </Text>
       <Button
-        title={`TCP connection and kernel statistics: ${
-          tcpEnabled ? 'on' : 'off'
-        }`}
+        title={`TCP connection: ${tcpEnabled ? 'on' : 'off'}`}
         disabled={disabled}
         onPress={() => setTcpEnabled(value => !value)}
       />
@@ -247,9 +245,10 @@ export default function SessionSettings({
         </View>
       )}
       <Text>
-        Connects to the TCP target’s port every RTT interval. Records native
-        connect duration and available kernel RTT, retransmission and congestion
-        statistics. Does not measure TLS.
+        Connects to the TCP target’s port every RTT interval. Timing includes
+        DNS resolution and library callback overhead. Saves socket addresses and
+        application byte counters. Kernel TCP statistics and TLS timing are
+        unavailable.
       </Text>
       <Text>UDP server IPv4 (blank disables)</Text>
       <TextInput

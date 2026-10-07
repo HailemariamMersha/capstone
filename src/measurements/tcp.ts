@@ -29,6 +29,7 @@ export async function runTcpConnect(
       'tcpSegments',
       'synRtt',
       'retransmissions',
+      'tcpInfo',
       'kernelSendReceiveTimestamps',
     ],
   };
@@ -53,6 +54,14 @@ export async function runTcpConnect(
           event: errorType ? 'failure' : 'connected',
           errorType,
           errorMessage,
+          localAddress: socket?.localAddress,
+          localPort: socket?.localPort,
+          remoteAddress: socket?.remoteAddress,
+          remotePort: socket?.remotePort,
+          remoteFamily: socket?.remoteFamily,
+          bytesRead: socket?.bytesRead,
+          bytesWritten: socket?.bytesWritten,
+          readyState: socket?.readyState,
         },
       });
       try {

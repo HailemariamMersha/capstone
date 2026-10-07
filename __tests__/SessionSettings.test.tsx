@@ -44,7 +44,7 @@ test('session saves independent targets and byte sizes, and rejects invalid edit
       renderer.root
         .findAllByType(Button)
         .find(
-          n => n.props.title === 'TCP connection and kernel statistics: off',
+          n => n.props.title === 'TCP connection: off',
         )!
         .props.onPress();
       input('Probe server URL').props.onChangeText('http://127.0.0.1:9000');

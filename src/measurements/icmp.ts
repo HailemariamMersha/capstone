@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { runPacketIcmp } from './packet';
+import { runLibraryIcmp } from './libraryIcmp';
 import { ICMP, ICMPStatus } from 'ping-react-native';
 import type { Measurement, RawProbeOutput } from './types';
 
@@ -11,7 +11,7 @@ export async function runIcmp(
   signal: AbortSignal,
 ): Promise<Measurement> {
   if (Platform.OS === 'android')
-    return runPacketIcmp(attempt, host, timeoutMs, signal);
+    return runLibraryIcmp(attempt, host, timeoutMs, signal);
   const started = performance.now();
   const raw: RawProbeOutput = {
     library: 'ping-react-native',

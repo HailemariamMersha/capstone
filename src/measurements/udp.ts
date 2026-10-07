@@ -221,6 +221,19 @@ export async function runUdpEcho(
         'message',
         (message: Buffer, remote: { address: string; port: number }) => {
           if (finished) return;
+          const matchesEndpoint =
+            remote.address === host && remote.port === port;
+          if (!matchesEndpoint || message.length !== UDP_PACKET_BYTES) {
+            observe({
+              event: 'unmatched_datagram',
+              remote: { ...remote },
+              payloadBytes: message.length,
+              payloadBase64: Buffer.from(message.subarray(0, 2048)).toString(
+                'base64',
+              ),
+              payloadTruncated: message.length > 2048,
+            });
+          }
           if (
             finished ||
             remote.address !== host ||
@@ -233,6 +246,13 @@ export async function runUdpEcho(
           const sequence = Number(text.slice(41, 45));
           const info = sent.get(sequence);
           if (!info || !message.equals(udpPacket(nonce, sequence))) {
+            observe({
+              event: 'uncorrelated_datagram',
+              remote: { ...remote },
+              payloadBytes: message.length,
+              payloadBase64: message.toString('base64'),
+              payloadTruncated: false,
+            });
             return;
           }
           observe({
