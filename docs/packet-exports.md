@@ -1,3 +1,5 @@
+> **Library comparison addition:** format-3 exports now also include `library-callbacks.jsonl`, retaining requests, raw callbacks, unavailable-field declarations and dropped counts. The existing files remain compatible. See [library comparison](library-packet-comparison.md).
+
 # Probe-level exports
 
 Export format **3** keeps the saved JSON as the source of truth and supplies convenient CSV projections. This does not change the SQLite schema: optional raw fields live inside existing measurement JSON. Old sessions still export; missing historical values are not backfilled from current library versions or invented.

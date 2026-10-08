@@ -1,3 +1,5 @@
+> **Branch note:** The custom-engine material below documents the preserved baseline. This branch uses available libraries instead; see [the current library comparison](library-packet-comparison.md) for implementation, missing fields, and the correction to `icmpenguin` error-field interpretation.
+
 # Android packet measurement engine
 
 New sessions started from the app default to ICMP bursts and UDP traceroute targeting `google.com`. TCP remains opt-in, with a separate **TCP target URL** defaulting to `https://google.com` (port 443, without HTTP or TLS traffic). The controlled HTTP server remains `http://127.0.0.1:8000`; UDP echo requires an explicitly configured server. Resumed sessions keep their saved targets; historical sessions without `tcpServerUrl` use their saved HTTP endpoint for TCP. HTTP measurements are opt-in. The scheduled packet tests use actual Android/Linux sockets, not `fetch`; packet-only context collection does not contact the HTTP context endpoint. Export and deferred sync work as before. Older saved configurations without `httpEnabled` retain their original HTTP schedule.

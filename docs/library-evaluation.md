@@ -1,3 +1,5 @@
+> **Branch note:** The custom-engine material below documents the preserved baseline. This branch uses available libraries instead; see [the current library comparison](library-packet-comparison.md) for implementation, missing fields, and the correction to `icmpenguin` error-field interpretation.
+
 # Library evaluation — 2026-09-26
 
 **Current implementation update — 2026-09-29:** Android ICMP, UDP, TCP and traceroute now use the repository-owned [packet engine](packet-engine.md). `icmpenguin` was removed. The React Native ping/TCP/UDP packages remain for non-Android fallbacks; iOS is unvalidated. HTTP is opt-in for new UI sessions. The table below records the earlier shortlist assessment.

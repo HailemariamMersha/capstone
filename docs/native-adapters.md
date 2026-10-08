@@ -1,3 +1,5 @@
+> **Branch note:** The custom-engine material below documents the preserved baseline. This branch uses available libraries instead; see [the current library comparison](library-packet-comparison.md) for implementation, missing fields, and the correction to `icmpenguin` error-field interpretation.
+
 # Android traceroute and SpeedChecker adapters
 
 A native adapter is a small platform bridge: TypeScript calls an Android library and receives structured results. The UI, scheduling, interpretation, SQLite, export and sync remain shared React Native code. These two Android bridges are the explicitly requested exception to the original library-only plan. Future iOS support requires equivalent adapters; the rest of the application remains reusable.
