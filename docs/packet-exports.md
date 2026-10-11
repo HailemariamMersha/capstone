@@ -6,7 +6,7 @@ Export format **3** keeps the saved JSON as the source of truth and supplies con
 
 ## Files
 
-Use **Export CSV** on a saved session to share all seven files together:
+Use **Export CSV** on a saved session to share all eight files together:
 
 | File | Granularity / contents |
 | --- | --- |
@@ -14,6 +14,7 @@ Use **Export CSV** on a saved session to share all seven files together:
 | `measurements.csv` | One row per attempt, including failures; flat summaries, context, embedded load-transfer values and the complete `rawRecordJson` |
 | `samples.csv` | One row per stored diagnostic sample, baseline HTTP sample or traceroute probe; includes missing replies and errors |
 | `packets.jsonl` | One full native packet-probe object per line, with session/measurement/sequence/hop keys; historical records without packet fields produce no lines |
+| `library-callbacks.jsonl` | Retained library requests and callbacks, unavailable declarations and dropped counts; not one line per network packet |
 | `events.csv` | Session lifecycle, schedule gaps, failures and other saved events, including details/raw JSON |
 | `network-context.csv` | Context observations, their IDs/timestamps, connectivity, Wi-Fi and battery fields, plus full raw JSON |
 | `README.txt` | Units, missing-value and interpretation rules |
@@ -27,6 +28,14 @@ node --experimental-strip-types scripts/export-session.mjs /path/to/session.json
 ```
 
 Use a Node version supporting TypeScript type stripping (the development environment uses Node 26). The CLI uses the same serializer as the phone. It writes derived files only; it does not contact a server or run probes.
+
+## Complete dictionary and readable analysis
+
+Start with the [measurement guide](measurements/guide.md), [every-column dictionary](measurements/columns.md), [annotated rows](measurements/examples.md), and [library/native requirements audit](measurements/comparison.md). The Mac analysis command produces six focused CSVs and sanity-check reports without changing the phone export.
+
+```sh
+npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis-directory
+```
 
 ## Sample dictionary
 
@@ -53,7 +62,7 @@ Use a Node version supporting TypeScript type stripping (the development environ
 
 ## What “raw” means here
 
-New Android sessions use the [native packet engine](packet-engine.md). The complete object returned by the adapter is stored in `packet`, without discarding unknown fields. Each burst/trace sample has its own object. `packets.jsonl` keeps observations and ancillary messages nested under their probe, including timeouts and errors. `session.json` remains authoritative for the entire session.
+The preserved custom baseline uses the [native packet engine](packet-engine.md). Current Android sessions on this branch use [library adapters](library-packet-comparison.md); their available bytes and callbacks follow the same format. The native-only fields below apply to baseline records, not to every new library record. The complete object returned by the adapter is stored in `packet`, without discarding unknown fields. Each burst/trace sample has its own object. `packets.jsonl` keeps observations and ancillary messages nested under their probe, including timeouts and errors. `session.json` remains authoritative for the entire session.
 
 - **ICMP:** Received ICMP message bytes, actual header type/code/checksum/identifier/sequence, payload, endpoint, TTL/hop-limit and timestamps where supplied. The send buffer precedes the kernel's identifier/checksum updates; it is explicitly labelled, not represented as captured wire bytes.
 - **Traceroute:** Original `sock_extended_err` errno/origin/type/code/info/data and offender, socket-associated quoted payload, TTL and timing. Only origins ICMP/ICMP6 populate ICMP fields. Intermediate Time Exceeded differs from Destination Unreachable. This is UDP traceroute, not Paris traceroute.
@@ -70,6 +79,6 @@ Blank CSV fields mean missing/not applicable. Numeric zero and boolean false rem
 
 Automated tests exercise raw callback retention, failure preservation, invalid traceroute responses, CSV round trips with multiline output, zero-versus-missing values, sample grouping and legacy records. Android compilation checks the native bridge and ping patch. A real export reconstructed from the synchronized September 28 session contains 76 measurement rows, 456 diagnostic sample rows (180 ICMP and 72 traceroute samples), 34 events and 14 context observations. Python’s CSV reader verified row structure and the full JSON was compared with its source. These historical records have no retroactive command output.
 
-Seven real loopback native tests pass on the Android 16/API 36.1 emulator, including IPv4/IPv6 ICMP and error queues, UDP echo/timeout, TCP_INFO, cancellation and bridge cleanup. New physical-device packet collection and multi-file sharing still require validation on the rebuilt app; an older installed APK cannot provide the new raw fields.
+Seven real loopback native tests pass on the Android 16/API 36.1 emulator, including IPv4/IPv6 ICMP and error queues, UDP echo/timeout, TCP_INFO, cancellation and bridge cleanup. Physical-device packet collection was subsequently exercised in the [custom one-hour run](experiments/2026-10-07-custom-engine-one-hour.md) and [library smoke run](experiments/2026-10-08-library-smoke.md). Their different durations/methods do not establish comparative reliability.
 
 For interpretation and library choices, see [the packet-measurement review](research/packet-measurement-review.md).

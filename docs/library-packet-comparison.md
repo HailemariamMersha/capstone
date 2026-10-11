@@ -43,3 +43,7 @@ The custom October 7 run's 244 measurements and 1,026 native probe records are d
 ## Physical verification
 
 The [8 October phone smoke test](experiments/2026-10-08-library-smoke.md) completed all 12 scheduled measurements, synced and exported the results. ICMP returned 20/20 replies with actual header/payload bytes; traceroute reached Google; TCP and HTTP succeeded. UDP echo still timed out on the controlled Wi-Fi path. The short run does not replace a matched one-hour comparison.
+
+## Measurement interpretation audit
+
+The [requirements audit](measurements/comparison.md) separates basic metrics, per-probe evidence and native kernel telemetry. The [guide](measurements/guide.md) and [complete column dictionary](measurements/columns.md) explain row types, units, source limitations and offline sanity checks for both saved experiments.

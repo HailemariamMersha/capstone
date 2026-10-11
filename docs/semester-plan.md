@@ -1,6 +1,6 @@
 # Capstone Semester Plan
 
-**Packet-level update — 2026-09-29:** New Android sessions now default to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. See [current methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
+**Implementation status — 2026-10-12:** This library comparison branch uses icmpenguin for Android ICMP/traceroute and React Native socket libraries for TCP/UDP. The custom Linux-socket engine and TCP_INFO baseline are preserved on `experiment/custom-packet-engine`. HTTP remains opt-in. Both use format-3 exports, but their available fields differ. See the [measurement guide and requirements audit](measurements/comparison.md). The original semester requirements below are retained as planning history where implementations differ.
 
 
 ## Crowdsourced Satellite Network Measurements on Moving Platforms

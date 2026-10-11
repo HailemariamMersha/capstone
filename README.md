@@ -6,6 +6,14 @@ An Android capstone for measuring network performance during flights and other m
 
 The semester milestones are in the [full semester plan](docs/semester-plan.md). The [packet-engine update](docs/packet-engine.md) records the subsequently requested packet-level methods and replaces the earlier HTTP-first collection defaults.
 
+## Understand the collected data
+
+Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md), and [library versus native audit](docs/measurements/comparison.md). Generate six readable measurement CSVs and sanity-check reports from a saved JSON export:
+
+```sh
+npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis-directory
+```
+
 ## Architecture
 
 **Cross-platform by default; use React Native libraries for operating-system integration.**
