@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "reference:bundle": "node scripts/build-ndt7-assets.cjs",
     "reference:test-browser": "node scripts/test-ndt7-browser.cjs",
-    "postinstall": "patch-package --error-on-fail && npm run reference:bundle"
+    "postinstall": "patch-package --error-on-fail && npm run reference:bundle",
+    "measurements:analyze": "node --experimental-strip-types scripts/measurements/analyze.cjs",
+    "measurements:docs": "node scripts/measurements/dictionary.cjs"
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "2.40.3",

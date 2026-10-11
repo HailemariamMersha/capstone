@@ -1,0 +1,2178 @@
+{
+  "schemaVersion": 1,
+  "notation": "m=measurement; s=sample; p=s.packet ?? m.packet; r=p.response; raw=s.raw ?? m.raw; n=associated context. Packet projection overrides sample fields even when a packet property is absent; see src/export/serialize.ts.",
+  "fields": {
+    "id": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Saved record identifier; join key, not a packet identifier.",
+      "source": "m.id / event.id",
+      "example": "measurement-example",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "events.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sessionId": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Owning session identifier.",
+      "source": "m.sessionId / session.id",
+      "example": "session-example",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "events.csv",
+        "network-context.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "type": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Measurement category; determines the interpretation of value and unit.",
+      "source": "m.type",
+      "example": "icmp_burst",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "method": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Implementation and timing method recorded when collected.",
+      "source": "m.method",
+      "example": "native_tcp_connect_and_info",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "targetHost": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Configured host for this measurement; not necessarily the observed reply source.",
+      "source": "m.targetHost",
+      "example": "google.com",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "state": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Persisted attempt lifecycle state; complete can include failed probes.",
+      "source": "m.state",
+      "example": "complete",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "unit": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Unit for value; inspect type and method before comparing values.",
+      "source": "m.unit",
+      "example": "ms",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "errorType": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Normalized application failure category; timeout does not prove network outage.",
+      "source": "m.errorType / s.errorType",
+      "example": "timeout",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "errorMessage": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Diagnostic text associated with failure; not a machine-stable code.",
+      "source": "m.errorMessage / s.errorMessage",
+      "example": "No reply before deadline",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "probeServer": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Configured probe URL or host; may be a USB-forwarded local endpoint.",
+      "source": "m.probeServer",
+      "example": "http://127.0.0.1:8000",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "probeRegion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Server-reported region label, if supplied.",
+      "source": "m.probeRegion",
+      "example": "local",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "library": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Recorded provider; can name the custom engine. Sample provenance may exist when parent is blank.",
+      "source": "m.raw.library ?? m.route.library; sample raw.library ?? m.raw.library ?? m.route.library",
+      "example": "icmpenguin",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "libraryVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Version recorded at collection; never backfill using today's installation.",
+      "source": "raw.version / m.route.version",
+      "example": "1.0.0-rc.3",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "rawSource": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Recorded callback or observation mechanism.",
+      "source": "raw.source",
+      "example": "native_socket_observation",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "routeStopReason": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Why the traceroute stopped; reaching a limit differs from reaching the destination.",
+      "source": "m.route.stopReason",
+      "example": "reached",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "networkSnapshotId": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "ID joining the associated context row; samples reuse the parent's context.",
+      "source": "m.networkSnapshot.id / n.id",
+      "example": "context-example",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "networkType": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Access interface category, not satellite service identification.",
+      "source": "n.type",
+      "example": "wifi",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "ssid": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Wi-Fi network name, permission dependent.",
+      "source": "n.ssid",
+      "example": "example-wifi",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "bssid": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Wi-Fi access point identifier, permission dependent.",
+      "source": "n.bssid",
+      "example": "02:00:00:00:00:01",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "publicIp": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Public address from optional server context lookup; unrelated to socket local address.",
+      "source": "n.publicIp",
+      "example": "203.0.113.5",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "contextError": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Context lookup diagnostic; missing public context is possible on local-only runs.",
+      "source": "n.contextError",
+      "example": "unavailable",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["network-context.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "measurementId": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Parent measurement join key.",
+      "source": "m.id",
+      "example": "measurement-example",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "measurementType": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Parent measurement category.",
+      "source": "m.type",
+      "example": "tcp_connect",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sampleGroup": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "probe, baseline, traceroute, or reference_callback; identifies sample role.",
+      "source": "exporter sample loop",
+      "example": "probe",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "http-latency-samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "responderAddress": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Reported responder. Historical icmpenguin ICMP rows incorrectly reused target address; do not trust as observed source.",
+      "source": "s.address; overridden by r.responderAddress when packet exists",
+      "example": "192.0.2.1",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "icmp.csv", "traceroute.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "remote": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Library configured/resolved target address; not a separately observed reply source.",
+      "source": "s.remote",
+      "example": "203.0.113.10",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "outcome": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Normalized result or trace kind. Library HostUnreachable is ambiguous, not proof of failed route.",
+      "source": "Legacy sample: s.kind or s.errorType/reply/unavailable; focused TCP/HTTP: m.errorType or success/unavailable.",
+      "example": "time_exceeded",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "nativeVariant": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Exact icmpenguin result class; may not match original ICMP error type.",
+      "source": "s.rawResult.variant",
+      "example": "HostUnreachable",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "traceroute.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "nativeStatus": {
+      "datatype": "integer",
+      "units": "library status enum",
+      "meaning": "Last ping-react-native callback status: ECHO=2, ECHOING=1, TIMEDOUT=0; negative values are failures. Preserve library enum semantics.",
+      "source": "raw.callbacks[last].value.status",
+      "example": 2,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Legacy/fallback ping-react-native callbacks only."
+    },
+    "rawStdout": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Retained ping command output text with normalized line endings; not packet bytes.",
+      "source": "raw.callbacks[last].value.rawStdout",
+      "example": "1 packets transmitted",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Legacy/fallback ping-react-native callbacks only."
+    },
+    "rawStderr": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Retained command diagnostic text, not packet bytes.",
+      "source": "raw.callbacks[last].value.rawStderr",
+      "example": "ping: unreachable",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Legacy/fallback ping-react-native callbacks only."
+    },
+    "packetOutcome": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Outcome in the packet observation, distinct from application success.",
+      "source": "p.outcome",
+      "example": "icmp_error",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "localAddress": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Address bound to the probe socket; private addresses are valid.",
+      "source": "p.localAddress",
+      "example": "192.0.2.2",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "tcp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "targetAddress": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Resolved destination from packet object; not a router's address.",
+      "source": "p.targetAddress ?? p.resolvedAddress",
+      "example": "203.0.113.10",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "tcp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sendBufferScope": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Meaning of transmitted buffer: payload or ICMP message before kernel edits.",
+      "source": "p.sendBufferScope",
+      "example": "udp_payload",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "receivedScope": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Meaning of received bytes: ICMP message, datagram payload or error-queue quotation.",
+      "source": "r.receivedScope",
+      "example": "error_queue_original_payload",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "kind": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Saved event category; details are category dependent.",
+      "source": "event.kind",
+      "example": "schedule_gap",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["events.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "scheduledAt": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Nominal scheduled wall-clock time, not actual transmission.",
+      "source": "m.scheduledAt",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "timestamp": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Record wall-clock timestamp; measurement timestamp is method-specific operation start.",
+      "source": "m.timestamp / event.timestamp / n.timestamp",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "events.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "measurementScheduledAt": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Parent nominal scheduled time.",
+      "source": "m.scheduledAt",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "measurementTimestamp": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Parent measurement start timestamp.",
+      "source": "m.timestamp",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sampleTimestamp": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Sample start or callback timestamp depending on group; not kernel transmission.",
+      "source": "s.timestamp / callback.observedAt",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "publicIpObservedAt": {
+      "datatype": "ISO-8601 string",
+      "units": "UTC",
+      "meaning": "Time of context lookup attempt; may exist even when publicIp is absent.",
+      "source": "n.publicIpObservedAt",
+      "example": "2026-10-07T17:15:34.501Z",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["network-context.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "success": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Method-specific success; a burst can succeed with some missing replies.",
+      "source": "m.success",
+      "example": true,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "http.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "routeReached": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Traceroute destination was classified as reached.",
+      "source": "m.route.reached",
+      "example": true,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "traceroute.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "isConnected": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Interface connection state; not proof of end-to-end reachability.",
+      "source": "n.isConnected",
+      "example": true,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "isInternetReachable": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "NetInfo reachability estimate, nullable.",
+      "source": "n.isInternetReachable",
+      "example": true,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "isCharging": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Device charging state at context collection.",
+      "source": "n.isCharging",
+      "example": true,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "value": {
+      "datatype": "number",
+      "units": "unit column",
+      "meaning": "Primary result: HTTP/ICMP latency, TCP connection duration, Mbps for transfers, or reached hop for trace.",
+      "source": "m.value",
+      "example": 16.945,
+      "calculation": "HTTP RTT: elapsed full transaction ms; ICMP/UDP burst and loaded latency: summary medianMs; TCP: connect duration; transfer: 8*transferredBytes/(durationMs*1000); trace: reachedHop if successful.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "durationMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Total operation/sample duration; may include resolution, adapter, waiting or preparation overhead. Not automatically RTT.",
+      "source": "m.durationMs / s.durationMs",
+      "example": 40.495,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "requestedBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Reserved/configured application payload allowance; burst estimates are not observed wire traffic.",
+      "source": "m.requestedBytes",
+      "example": 52428800,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "http.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "transferredBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Counted application transfer bytes; excludes protocol overhead and may be absent for probes.",
+      "source": "m.transferredBytes",
+      "example": 52428800,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "http.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "httpStatus": {
+      "datatype": "integer",
+      "units": "HTTP status code",
+      "meaning": "HTTP response status when recorded.",
+      "source": "m.httpStatus",
+      "example": 200,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "http.csv"],
+      "applicableRows": "HTTP transactions/transfers or loaded HTTP tests."
+    },
+    "ttl": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Legacy single-ping reported reply TTL; not outgoing TTL.",
+      "source": "m.ttl",
+      "example": 114,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sampleCount": {
+      "datatype": "integer",
+      "units": "samples",
+      "meaning": "Number of details.samples or route.samples; excludes baselineSamples.",
+      "source": "length(m.details.samples ?? m.route.samples)",
+      "example": 10,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "replyCount": {
+      "datatype": "integer",
+      "units": "samples",
+      "meaning": "Count of valid nonnegative finite RTT samples in summary, not number of packets at all layers.",
+      "source": "m.details.summary.replies",
+      "example": 10,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Diagnostic/loaded-test summaries; TCP summary values represent connection time."
+    },
+    "medianMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Median of valid sample RTT values; TCP samples instead hold connect durations.",
+      "source": "m.details.summary.medianMs",
+      "example": 16.945,
+      "calculation": "Sort finite nonnegative RTTs; middle value or mean of two middle values.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Diagnostic/loaded-test summaries; TCP summary values represent connection time."
+    },
+    "p95Ms": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Nearest-rank 95th percentile of valid sample values.",
+      "source": "m.details.summary.p95Ms",
+      "example": 50.722,
+      "calculation": "Sort finite nonnegative RTTs; value at ceil(0.95*n)-1 (zero-based).",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Diagnostic/loaded-test summaries; TCP summary values represent connection time."
+    },
+    "successiveDifferenceMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Mean absolute difference of adjacent successful sequence values; no bridging across failed samples. Not RFC 3550 jitter.",
+      "source": "m.details.summary.successiveDifferenceMs",
+      "example": 9.905,
+      "calculation": "Mean(abs(b.rttMs-a.rttMs)) over consecutive stored samples with non-null RTT and b.sequence=a.sequence+1; null if no pair.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Diagnostic/loaded-test summaries; TCP summary values represent connection time."
+    },
+    "nonResponsePercent": {
+      "datatype": "number",
+      "units": "percent",
+      "meaning": "ICMP missing replies in a complete burst with valid outcomes; not a diagnosis of physical packet loss.",
+      "source": "m.details.nonResponsePercent",
+      "example": 10,
+      "calculation": "100*(requestedCount-summary.replies)/requestedCount, only complete ICMP bursts with reply/timeout outcomes.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Completed ICMP bursts with valid reply/timeout outcomes."
+    },
+    "lossPercent": {
+      "datatype": "number",
+      "units": "percent",
+      "meaning": "UDP missing matching replies for a completed burst, relative to sentCount.",
+      "source": "m.details.lossPercent",
+      "example": 100,
+      "calculation": "100*(sentCount-summary.replies)/sentCount, only complete UDP bursts with valid sent count.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "UDP echo burst summaries; duplicate/reorder counters only where implemented."
+    },
+    "sentCount": {
+      "datatype": "integer",
+      "units": "probes",
+      "meaning": "UDP sends counted by implementation; send acknowledgement is not remote delivery.",
+      "source": "m.details.sentCount",
+      "example": 20,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "UDP echo burst summaries; duplicate/reorder counters only where implemented."
+    },
+    "duplicateCount": {
+      "datatype": "integer",
+      "units": "datagrams",
+      "meaning": "Extra matching UDP replies counted by library implementation; native sequential engine does not estimate this.",
+      "source": "m.details.duplicateCount",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "UDP echo burst summaries; duplicate/reorder counters only where implemented."
+    },
+    "reorderedCount": {
+      "datatype": "integer",
+      "units": "datagrams",
+      "meaning": "Matching UDP replies arriving out of expected sequence under the library burst method.",
+      "source": "m.details.reorderedCount",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "UDP echo burst summaries; duplicate/reorder counters only where implemented."
+    },
+    "targetPort": {
+      "datatype": "integer",
+      "units": "port",
+      "meaning": "Configured destination port from details; trace packet port may instead appear in packetTargetPort.",
+      "source": "m.details.targetPort",
+      "example": 443,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "reachedHop": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Hop limit at which the destination was reached, not physical link count.",
+      "source": "m.route.reachedHop",
+      "example": 11,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "traceroute.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "loadTransferredBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Application bytes for the embedded loaded-latency transfer.",
+      "source": "m.details.load.transferredBytes",
+      "example": 52428800,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Loaded HTTP latency tests only."
+    },
+    "loadMbps": {
+      "datatype": "number",
+      "units": "Mbit/s",
+      "meaning": "Embedded transfer throughput using its own timed transfer duration.",
+      "source": "m.details.load.value",
+      "example": 258.585,
+      "calculation": "8*details.load.transferredBytes/(details.load.durationMs*1000).",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "Loaded HTTP latency tests only."
+    },
+    "signalStrength": {
+      "datatype": "integer",
+      "units": "0\u2013100 scale",
+      "meaning": "NetInfo Wi-Fi strength, not dBm or satellite RF signal strength.",
+      "source": "n.signalStrength <- NetInfo.details.strength",
+      "example": 99,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "batteryPercent": {
+      "datatype": "integer",
+      "units": "percent",
+      "meaning": "Device battery fraction multiplied by 100 and rounded.",
+      "source": "n.batteryPercent <- device-info",
+      "example": 100,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "asn": {
+      "datatype": "integer",
+      "units": "ASN",
+      "meaning": "Server-enriched autonomous system number, if available.",
+      "source": "n.asn",
+      "example": 64500,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sequence": {
+      "datatype": "integer",
+      "units": "index",
+      "meaning": "Application/library sample index; not necessarily the ICMP header sequence. Reference callback indices are export-generated.",
+      "source": "s.sequence / callback index",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "observedAtMs": {
+      "datatype": "number",
+      "units": "Unix ms",
+      "meaning": "Native traceroute callback wall-clock observation time, not RTT.",
+      "source": "s.observedAtMs",
+      "example": 1791393367612,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "hop": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Traceroute outgoing hop limit for this probe.",
+      "source": "s.hop",
+      "example": 1,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "traceroute.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "probeTtl": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Outgoing TTL/hop limit: trace hop, raw request TTL or packet override.",
+      "source": "s.hop / raw.request.ttl / p.probeTtl",
+      "example": 64,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "icmp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "replyTtl": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Received packet TTL/hop limit, when exposed. Never infer from probeTtl.",
+      "source": "s.ttl / s.rawResult.ttl / r.replyTtl",
+      "example": 114,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "icmp.csv", "traceroute.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "rttMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Probe response elapsed time; for TCP this legacy column holds connection duration, and for HTTP full-transaction latency.",
+      "source": "s.rttMs",
+      "example": 8.747,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "samples.csv",
+        "icmp.csv",
+        "traceroute.csv",
+        "udp.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "icmpType": {
+      "datatype": "integer",
+      "units": "protocol code",
+      "meaning": "Original ICMP type when decoded from reply bytes or native error queue; library error class is not a substitute.",
+      "source": "s.icmpType / r.icmpType",
+      "example": 11,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "icmp.csv", "traceroute.csv"],
+      "applicableRows": "Actual ICMP messages or native ICMP error-queue observations; not inferred library error labels."
+    },
+    "icmpCode": {
+      "datatype": "integer",
+      "units": "protocol code",
+      "meaning": "Original ICMP subtype when available; interpret with type and IP version.",
+      "source": "s.icmpCode / r.icmpCode",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv", "icmp.csv", "traceroute.csv"],
+      "applicableRows": "Actual ICMP messages or native ICMP error-queue observations; not inferred library error labels."
+    },
+    "probeBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Sample-reported probe size or request.packetSize. ICMP payload and full-message size differ; native samples can be blank despite p.payloadBytes.",
+      "source": "s.probeBytes ?? raw.request.packetSize",
+      "example": 64,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "overheadBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Library/adapter reported protocol overhead estimate; not measured carrier traffic.",
+      "source": "s.overheadBytes",
+      "example": 28,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "elapsedUsec": {
+      "datatype": "number",
+      "units": "microseconds",
+      "meaning": "Library elapsed time, when exposed directly on trace result; icmpenguin uses wall-clock based timing.",
+      "source": "s.rawResult.elapsedUsec",
+      "example": 2130,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "errno": {
+      "datatype": "integer",
+      "units": "OS error code",
+      "meaning": "Native library errno on a trace result; not necessarily an ICMP type.",
+      "source": "s.rawResult.errNo",
+      "example": 113,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "errorInfo": {
+      "datatype": "integer",
+      "units": "kernel value",
+      "meaning": "Library errInfo or native extended-error info; interpretation depends on error (e.g. MTU).",
+      "source": "s.rawResult.errInfo / r.extendedError.info",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "nativeRttMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Unmodified last ping callback RTT; negative failure sentinels may occur.",
+      "source": "raw.callbacks[last].value.rtt",
+      "example": 8.7,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Legacy/fallback ping-react-native callbacks only."
+    },
+    "nativeReplyTtl": {
+      "datatype": "integer",
+      "units": "hops",
+      "meaning": "Unmodified last ping callback reply TTL; failure sentinels may occur.",
+      "source": "raw.callbacks[last].value.ttl",
+      "example": 114,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Legacy/fallback ping-react-native callbacks only."
+    },
+    "ipVersion": {
+      "datatype": "integer",
+      "units": "version",
+      "meaning": "IP version of packet observation: 4 or 6.",
+      "source": "p.ipVersion",
+      "example": 4,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "localPort": {
+      "datatype": "integer",
+      "units": "port or identifier",
+      "meaning": "Local socket port; Linux ICMP datagram socket may use it as echo identifier.",
+      "source": "p.localPort",
+      "example": 6543,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "tcp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "packetTargetPort": {
+      "datatype": "integer",
+      "units": "port",
+      "meaning": "Destination port in packet object; zero can denote ICMP, not a TCP port.",
+      "source": "p.targetPort",
+      "example": 33434,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sentSocketBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "send syscall bytes accepted, including ICMP header where applicable; excludes outer IP headers.",
+      "source": "p.sentSocketBytes",
+      "example": 72,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "udp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "receivedSocketBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "recvmsg byte count; zero is valid for an error-queue observation with no quoted payload.",
+      "source": "r.receivedSocketBytes",
+      "example": 72,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "samples.csv",
+        "icmp.csv",
+        "udp.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "icmpIdentifier": {
+      "datatype": "integer",
+      "units": "uint16",
+      "meaning": "Echo identifier decoded from the received ICMP header.",
+      "source": "r.icmpIdentifier",
+      "example": 6543,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "icmp.csv"],
+      "applicableRows": "Received ICMP headers; echo identifier/sequence apply to echo messages."
+    },
+    "icmpSequence": {
+      "datatype": "integer",
+      "units": "uint16",
+      "meaning": "Sequence decoded from ICMP echo header; separate from app sequence.",
+      "source": "r.icmpSequence",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "icmp.csv"],
+      "applicableRows": "Received ICMP headers; echo identifier/sequence apply to echo messages."
+    },
+    "icmpChecksum": {
+      "datatype": "integer",
+      "units": "uint16",
+      "meaning": "Received ICMP checksum field; having it does not mean checksum verification was performed.",
+      "source": "r.icmpChecksum",
+      "example": 10888,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "Received ICMP headers; echo identifier/sequence apply to echo messages."
+    },
+    "socketErrno": {
+      "datatype": "integer",
+      "units": "OS error code",
+      "meaning": "Native error queue errno or packet operation errno.",
+      "source": "r.extendedError.errno ?? p.errno",
+      "example": 113,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "errorOrigin": {
+      "datatype": "integer",
+      "units": "Linux SO_EE_ORIGIN enum",
+      "meaning": "Origin of extended error, e.g. 2 for IPv4 ICMP; not the ICMP type.",
+      "source": "r.extendedError.origin",
+      "example": 2,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "errorData": {
+      "datatype": "integer",
+      "units": "kernel value",
+      "meaning": "Additional error-specific data from sock_extended_err.",
+      "source": "r.extendedError.data",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "recvmsgFlags": {
+      "datatype": "integer",
+      "units": "bitmask",
+      "meaning": "Returned recvmsg flags (e.g. MSG_ERRQUEUE); use platform definitions.",
+      "source": "r.recvmsgFlags",
+      "example": 8192,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "tcpKernelRttUs": {
+      "datatype": "integer",
+      "units": "microseconds",
+      "meaning": "Kernel smoothed TCP RTT from post-connect TCP_INFO; not a raw individual packet RTT.",
+      "source": "p.tcpInfoAfter.tcpi_rtt",
+      "example": 20414,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "tcpRttVarianceUs": {
+      "datatype": "integer",
+      "units": "microseconds",
+      "meaning": "Linux RTT variation estimate tcpi_rttvar; despite the CSV name this is not statistical variance in squared units.",
+      "source": "p.tcpInfoAfter.tcpi_rttvar",
+      "example": 10207,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "tcpTotalRetransmissions": {
+      "datatype": "integer",
+      "units": "segments",
+      "meaning": "Cumulative TCP retransmitted segments on this short socket connection.",
+      "source": "p.tcpInfoAfter.tcpi_total_retrans",
+      "example": 0,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv", "tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "tcpCongestionWindowSegments": {
+      "datatype": "integer",
+      "units": "segments",
+      "meaning": "Sender congestion window in segments at snapshot time; not receiver window or a loaded-flow trace.",
+      "source": "p.tcpInfoAfter.tcpi_snd_cwnd",
+      "example": 10,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "sendMonotonicNs": {
+      "datatype": "decimal integer string",
+      "units": "ns",
+      "meaning": "Userspace monotonic send timestamp, not hardware transmit time.",
+      "source": "p.sendMonotonicNs",
+      "example": "1791393334539568298",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "receiveMonotonicNs": {
+      "datatype": "decimal integer string",
+      "units": "ns",
+      "meaning": "Userspace monotonic receive timestamp; comparable only within the same clock domain.",
+      "source": "r.receiveMonotonicNs",
+      "example": "1791393334539568298",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "kernelReceiveRealtimeNs": {
+      "datatype": "decimal integer string",
+      "units": "ns",
+      "meaning": "Kernel realtime receive timestamp; do not subtract monotonic send time.",
+      "source": "r.kernelReceiveRealtimeNs",
+      "example": "1791393334539568298",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "sendBufferHex": {
+      "datatype": "hex string",
+      "units": "encoded bytes",
+      "meaning": "Exact retained send buffer before any kernel edits; interpret sendBufferScope.",
+      "source": "p.sendBufferHex",
+      "example": "0800000000000000",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "receivedHex": {
+      "datatype": "hex string",
+      "units": "encoded bytes",
+      "meaning": "Retained receive buffer; interpret receivedScope and truncation flags. Empty string can be an observed zero-length buffer.",
+      "source": "r.receivedHex",
+      "example": "00002a88198f0000",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "replyDataBase64": {
+      "datatype": "base64 string",
+      "units": "encoded bytes",
+      "meaning": "Library-returned trace bytes, if supplied; no assumption of complete IP packet.",
+      "source": "s.rawResult.dataBase64",
+      "example": "AAE=",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "Traceroute samples/summaries, or packet observations with the corresponding error field."
+    },
+    "networkSnapshot": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Embedded associated context, repeated across samples.",
+      "source": "m.networkSnapshot",
+      "example": {
+        "id": "context-example",
+        "type": "wifi"
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "details": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Measurement-specific samples/statistics/load, or event-specific payload; inspect parent type/kind.",
+      "source": "m.details / event.details",
+      "example": {
+        "samples": [],
+        "summary": {
+          "replies": 0,
+          "medianMs": null
+        }
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "events.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "reference": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Optional NDT7 summary; server telemetry is not handset TCP_INFO.",
+      "source": "m.reference",
+      "example": {
+        "library": "@m-lab/ndt7",
+        "version": "0.1.5",
+        "source": "server"
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "route": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Traceroute configuration, completion and all hop samples.",
+      "source": "m.route",
+      "example": {
+        "library": "icmpenguin",
+        "samples": [],
+        "reached": false
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "speedchecker": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Optional SDK reference result, not packet capture.",
+      "source": "m.speedchecker",
+      "example": {
+        "sdkVersion": "4.2.299",
+        "downloadMbps": 42
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "raw": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Recorded provider/request/callbacks/unavailable declarations and dropped counters.",
+      "source": "m.raw",
+      "example": {
+        "library": "icmpenguin",
+        "version": "1.0.0-rc.3",
+        "callbacks": []
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "packetRawJson": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Complete selected packet object including unknown fields, nested observations and TCP_INFO.",
+      "source": "p",
+      "example": {
+        "engine": "capstone-linux-sockets",
+        "outcome": "timeout"
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "rawRecordJson": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Complete original row record; authoritative nested values.",
+      "source": "m / event / n",
+      "example": {
+        "id": "measurement-example",
+        "type": "icmp_burst",
+        "success": false
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "events.csv",
+        "network-context.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "rawSampleJson": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Complete original sample, retaining unflattened metadata.",
+      "source": "s / callback / legacy single ICMP m",
+      "example": {
+        "sequence": 0,
+        "rttMs": null,
+        "errorType": "timeout"
+      },
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["samples.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "recordPath": {
+      "datatype": "string",
+      "units": "JSON pointer",
+      "meaning": "Pointer to original sample/measurement within input JSON; preserves joins even when sequences repeat.",
+      "source": "analysis pointer",
+      "example": "/measurements/0/details/samples/0",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "timingScope": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Timing mechanism; prevents equating callback elapsed time with kernel RTT.",
+      "source": "method/provider classification",
+      "example": "native_connect",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": [
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http-latency-samples.csv"
+      ],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "connectDurationMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Connection attempt elapsed time using the recorded method, not SYN-only or kernel RTT.",
+      "source": "m.value / s.rttMs",
+      "example": 21.047,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "kernelRttMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Post-connect kernel smoothed RTT converted to milliseconds.",
+      "source": "p.tcpInfoAfter.tcpi_rtt / 1000",
+      "example": 20.414,
+      "calculation": "p.tcpInfoAfter.tcpi_rtt / 1000",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "kernelRttVariationMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Post-connect kernel RTT variation estimate, not statistical variance.",
+      "source": "p.tcpInfoAfter.tcpi_rttvar / 1000",
+      "example": 10.207,
+      "calculation": "p.tcpInfoAfter.tcpi_rttvar / 1000",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "congestionWindowSegments": {
+      "datatype": "integer",
+      "units": "segments",
+      "meaning": "Sender congestion window in the post-connect snapshot.",
+      "source": "p.tcpInfoAfter.tcpi_snd_cwnd",
+      "example": 10,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "sendMssBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Sender maximum segment payload size at this snapshot.",
+      "source": "p.tcpInfoAfter.tcpi_snd_mss",
+      "example": 1238,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "congestionWindowBytesEstimate": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Derived cwnd multiplied by sender MSS from the same snapshot; not bytes actually in flight.",
+      "source": "tcpi_snd_cwnd * tcpi_snd_mss",
+      "example": 12380,
+      "calculation": "tcpi_snd_cwnd * tcpi_snd_mss",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["tcp.csv"],
+      "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
+    },
+    "payloadBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Configured payload size: native payloadBytes, ICMP request.packetSize, trace probeBytes, or UDP send callback size.",
+      "source": "p.payloadBytes / raw.request.packetSize / s.probeBytes / UDP send_requested.payloadBytes",
+      "example": 64,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["icmp.csv", "traceroute.csv", "udp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "payloadSizeSource": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Exact location used to recover payload size; differentiates export gaps from absent evidence.",
+      "source": "analysis source selection",
+      "example": "packet.payloadBytes",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["icmp.csv", "udp.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "addressEvidence": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Responder evidence status; historical ICMP library target alias is suppressed in focused view.",
+      "source": "packet engine and raw result classification",
+      "example": "observed_socket_source",
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["icmp.csv", "traceroute.csv"],
+      "applicableRows": "All applicable record types; availability depends on collection method."
+    },
+    "httpLatencyMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Standalone full HTTP transaction time, or median during-transfer HTTP latency for loaded measurements.",
+      "source": "m.value when unit=ms",
+      "example": 25.56,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv", "http-latency-samples.csv"],
+      "applicableRows": "HTTP transactions/transfers or loaded HTTP tests."
+    },
+    "transferDurationMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Timed transfer operation duration; loaded tests use embedded load duration rather than outer duration.",
+      "source": "m.durationMs / m.details.load.durationMs",
+      "example": 1622.022,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv"],
+      "applicableRows": "HTTP transactions/transfers or loaded HTTP tests."
+    },
+    "throughputMbps": {
+      "datatype": "number",
+      "units": "Mbit/s",
+      "meaning": "Stored transfer throughput; loaded tests use embedded load value.",
+      "source": "m.value / m.details.load.value",
+      "example": 258.585,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv"],
+      "applicableRows": "HTTP transactions/transfers or loaded HTTP tests."
+    },
+    "baselineMedianMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Median baseline HTTP latency before transfer.",
+      "source": "m.details.baselineSummary.medianMs",
+      "example": 58.855,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv"],
+      "applicableRows": "Loaded HTTP latency tests only."
+    },
+    "loadedMedianMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Median recorded HTTP latency during transfer.",
+      "source": "m.details.summary.medianMs",
+      "example": 68.108,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv"],
+      "applicableRows": "Loaded HTTP latency tests only."
+    },
+    "loadedOverlapCount": {
+      "datatype": "integer",
+      "units": "samples",
+      "meaning": "Samples recorded as overlapping the load, as reported by the collector.",
+      "source": "m.details.loadedOverlapCount",
+      "example": 5,
+      "calculation": "Copied from the stated source; no calculation.",
+      "blank": "Unavailable or not applicable to this row; never substitute zero.",
+      "applicableFiles": ["http.csv"],
+      "applicableRows": "Loaded HTTP latency tests only."
+    }
+  },
+  "files": {
+    "measurements.csv": {
+      "kind": "legacy",
+      "row": "One persisted measurement attempt (possibly a burst or whole route).",
+      "columns": [
+        "id",
+        "sessionId",
+        "type",
+        "method",
+        "targetHost",
+        "scheduledAt",
+        "timestamp",
+        "state",
+        "success",
+        "value",
+        "unit",
+        "durationMs",
+        "requestedBytes",
+        "transferredBytes",
+        "httpStatus",
+        "errorType",
+        "errorMessage",
+        "probeServer",
+        "probeRegion",
+        "ttl",
+        "library",
+        "libraryVersion",
+        "rawSource",
+        "sampleCount",
+        "replyCount",
+        "medianMs",
+        "p95Ms",
+        "successiveDifferenceMs",
+        "nonResponsePercent",
+        "lossPercent",
+        "sentCount",
+        "duplicateCount",
+        "reorderedCount",
+        "targetPort",
+        "routeReached",
+        "reachedHop",
+        "routeStopReason",
+        "loadTransferredBytes",
+        "loadMbps",
+        "networkSnapshotId",
+        "networkType",
+        "isConnected",
+        "isInternetReachable",
+        "ssid",
+        "bssid",
+        "signalStrength",
+        "batteryPercent",
+        "isCharging",
+        "publicIp",
+        "asn",
+        "networkSnapshot",
+        "details",
+        "reference",
+        "route",
+        "speedchecker",
+        "raw",
+        "packetOutcome",
+        "ipVersion",
+        "localAddress",
+        "localPort",
+        "targetAddress",
+        "packetTargetPort",
+        "sendMonotonicNs",
+        "receiveMonotonicNs",
+        "kernelReceiveRealtimeNs",
+        "sentSocketBytes",
+        "receivedSocketBytes",
+        "sendBufferScope",
+        "sendBufferHex",
+        "receivedScope",
+        "receivedHex",
+        "icmpIdentifier",
+        "icmpSequence",
+        "icmpChecksum",
+        "socketErrno",
+        "errorOrigin",
+        "errorData",
+        "recvmsgFlags",
+        "tcpKernelRttUs",
+        "tcpRttVarianceUs",
+        "tcpTotalRetransmissions",
+        "tcpCongestionWindowSegments",
+        "packetRawJson",
+        "rawRecordJson"
+      ]
+    },
+    "samples.csv": {
+      "kind": "legacy",
+      "row": "One sample, including timeouts, baseline transactions and reference callbacks.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "sampleGroup",
+        "sequence",
+        "measurementScheduledAt",
+        "measurementTimestamp",
+        "sampleTimestamp",
+        "observedAtMs",
+        "targetHost",
+        "targetPort",
+        "hop",
+        "probeTtl",
+        "replyTtl",
+        "responderAddress",
+        "remote",
+        "rttMs",
+        "durationMs",
+        "outcome",
+        "errorType",
+        "errorMessage",
+        "icmpType",
+        "icmpCode",
+        "probeBytes",
+        "overheadBytes",
+        "library",
+        "libraryVersion",
+        "rawSource",
+        "nativeVariant",
+        "elapsedUsec",
+        "errno",
+        "errorInfo",
+        "nativeStatus",
+        "nativeRttMs",
+        "nativeReplyTtl",
+        "rawStdout",
+        "rawStderr",
+        "replyDataBase64",
+        "networkSnapshotId",
+        "networkType",
+        "isConnected",
+        "isInternetReachable",
+        "ssid",
+        "bssid",
+        "signalStrength",
+        "batteryPercent",
+        "isCharging",
+        "publicIp",
+        "asn",
+        "packetOutcome",
+        "ipVersion",
+        "localAddress",
+        "localPort",
+        "targetAddress",
+        "packetTargetPort",
+        "sendMonotonicNs",
+        "receiveMonotonicNs",
+        "kernelReceiveRealtimeNs",
+        "sentSocketBytes",
+        "receivedSocketBytes",
+        "sendBufferScope",
+        "sendBufferHex",
+        "receivedScope",
+        "receivedHex",
+        "icmpIdentifier",
+        "icmpSequence",
+        "icmpChecksum",
+        "socketErrno",
+        "errorOrigin",
+        "errorData",
+        "recvmsgFlags",
+        "tcpKernelRttUs",
+        "tcpRttVarianceUs",
+        "tcpTotalRetransmissions",
+        "tcpCongestionWindowSegments",
+        "packetRawJson",
+        "rawSampleJson"
+      ]
+    },
+    "events.csv": {
+      "kind": "legacy",
+      "row": "One saved lifecycle/scheduling event.",
+      "columns": [
+        "sessionId",
+        "id",
+        "timestamp",
+        "kind",
+        "details",
+        "rawRecordJson"
+      ],
+      "overrides": {
+        "id": {
+          "source": "event.id",
+          "example": "event-example"
+        },
+        "timestamp": {
+          "source": "event.timestamp"
+        },
+        "details": {
+          "source": "event.details",
+          "example": {
+            "lateByMs": 1000,
+            "skipped": 0
+          }
+        },
+        "rawRecordJson": {
+          "source": "event",
+          "example": {
+            "id": "event-example",
+            "kind": "schedule_gap",
+            "details": {
+              "lateByMs": 1000
+            }
+          }
+        }
+      }
+    },
+    "network-context.csv": {
+      "kind": "legacy",
+      "row": "One saved context snapshot.",
+      "columns": [
+        "sessionId",
+        "timestamp",
+        "networkSnapshotId",
+        "networkType",
+        "isConnected",
+        "isInternetReachable",
+        "ssid",
+        "bssid",
+        "signalStrength",
+        "batteryPercent",
+        "isCharging",
+        "publicIp",
+        "asn",
+        "contextError",
+        "publicIpObservedAt",
+        "rawRecordJson"
+      ],
+      "overrides": {
+        "timestamp": {
+          "source": "n.timestamp"
+        },
+        "rawRecordJson": {
+          "source": "n",
+          "example": {
+            "id": "context-example",
+            "type": "wifi",
+            "batteryPercent": 100
+          }
+        }
+      }
+    },
+    "icmp.csv": {
+      "kind": "focused",
+      "row": "One ICMP probe, including failed probes.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "sequence",
+        "rttMs",
+        "timingScope",
+        "payloadBytes",
+        "payloadSizeSource",
+        "probeTtl",
+        "replyTtl",
+        "responderAddress",
+        "addressEvidence",
+        "icmpType",
+        "icmpCode",
+        "icmpIdentifier",
+        "icmpSequence",
+        "receivedSocketBytes",
+        "errorType"
+      ],
+      "overrides": {
+        "library": {
+          "source": "sample/parent recorded raw.library, route.library, or packet.engine"
+        },
+        "libraryVersion": {
+          "source": "sample/parent recorded raw.version, route.version, or packet.engineVersion"
+        },
+        "targetPort": {
+          "source": "p.targetPort ?? m.details.targetPort ?? raw.request.port"
+        }
+      }
+    },
+    "tcp.csv": {
+      "kind": "focused",
+      "row": "One TCP connection attempt.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "targetPort",
+        "connectDurationMs",
+        "timingScope",
+        "kernelRttMs",
+        "kernelRttVariationMs",
+        "tcpTotalRetransmissions",
+        "congestionWindowSegments",
+        "sendMssBytes",
+        "congestionWindowBytesEstimate",
+        "localAddress",
+        "localPort",
+        "targetAddress",
+        "errorType"
+      ],
+      "overrides": {
+        "library": {
+          "source": "sample/parent recorded raw.library, route.library, or packet.engine"
+        },
+        "libraryVersion": {
+          "source": "sample/parent recorded raw.version, route.version, or packet.engineVersion"
+        },
+        "localAddress": {
+          "source": "p.localAddress ?? connected callback.localAddress"
+        },
+        "localPort": {
+          "source": "p.localPort ?? connected callback.localPort"
+        },
+        "targetAddress": {
+          "source": "p.targetAddress ?? p.resolvedAddress ?? connected callback.remoteAddress"
+        },
+        "targetPort": {
+          "source": "m.details.targetPort ?? p.targetPort ?? m.raw.request.port"
+        }
+      }
+    },
+    "traceroute.csv": {
+      "kind": "focused",
+      "row": "One probe at one outgoing hop limit.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "sequence",
+        "hop",
+        "targetPort",
+        "rttMs",
+        "timingScope",
+        "responderAddress",
+        "addressEvidence",
+        "replyTtl",
+        "icmpType",
+        "icmpCode",
+        "nativeVariant",
+        "payloadBytes",
+        "routeReached",
+        "reachedHop",
+        "errorType"
+      ],
+      "overrides": {
+        "library": {
+          "source": "sample/parent recorded raw.library, route.library, or packet.engine"
+        },
+        "libraryVersion": {
+          "source": "sample/parent recorded raw.version, route.version, or packet.engineVersion"
+        },
+        "targetPort": {
+          "source": "p.targetPort ?? m.details.targetPort ?? raw.request.port"
+        }
+      }
+    },
+    "udp.csv": {
+      "kind": "focused",
+      "row": "One UDP echo probe.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "sequence",
+        "targetPort",
+        "rttMs",
+        "timingScope",
+        "payloadBytes",
+        "payloadSizeSource",
+        "sentSocketBytes",
+        "receivedSocketBytes",
+        "errorType"
+      ],
+      "overrides": {
+        "library": {
+          "source": "sample/parent recorded raw.library, route.library, or packet.engine"
+        },
+        "libraryVersion": {
+          "source": "sample/parent recorded raw.version, route.version, or packet.engineVersion"
+        },
+        "targetPort": {
+          "source": "p.targetPort ?? m.details.targetPort ?? raw.request.port"
+        }
+      }
+    },
+    "http.csv": {
+      "kind": "focused",
+      "row": "One HTTP measurement; loaded rows also summarize their embedded transfer.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "success",
+        "requestedBytes",
+        "transferredBytes",
+        "httpStatus",
+        "httpLatencyMs",
+        "transferDurationMs",
+        "throughputMbps",
+        "baselineMedianMs",
+        "loadedMedianMs",
+        "loadedOverlapCount",
+        "errorType"
+      ],
+      "overrides": {
+        "requestedBytes": {
+          "source": "m.details.load.requestedBytes for loaded tests; otherwise m.requestedBytes",
+          "meaning": "Configured payload for the actual transfer; loaded rows exclude the parent budget allowance for auxiliary latency probes."
+        },
+        "transferredBytes": {
+          "source": "m.details.load.transferredBytes for loaded tests; otherwise m.transferredBytes"
+        },
+        "httpStatus": {
+          "source": "m.details.load.httpStatus for loaded tests; otherwise m.httpStatus"
+        },
+        "targetHost": {
+          "source": "m.targetHost ?? m.probeServer",
+          "meaning": "Configured host or probe endpoint URL, including local HTTP endpoints."
+        }
+      }
+    },
+    "http-latency-samples.csv": {
+      "kind": "focused",
+      "row": "One baseline or during-transfer HTTP transaction.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "outcome",
+        "sampleGroup",
+        "sequence",
+        "httpLatencyMs",
+        "timingScope",
+        "errorType"
+      ],
+      "overrides": {
+        "httpLatencyMs": {
+          "source": "s.rttMs",
+          "meaning": "Full transaction latency for this one baseline or during-transfer sample; not the parent median."
+        }
+      }
+    }
+  }
+}
