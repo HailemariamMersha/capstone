@@ -36,7 +36,7 @@ node scripts/compare-packet-engines.cjs custom-session.json library-session.json
 
 The comparison separates measurement methods, identifies library/engine versions, reports success and sample counts, inventories retained packet fields, and reports configuration differences and scheduling delays. A lower count of available fields means less observability, not a measurement of zero.
 
-For a matched one-hour comparison, keep the same phone, access network, targets, duration, intervals, 50 MiB transfer sizes, loaded-latency setting and payload allowance. Resolve the controlled UDP endpoint first and document whether HTTP is on the USB or internet path. Preserve all failures and delay events. Compare ICMP reply rates/bytes, route arrival rates and raw-field availability first; do not directly equate library TCP callback duration with custom native connect duration. Sequential experiments can encounter changed routes/load and do not establish causal performance superiority.
+For a matched one-hour comparison, keep the same phone, access network, targets, duration, intervals, 50 MiB transfer sizes, loaded-latency setting and payload allowance. Verify the controlled UDP endpoint before each run and document whether HTTP is on the USB or internet path. Preserve all failures and delay events. Compare ICMP reply rates/bytes, route arrival rates and raw-field availability first; do not directly equate library TCP callback duration with custom native connect duration. Sequential experiments can encounter changed routes/load and do not establish causal performance superiority.
 
 The custom October 7 run's 244 measurements and 1,026 native probe records are documented in [the baseline report](experiments/2026-10-07-custom-engine-one-hour.md). Its raw exports stay in ignored local storage. A short library smoke test establishes integration only; an equivalent one-hour run remains necessary for an endurance comparison.
 
@@ -47,3 +47,7 @@ The [8 October phone smoke test](experiments/2026-10-08-library-smoke.md) comple
 ## Measurement interpretation audit
 
 The [requirements audit](measurements/comparison.md) separates basic metrics, per-probe evidence and native kernel telemetry. The [guide](measurements/guide.md) and [complete column dictionary](measurements/columns.md) explain row types, units, source limitations and offline sanity checks for both saved experiments.
+
+## Working UDP follow-up — 12 October
+
+A [new two-minute background phone run](experiments/2026-10-12-library-udp-phone.md) passed all 12 attempts, including **20/20 UDP echoes** with exact payload retention. Starting the separate UDP service with the current phone source allowed restored a working path; no application measurement code changed. The Mac firewall was already disabled and the VPN disconnected. This validates library UDP integration on the tested path, not satellite reliability. The earlier zero-reply datasets remain unchanged.
