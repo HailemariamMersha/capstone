@@ -78,3 +78,7 @@ For congestion research, first define a **same-socket transfer telemetry** exper
 ## Subsequent UDP verification — 12 October
 
 The [library-only follow-up](../experiments/2026-10-12-library-udp-phone.md) completed 12/12 attempts, including 20/20 matched UDP replies (median 18.103 ms, p95 178.300 ms). All 60 UDP send/request/reply callbacks were retained without drops. The separate echo service was started and allowed the phone’s current source address; Wi-Fi routing was working and no app code changed. This updates UDP capability evidence without changing the original two-run audit above. It is still a short integration test, with callback timing and a local Wi-Fi path.
+
+## Current ten-minute library run
+
+The [format-4 ten-minute experiment](../experiments/2026-10-12-library-ten-minute.md) completed 41/41 parent attempts: 98/100 ICMP replies, 40/40 matched UDP echoes, 10/10 TCP connections, traceroute reaching hop 10 and eight 50 MiB transfers. Fourteen schedule-gap events show that completion does not imply exact timing. Current CSVs omit custom-only kernel/socket columns; original raw evidence remains available.
