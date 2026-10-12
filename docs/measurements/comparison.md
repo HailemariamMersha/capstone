@@ -1,5 +1,7 @@
 # Do we need custom native measurements?
 
+**Current project decision (12 October):** continue with the existing libraries and their available evidence. Format-4 CSVs omit custom-only kernel/socket columns. The comparison below documents the preserved historical baseline; collecting its extra kernel values is outside the current experiment scope. See [current export definitions](../packet-exports.md).
+
 **Libraries are sufficient for the basic performance dataset and some per-probe evidence. The tested custom engine is needed for the extra Linux telemetry our current library interfaces do not expose. Neither implementation currently measures congestion dynamics during an actual upload/download.** This conclusion is about the pinned implementations tested here, not every available networking library.
 
 A native library already contains platform code. Our thin Kotlin adapters serialize calls/results from icmpenguin; our former C++ engine implements its own socket probes. The comparison is **maintaining our own measurement code versus reusing library implementations**, not JavaScript versus all native code.

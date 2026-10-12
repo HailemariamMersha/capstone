@@ -1071,8 +1071,8 @@
     "errorInfo": {
       "datatype": "integer",
       "units": "kernel value",
-      "meaning": "Library errInfo or native extended-error info; interpretation depends on error (e.g. MTU).",
-      "source": "s.rawResult.errInfo / r.extendedError.info",
+      "meaning": "Additional error information returned by the traceroute library; interpretation depends on its result variant.",
+      "source": "s.rawResult.errInfo",
       "example": 0,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
@@ -1148,7 +1148,7 @@
     "receivedSocketBytes": {
       "datatype": "integer",
       "units": "bytes",
-      "meaning": "recvmsg byte count; zero is valid for an error-queue observation with no quoted payload.",
+      "meaning": "Retained received-message byte count: decoded library message length on current ICMP probes; recvmsg byte count on historical native records. Not total wire traffic.",
       "source": "r.receivedSocketBytes",
       "example": 72,
       "calculation": "Copied from the stated source; no calculation.",
@@ -1441,7 +1441,7 @@
     "packetRawJson": {
       "datatype": "JSON object",
       "units": "none",
-      "meaning": "Complete selected packet object including unknown fields, nested observations and TCP_INFO.",
+      "meaning": "Complete selected packet observation, including nested library evidence and unknown fields. Historical custom-engine records may also contain TCP_INFO.",
       "source": "p",
       "example": {
         "engine": "capstone-linux-sockets",
