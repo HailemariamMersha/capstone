@@ -1,8 +1,8 @@
 # Understanding our measurements
 
-Start with the six focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **84 columns do not mean 84 independent network measurements**.
+Start with the six focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **70 current columns do not mean 70 independent network measurements** (historical format 3 had 84).
 
-The result of this audit is that our current libraries can collect basic network performance and some useful per-probe evidence. The custom engine adds original error-queue fields, socket timing and handset TCP kernel telemetry. Neither implementation captures all network packets or explains congestion during a transfer. See the [requirements and evidence comparison](comparison.md).
+Current format-4 CSVs omit custom-only socket/kernel fields. Historical JSON and audit reports remain available for earlier comparisons. The result of the original audit is that our current libraries can collect basic network performance and some useful per-probe evidence. The custom engine adds original error-queue fields, socket timing and handset TCP kernel telemetry. Neither implementation captures all network packets or explains congestion during a transfer. See the [requirements and evidence comparison](comparison.md).
 
 ## Generate the readable views on your Mac
 
@@ -17,7 +17,7 @@ The input is **Export JSON** from the phone, or the `session.json` in its CSV bu
 | Output | Each row means | Start by reading |
 | --- | --- | --- |
 | `icmp.csv` | One echo probe, including timeouts | `sequence`, `rttMs`, `outcome`, `payloadBytes`, actual header fields |
-| `tcp.csv` | One connection attempt | `connectDurationMs`, `timingScope`, `kernelRttMs`, window and retransmission fields |
+| `tcp.csv` | One connection attempt | `connectDurationMs`, `timingScope`, local/remote endpoints |
 | `traceroute.csv` | One probe at an outgoing hop limit | `hop`, `sequence`, `responderAddress`, `rttMs`, `outcome`, `icmpType`, `icmpCode` |
 | `udp.csv` | One echo probe | `sequence`, `outcome`, `rttMs`, `payloadBytes` |
 | `http.csv` | One HTTP measurement; loaded tests include the embedded transfer summary | `httpLatencyMs`, `throughputMbps`, `transferDurationMs`, baseline/loaded medians |
@@ -76,10 +76,10 @@ The library smoke run also predates a metadata fix: ICMP `responderAddress` repe
 | Record | Available evidence | What it is not |
 | --- | --- | --- |
 | ICMP `receivedHex` | Received ICMP message, including echo header and payload, under its explicit scope | Complete outer IP packet, or proof that every outgoing header was captured |
-| Native `sendBufferHex` | Buffer handed to the socket; ICMP identifier/checksum may subsequently be changed by the kernel | A capture of final outgoing wire bytes |
-| Native trace error queue | Error origin/type/code, offender and any quoted original payload; raw ancillary bytes | Entire outer ICMP error packet or complete IP header |
+| Historical native `sendBufferHex` (JSON only) | Buffer handed to the socket; ICMP identifier/checksum may subsequently be changed by the kernel | A capture of final outgoing wire bytes |
+| Historical native trace error queue (JSON only) | Error origin/type/code, offender and any quoted original payload; raw ancillary bytes | Entire outer ICMP error packet or complete IP header |
 | UDP callback/payload data | Application datagram bytes and available sender metadata | IP/UDP headers or hardware timestamps |
-| Native `tcpInfoBefore/After` | Supported parsed kernel state and ABI-dependent raw struct bytes | TCP segments, ACK sequences, or HTTP-socket telemetry |
+| Historical native `tcpInfoBefore/After` (JSON only) | Supported parsed kernel state and ABI-dependent raw struct bytes | TCP segments, ACK sequences, or HTTP-socket telemetry |
 | Library `raw.callbacks` | Supplied callback fields and application observation times | Undisclosed SDK internals or kernel timestamps |
 
 `packetRawJson` repeats the packet object. `rawSampleJson`/`rawRecordJson` preserve unflattened data and future fields; they are not additional independent measurements. `packets.jsonl` groups retained observations under their probe; nested `response` may repeat a selected entry in `observations`. Do not count both as different packets. `library-callbacks.jsonl` includes request metadata rows as well as callbacks, so its line count is not a packet count.
@@ -90,7 +90,7 @@ For context, Wi-Fi `signalStrength` is a **0–100 scale**, not dBm or satellite
 
 ## Sanity checks and their limits
 
-The analyzer checks identifiers/joins, normalized types and ranges, sample identities, compatible-clock ordering, retained buffer lengths and ICMP header decoding, complete-burst counts, statistics, loss denominators, and transfer arithmetic. It separately reports historical ambiguity, export mapping gaps, dropped/truncated observations, missing kernel telemetry and unsuccessful UDP echoes. Legacy CSV headers are checked against the dictionary.
+The analyzer checks identifiers/joins, normalized types and ranges, sample identities, compatible-clock ordering, retained buffer lengths and ICMP header decoding, complete-burst counts, statistics, loss denominators, and transfer arithmetic. It separately reports historical ambiguity, export mapping gaps, dropped/truncated observations, missing native telemetry only for historical custom-engine records, and unsuccessful UDP echoes. Current CSV headers are checked against the dictionary.
 
 Errors identify inconsistent data or calculations. Warnings identify interpretation hazards. Unavailable checks mean necessary evidence was absent. A clean report does not prove the measured path, collector accuracy, RF conditions, or long-run reliability. Loss is inferred from missing matching replies, not observed at the physical link. Reference tests remain in the original exports but are outside the six focused views; an unrun feature is not validated by this audit.
 

@@ -117,7 +117,7 @@ test('exports separate samples including failures, baseline and every hop withou
   );
   expect(JSON.parse(files['session.json'])).toEqual({
     ...data,
-    exportFormatVersion: 3,
+    exportFormatVersion: 4,
   });
   const samples = parseCsv(files['samples.csv']);
   expect(samples).toHaveLength(6);
@@ -165,7 +165,7 @@ test('empty sessions export headers and legacy results remain unchanged in JSON'
   expect(files).toHaveLength(8);
 });
 
-test('packet CSV and JSONL retain headers, precise timestamps and native observations', () => {
+test('library CSVs omit custom-only fields while JSON retains historical native evidence', () => {
   const packet = {
     runId: 'trace-0',
     outcome: 'icmp_error',
@@ -220,17 +220,33 @@ test('packet CSV and JSONL retain headers, precise timestamps and native observa
     icmpCode: '0',
     replyTtl: '64',
     probeTtl: '1',
-    socketErrno: '113',
-    errorOrigin: '2',
-    sendMonotonicNs: packet.sendMonotonicNs,
-    kernelReceiveRealtimeNs: packet.response.kernelReceiveRealtimeNs,
     receivedHex: 'abcd',
   });
   expect(JSON.parse(rows[0].packetRawJson)).toEqual(packet);
-  expect(rows[1]).toMatchObject({
-    tcpKernelRttUs: '15',
-    tcpTotalRetransmissions: '0',
-  });
+  for (const name of ['measurements.csv', 'samples.csv']) {
+    const header = files[name].split('\r\n')[0];
+    for (const removed of [
+      'sendMonotonicNs',
+      'receiveMonotonicNs',
+      'kernelReceiveRealtimeNs',
+      'sentSocketBytes',
+      'sendBufferScope',
+      'sendBufferHex',
+      'socketErrno',
+      'errorOrigin',
+      'errorData',
+      'recvmsgFlags',
+      'tcpKernelRttUs',
+      'tcpRttVarianceUs',
+      'tcpTotalRetransmissions',
+      'tcpCongestionWindowSegments',
+    ]) {
+      expect(header).not.toContain('"' + removed + '"');
+    }
+  }
+  expect(
+    JSON.parse(rows[1].packetRawJson).tcpInfoAfter.tcpi_total_retrans,
+  ).toBe(0);
   const lines = files['packets.jsonl'].trim().split('\n').map(JSON.parse);
   expect(lines).toHaveLength(2);
   expect(lines[0]).toEqual({

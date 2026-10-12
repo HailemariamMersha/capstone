@@ -54,6 +54,7 @@ function pingOutput(raw: Row): Row {
     rawStderr: value.rawStderr,
   };
 }
+// Only fields exposed by our library paths. Historical native evidence stays in JSON.
 const packetColumns = [
   'packetOutcome',
   'ipVersion',
@@ -61,34 +62,18 @@ const packetColumns = [
   'localPort',
   'targetAddress',
   'packetTargetPort',
-  'sendMonotonicNs',
-  'receiveMonotonicNs',
-  'kernelReceiveRealtimeNs',
-  'sentSocketBytes',
   'receivedSocketBytes',
-  'sendBufferScope',
-  'sendBufferHex',
   'receivedScope',
   'receivedHex',
   'icmpIdentifier',
   'icmpSequence',
   'icmpChecksum',
-  'socketErrno',
-  'errorOrigin',
-  'errorData',
-  'recvmsgFlags',
-  'tcpKernelRttUs',
-  'tcpRttVarianceUs',
-  'tcpTotalRetransmissions',
-  'tcpCongestionWindowSegments',
   'packetRawJson',
 ];
 function packetFields(value: unknown): Row {
   const p = object(value);
   if (!Object.keys(p).length) return {};
-  const r = object(p.response),
-    e = object(r.extendedError),
-    tcp = object(p.tcpInfoAfter);
+  const r = object(p.response);
   return {
     packetOutcome: p.outcome,
     ipVersion: p.ipVersion,
@@ -99,13 +84,7 @@ function packetFields(value: unknown): Row {
     probeTtl: p.probeTtl,
     replyTtl: r.replyTtl,
     responderAddress: r.responderAddress,
-    sendMonotonicNs: p.sendMonotonicNs,
-    receiveMonotonicNs: r.receiveMonotonicNs,
-    kernelReceiveRealtimeNs: r.kernelReceiveRealtimeNs,
-    sentSocketBytes: p.sentSocketBytes,
     receivedSocketBytes: r.receivedSocketBytes,
-    sendBufferScope: p.sendBufferScope,
-    sendBufferHex: p.sendBufferHex,
     receivedScope: r.receivedScope,
     receivedHex: r.receivedHex,
     icmpType: r.icmpType,
@@ -113,15 +92,6 @@ function packetFields(value: unknown): Row {
     icmpIdentifier: r.icmpIdentifier,
     icmpSequence: r.icmpSequence,
     icmpChecksum: r.icmpChecksum,
-    socketErrno: e.errno ?? p.errno,
-    errorOrigin: e.origin,
-    errorInfo: e.info,
-    errorData: e.data,
-    recvmsgFlags: r.recvmsgFlags,
-    tcpKernelRttUs: tcp.tcpi_rtt,
-    tcpRttVarianceUs: tcp.tcpi_rttvar,
-    tcpTotalRetransmissions: tcp.tcpi_total_retrans,
-    tcpCongestionWindowSegments: tcp.tcpi_snd_cwnd,
     packetRawJson: p,
   };
 }
@@ -403,7 +373,7 @@ export interface ExportFile {
   content: string;
 }
 export function sessionJson(data: Row): string {
-  return JSON.stringify({ ...data, exportFormatVersion: 3 }, null, 2);
+  return JSON.stringify({ ...data, exportFormatVersion: 4 }, null, 2);
 }
 /** Preserve every retained library callback, including failures and nonmatching datagrams. */
 export function libraryCallbackJsonLines(measurements: Row[]): string {
@@ -494,7 +464,7 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     },
     {
       name: 'README.txt',
-      content: `Capstone export format 3\n\nsession.json preserves the complete saved session, measurements, events and context.\npackets.jsonl contains each available decoded/native probe observation without aggregation.\nlibrary-callbacks.jsonl contains retained library requests, callbacks, unavailable fields and dropped counts. TCP/UDP callback timing is not kernel timing; TCP bytesRead/bytesWritten are application counters, not wire bytes.\nCSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nNanosecond timestamps are strings: import them as text in spreadsheets.\nNative send buffers may be modified by the kernel; see sendBufferScope. Received bytes have an explicit receivedScope.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
+      content: `Capstone export format 4\n\nsession.json preserves the complete saved session, measurements, events and context.\npackets.jsonl contains each available decoded/native probe observation without aggregation.\nlibrary-callbacks.jsonl contains retained library requests, callbacks, unavailable fields and dropped counts. TCP/UDP callback timing is not kernel timing; TCP bytesRead/bytesWritten are application counters, not wire bytes.\nCSVs contain library-accessible fields and application metadata; custom socket/kernel columns are omitted. Historical native evidence remains in the original JSON. CSVs are derived views, not packet captures. rawRecordJson/rawSampleJson retain nested fields.\nRows include failures and timeouts; empty fields mean unavailable/not applicable, never zero.\nSample sequence is an application/library index, not necessarily the ICMP header sequence.\nprobeTtl (outgoing hop limit) and replyTtl (received TTL) are different.\nRTT is round-trip, not one-way or link-by-link latency. observedAtMs is native callback wall-clock time.\nReceived bytes have an explicit receivedScope. Historical raw JSON may contain nanosecond strings and native buffers; preserve their original interpretation.\nRaw callbacks contain only fields the library supplied; absent ICMP codes are never inferred.\nLibrary versions are recorded at collection where available; old records are not relabeled.\nAndroid ping stdout/stderr are text output, not original packet bytes; line endings are normalized.\nCSV cells that could be spreadsheet formulas are prefixed with an apostrophe; JSON is unchanged.\nNetwork identity and IP addresses are retained as collected. Review before distributing research data.\n`,
     },
   ];
 }

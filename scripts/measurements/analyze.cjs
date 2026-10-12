@@ -398,7 +398,7 @@ function analyze(data) {
           'Elapsed microseconds disagree with monotonic timestamps beyond truncation tolerance.',
         );
       }
-    } else
+    } else if (p.engine === 'capstone-linux-sockets')
       note(
         'unavailable',
         'monotonic_elapsed',
@@ -739,7 +739,7 @@ function analyze(data) {
     )
       approx('primary_summary', m.value, d.summary.medianMs, at + '/value');
   }
-  // Generated legacy CSVs provide the exact projection, including historical gaps.
+  // Current CSV projections retain raw JSON for auditing historical records.
   const tables = {};
   for (const f of sessionExportFiles(data)) {
     if (!catalog.files[f.name]) continue;
@@ -887,7 +887,7 @@ function analyze(data) {
         localPort: p.localPort ?? cb.localPort,
         targetAddress: p.targetAddress ?? p.resolvedAddress ?? cb.remoteAddress,
       });
-      if (!present(tcp.tcpi_rtt))
+      if (p.engine === 'capstone-linux-sockets' && !present(tcp.tcpi_rtt))
         note(
           'unavailable',
           'kernel_tcp_info',

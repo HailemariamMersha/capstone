@@ -41,7 +41,7 @@ function measurement(type, extra = {}) {
 const errors = result =>
   result.audit.issues.filter(i => i.severity === 'error');
 
-test('dictionary covers all legacy headers exactly and documentation stays generated', () => {
+test('dictionary covers all current headers exactly and documentation stays generated', () => {
   const files = sessionExportFiles(session());
   for (const [name, def] of Object.entries(catalog.files)) {
     if (def.kind === 'legacy')
@@ -129,7 +129,6 @@ test('native byte-size mapping gaps and nanosecond strings retain their provenan
     payloadBytes: 64,
     payloadSizeSource: 'packet.payloadBytes',
     recordPath: '/measurements/0/details/samples/0',
-    sendMonotonicNs: '187009405150837001',
   });
   expect(
     result.audit.issues.some(i => i.code === 'legacy_size_mapping_gap'),
@@ -251,6 +250,19 @@ test('TCP conversions use the same socket snapshot and preserve zero counters', 
     targetAddress: '203.0.113.1',
     timingScope: 'connect_including_resolution_and_callback',
   });
+  const exported = parseCsv(outputFiles(result)['tcp.csv']);
+  expect(exported.rows[0].connectDurationMs).toBe('21.047');
+  for (const field of [
+    'kernelRttMs',
+    'kernelRttVariationMs',
+    'tcpTotalRetransmissions',
+    'congestionWindowSegments',
+    'sendMssBytes',
+    'congestionWindowBytesEstimate',
+  ]) {
+    expect(exported.headers).not.toContain(field);
+  }
+  expect(lib.audit.issues.some(i => i.code === 'kernel_tcp_info')).toBe(false);
 });
 
 test('loaded HTTP uses embedded transfer duration and preserves both sample groups', () => {

@@ -37,7 +37,7 @@ test('JSON action writes only the complete JSON export', async () => {
   await shareSession('s', 'json');
   expect(FS.writeFile).toHaveBeenCalledTimes(1);
   expect(JSON.parse(FS.writeFile.mock.calls[0][1])).toMatchObject({
-    exportFormatVersion: 3,
+    exportFormatVersion: 4,
     session: { id: 's' },
   });
 });

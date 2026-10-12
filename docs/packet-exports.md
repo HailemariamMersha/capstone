@@ -1,8 +1,8 @@
-> **Library comparison addition:** format-3 exports now also include `library-callbacks.jsonl`, retaining requests, raw callbacks, unavailable-field declarations and dropped counts. The existing files remain compatible. See [library comparison](library-packet-comparison.md).
+> **Current library-only CSVs (format 4):** CSV columns cover library observations, TypeScript summaries and application/context metadata. Custom socket timestamps, send buffers, Linux error-queue fields and handset TCP_INFO columns are omitted. Raw JSON still preserves saved records, including historical native sessions.
 
 # Probe-level exports
 
-Export format **3** keeps the saved JSON as the source of truth and supplies convenient CSV projections. This does not change the SQLite schema: optional raw fields live inside existing measurement JSON. Old sessions still export; missing historical values are not backfilled from current library versions or invented.
+Export format **4** keeps the saved JSON as the source of truth and supplies convenient CSV projections. This does not change the SQLite schema: optional raw fields live inside existing measurement JSON. Old sessions still export; missing historical values are not backfilled from current library versions or invented.
 
 ## Files
 
@@ -10,10 +10,10 @@ Use **Export CSV** on a saved session to share all eight files together:
 
 | File | Granularity / contents |
 | --- | --- |
-| `session.json` | Complete saved session/configuration, measurements, events and context, plus `exportFormatVersion: 3` |
+| `session.json` | Complete saved session/configuration, measurements, events and context, plus `exportFormatVersion: 4` |
 | `measurements.csv` | One row per attempt, including failures; flat summaries, context, embedded load-transfer values and the complete `rawRecordJson` |
 | `samples.csv` | One row per stored diagnostic sample, baseline HTTP sample or traceroute probe; includes missing replies and errors |
-| `packets.jsonl` | One full native packet-probe object per line, with session/measurement/sequence/hop keys; historical records without packet fields produce no lines |
+| `packets.jsonl` | One retained library/native packet-probe object per line, with session/measurement/sequence/hop keys; historical records without packet fields produce no lines |
 | `library-callbacks.jsonl` | Retained library requests and callbacks, unavailable declarations and dropped counts; not one line per network packet |
 | `events.csv` | Session lifecycle, schedule gaps, failures and other saved events, including details/raw JSON |
 | `network-context.csv` | Context observations, their IDs/timestamps, connectivity, Wi-Fi and battery fields, plus full raw JSON |
@@ -31,7 +31,7 @@ Use a Node version supporting TypeScript type stripping (the development environ
 
 ## Complete dictionary and readable analysis
 
-Start with the [measurement guide](measurements/guide.md), [every-column dictionary](measurements/columns.md), [annotated rows](measurements/examples.md), and [library/native requirements audit](measurements/comparison.md). The Mac analysis command produces six focused CSVs and sanity-check reports without changing the phone export.
+Start with the [measurement guide](measurements/guide.md), [every-column dictionary](measurements/columns.md), [annotated rows](measurements/examples.md), and [library/native requirements audit](measurements/comparison.md). The Mac analysis command produces six focused CSVs and sanity-check reports using the same library-focused column policy as the phone export.
 
 ```sh
 npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis-directory
@@ -60,18 +60,27 @@ npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new
 
 `measurements.csv` adds reply counts, median/p95, successive RTT differences, sent/duplicate/reordered counts, non-response/loss percentages, destination-reached/hop information and load-transfer bytes/speed. `rawRecordJson` preserves every saved measurement field, including callback arrays and extensions that have no flat column. The full session JSON also preserves all configuration and events.
 
-## What “raw” means here
+## Current CSV scope and raw evidence
 
-The preserved custom baseline uses the [native packet engine](packet-engine.md). Current Android sessions on this branch use [library adapters](library-packet-comparison.md); their available bytes and callbacks follow the same format. The native-only fields below apply to baseline records, not to every new library record. The complete object returned by the adapter is stored in `packet`, without discarding unknown fields. Each burst/trace sample has its own object. `packets.jsonl` keeps observations and ancillary messages nested under their probe, including timeouts and errors. `session.json` remains authoritative for the entire session.
+`measurements.csv` has **70 columns** and `samples.csv` has **64**. These include provenance, outcomes, summary statistics, context, and library-accessible received ICMP bytes/headers. Columns containing `native` in their name (for example `nativeVariant`) refer to a library's platform result, not our custom socket engine, and remain useful.
 
-- **ICMP:** Received ICMP message bytes, actual header type/code/checksum/identifier/sequence, payload, endpoint, TTL/hop-limit and timestamps where supplied. The send buffer precedes the kernel's identifier/checksum updates; it is explicitly labelled, not represented as captured wire bytes.
-- **Traceroute:** Original `sock_extended_err` errno/origin/type/code/info/data and offender, socket-associated quoted payload, TTL and timing. Only origins ICMP/ICMP6 populate ICMP fields. Intermediate Time Exceeded differs from Destination Unreachable. This is UDP traceroute, not Paris traceroute.
-- **UDP:** Exact send/received application payload hex and raw normal/error-queue observations. New native probes are sequential and do not estimate burst reordering/duplicates. Socket data omits outer IP/UDP headers.
-- **TCP:** Native connect duration plus before/after `TCP_INFO` including the returned struct bytes and supported parsed fields. Kernel smoothed RTT is distinct from connect duration. No TCP segments are captured.
-- **Reference tests:** NDT7 worker callbacks retain the original server message (including server-side TCP telemetry when provided); SpeedChecker listener callbacks retain primitive arguments and selected final public result fields. These are SDK observations, not handset packet captures or undocumented SDK internals. Each log is bounded to 256 callbacks and 262,144 serialized characters per direction/run, with `droppedCallbacks` reported.
-- **Historical/fallback results:** Prior shell-ping stdout/stderr, icmpenguin variants and JavaScript UDP/TCP callback logs remain exportable. Their missing packet fields stay blank; new captures cannot reconstruct old records.
+The following 14 custom-only columns were removed from both wide CSVs:
 
-Additional packet columns include `packetOutcome`, `ipVersion`, local/remote endpoints, `icmpIdentifier`, `icmpSequence`, `icmpChecksum`, `socketErrno`, `errorOrigin`, raw buffer scopes/hex, received flags, `tcpKernelRttUs`, retransmissions, congestion window and `packetRawJson`. Nanosecond timestamps are decimal strings: import them as **text** in spreadsheets to avoid precision loss. Monotonic timestamps and kernel realtime timestamps use different clocks and must not be subtracted from each other. Buffers and ancillary data have explicit truncation indicators; excess observations have `droppedObservations`.
+- `sendMonotonicNs`, `receiveMonotonicNs`, `kernelReceiveRealtimeNs`
+- `sentSocketBytes`, `sendBufferScope`, `sendBufferHex`
+- `socketErrno`, `errorOrigin`, `errorData`, `recvmsgFlags`
+- `tcpKernelRttUs`, `tcpRttVarianceUs`, `tcpTotalRetransmissions`, `tcpCongestionWindowSegments`
+
+Focused `tcp.csv` also omits kernel RTT, variation, retransmissions, congestion window and MSS columns. Focused `udp.csv` omits the custom send-syscall byte counter. This changes CSV headers, hence format 4. Consumers must use headers rather than column positions. Existing saved sessions are not migrated or deleted.
+
+- **ICMP:** icmpenguin supplies received echo-message bytes and TTL/RTT; TypeScript decodes the actual ICMP header. Burst evidence is in individual samples rather than the parent row. The current library does not provide the observed reply source or full outer IP headers.
+- **Traceroute:** retains per-hop library outcomes, responders and timings. Its original ICMP error type/code are not reliably exposed; ambiguous result labels remain explicit.
+- **TCP:** retains connection callback timing, endpoints and application counters in raw callbacks. It supplies no handset TCP_INFO or TCP packet capture.
+- **UDP:** retains sent/received application payloads, sender metadata and matching/reordering evidence in callbacks. These are datagram payloads, not full IP/UDP headers or native syscall buffers.
+- **HTTP:** application transaction timing and transfer counts; no TCP kernel statistics.
+- **Reference tests:** optional NDT7/SpeedChecker result fields remain available when those integrations are enabled and run. Their blank cells do not imply a custom-native requirement.
+
+`session.json`, `packets.jsonl`, `library-callbacks.jsonl` and raw JSON cells preserve original saved evidence. Historical custom-engine records may still contain native fields inside JSON; removing CSV columns does not destroy that evidence. See the [archived engine description](packet-engine.md) and [TCP_INFO appendix](measurements/tcp-info.md) only when interpreting those older records. Current library runs do not collect those kernel values.
 
 Blank CSV fields mean missing/not applicable. Numeric zero and boolean false remain explicit. CSV quoting preserves commas, quotes and multiline text. Potential spreadsheet formulas receive an apostrophe prefix; JSON preserves the original string. A spreadsheet may impose its own cell-size limit, so retain `session.json` even when using the CSVs for analysis.
 

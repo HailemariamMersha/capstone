@@ -51,7 +51,7 @@
       "units": "none",
       "meaning": "Implementation and timing method recorded when collected.",
       "source": "m.method",
-      "example": "native_tcp_connect_and_info",
+      "example": "icmpenguin_echo_reply_bytes",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
       "applicableFiles": [
@@ -206,7 +206,7 @@
       "units": "none",
       "meaning": "Recorded callback or observation mechanism.",
       "source": "raw.source",
-      "example": "native_socket_observation",
+      "example": "tcp_connect_callback",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
       "applicableFiles": ["measurements.csv", "samples.csv"],
@@ -484,7 +484,7 @@
       "example": "udp_payload",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "receivedScope": {
@@ -1142,7 +1142,7 @@
       "example": 72,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv", "udp.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "receivedSocketBytes": {
@@ -1202,7 +1202,7 @@
       "example": 113,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "errorOrigin": {
@@ -1213,7 +1213,7 @@
       "example": 2,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "errorData": {
@@ -1224,7 +1224,7 @@
       "example": 0,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "recvmsgFlags": {
@@ -1235,7 +1235,7 @@
       "example": 8192,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "tcpKernelRttUs": {
@@ -1246,7 +1246,7 @@
       "example": 20414,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "tcpRttVarianceUs": {
@@ -1257,7 +1257,7 @@
       "example": 10207,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "tcpTotalRetransmissions": {
@@ -1268,7 +1268,7 @@
       "example": 0,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv", "tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "tcpCongestionWindowSegments": {
@@ -1279,7 +1279,7 @@
       "example": 10,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "sendMonotonicNs": {
@@ -1290,7 +1290,7 @@
       "example": "1791393334539568298",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "receiveMonotonicNs": {
@@ -1301,7 +1301,7 @@
       "example": "1791393334539568298",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "kernelReceiveRealtimeNs": {
@@ -1312,7 +1312,7 @@
       "example": "1791393334539568298",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "sendBufferHex": {
@@ -1323,7 +1323,7 @@
       "example": "0800000000000000",
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "samples.csv"],
+      "applicableFiles": [],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
     "receivedHex": {
@@ -1540,7 +1540,7 @@
       "example": 20.414,
       "calculation": "p.tcpInfoAfter.tcpi_rtt / 1000",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "kernelRttVariationMs": {
@@ -1551,7 +1551,7 @@
       "example": 10.207,
       "calculation": "p.tcpInfoAfter.tcpi_rttvar / 1000",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "congestionWindowSegments": {
@@ -1562,7 +1562,7 @@
       "example": 10,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "sendMssBytes": {
@@ -1573,7 +1573,7 @@
       "example": 1238,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "congestionWindowBytesEstimate": {
@@ -1584,7 +1584,7 @@
       "example": 12380,
       "calculation": "tcpi_snd_cwnd * tcpi_snd_mss",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["tcp.csv"],
+      "applicableFiles": [],
       "applicableRows": "TCP connection attempts with the corresponding timing/telemetry available."
     },
     "payloadBytes": {
@@ -1754,26 +1754,12 @@
         "localPort",
         "targetAddress",
         "packetTargetPort",
-        "sendMonotonicNs",
-        "receiveMonotonicNs",
-        "kernelReceiveRealtimeNs",
-        "sentSocketBytes",
         "receivedSocketBytes",
-        "sendBufferScope",
-        "sendBufferHex",
         "receivedScope",
         "receivedHex",
         "icmpIdentifier",
         "icmpSequence",
         "icmpChecksum",
-        "socketErrno",
-        "errorOrigin",
-        "errorData",
-        "recvmsgFlags",
-        "tcpKernelRttUs",
-        "tcpRttVarianceUs",
-        "tcpTotalRetransmissions",
-        "tcpCongestionWindowSegments",
         "packetRawJson",
         "rawRecordJson"
       ]
@@ -1838,26 +1824,12 @@
         "localPort",
         "targetAddress",
         "packetTargetPort",
-        "sendMonotonicNs",
-        "receiveMonotonicNs",
-        "kernelReceiveRealtimeNs",
-        "sentSocketBytes",
         "receivedSocketBytes",
-        "sendBufferScope",
-        "sendBufferHex",
         "receivedScope",
         "receivedHex",
         "icmpIdentifier",
         "icmpSequence",
         "icmpChecksum",
-        "socketErrno",
-        "errorOrigin",
-        "errorData",
-        "recvmsgFlags",
-        "tcpKernelRttUs",
-        "tcpRttVarianceUs",
-        "tcpTotalRetransmissions",
-        "tcpCongestionWindowSegments",
         "packetRawJson",
         "rawSampleJson"
       ]
@@ -1994,12 +1966,6 @@
         "targetPort",
         "connectDurationMs",
         "timingScope",
-        "kernelRttMs",
-        "kernelRttVariationMs",
-        "tcpTotalRetransmissions",
-        "congestionWindowSegments",
-        "sendMssBytes",
-        "congestionWindowBytesEstimate",
         "localAddress",
         "localPort",
         "targetAddress",
@@ -2088,7 +2054,6 @@
         "timingScope",
         "payloadBytes",
         "payloadSizeSource",
-        "sentSocketBytes",
         "receivedSocketBytes",
         "errorType"
       ],

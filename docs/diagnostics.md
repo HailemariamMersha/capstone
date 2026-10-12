@@ -1,6 +1,6 @@
 # Optional network diagnostics
 
-**Packet-level update — 2026-09-29:** New Android sessions now default to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. See [current methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
+**Historical custom-engine baseline — 2026-09-29:** That baseline defaulted to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. Current sessions use library adapters and format-4 CSVs without custom-only columns; see [current export scope](packet-exports.md). See [baseline methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
 
 
 Android is the validation target. Measurement logic is TypeScript and the socket libraries support Android/iOS; iOS and physical Android validation remain separate acceptance checks.
