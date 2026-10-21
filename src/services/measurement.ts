@@ -48,12 +48,13 @@ controller.subscribeToStatus(status => {
 export async function startSession(
   config?: MeasurementConfig,
   resumedFromId?: string,
+  ownerId?: string,
 ): Promise<string> {
   if (currentActivity() !== 'measurement') {
     releaseMeasurement = acquireActivity('measurement');
   }
   try {
-    return await controller.startSession(config, resumedFromId);
+    return await controller.startSession(config, resumedFromId, ownerId);
   } catch (error) {
     if (
       (await controller.getServiceStatus().catch(() => null))?.state !==

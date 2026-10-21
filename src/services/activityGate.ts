@@ -1,5 +1,5 @@
 // Serializes measurement and ingestion traffic even across rapid UI callbacks.
-type Activity = 'measurement' | 'sync' | 'reference';
+type Activity = 'measurement' | 'sync' | 'reference' | 'account';
 let activity: Activity | null = null;
 export const currentActivity = () => activity;
 export function acquireActivity(next: Activity): () => void {

@@ -1,5 +1,5 @@
 /** Version 1. Future schema upgrades must be additive migrations, never database resets. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const SCHEMA = [
   `CREATE TABLE sessions (
     id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT,
@@ -31,4 +31,10 @@ export const MIGRATION_2 = [
   'ALTER TABLE sync_queue ADD COLUMN version INTEGER NOT NULL DEFAULT 1',
   'ALTER TABLE sync_queue ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE sync_queue ADD COLUMN last_error TEXT',
+];
+
+export const MIGRATION_3 = [
+  'ALTER TABLE sessions ADD COLUMN owner_id TEXT',
+  "ALTER TABLE sessions ADD COLUMN upload_status TEXT NOT NULL DEFAULT 'Saved locally'",
+  'CREATE INDEX sessions_owner ON sessions(owner_id, started_at)',
 ];

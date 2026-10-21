@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { SCHEMA, SCHEMA_VERSION, MIGRATION_2 } from './schema';
+import { SCHEMA, SCHEMA_VERSION, MIGRATION_2, MIGRATION_3 } from './schema';
 import { requestedPayload } from '../measurements/diagnosticConfig';
 import type { Measurement } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
@@ -16,6 +16,7 @@ export function createRepository(
   platform = 'unknown',
 ): MeasurementStore {
   let initialized: Promise<void> | undefined;
+  let backgroundOnly = false;
   let operations: Promise<unknown> = Promise.resolve();
   const now = () => new Date().toISOString();
   async function id(): Promise<string> {
@@ -57,7 +58,13 @@ export function createRepository(
     operations = result.catch(() => undefined);
     return result;
   }
-  function initialize(): Promise<void> {
+  function initialize(recoverActive?: boolean): Promise<void> {
+    if (recoverActive === true && backgroundOnly) {
+      initialized = undefined;
+      backgroundOnly = false;
+    }
+    if (recoverActive === false) backgroundOnly = true;
+    const recover = recoverActive ?? !backgroundOnly;
     if (!initialized) {
       initialized = serialize(async () => {
         const mode = await db.execute('PRAGMA journal_mode=WAL');
@@ -88,8 +95,12 @@ export function createRepository(
             for (const sql of MIGRATION_2) {
               await db.execute(sql);
             }
-            await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
           }
+          if (version < 3) {
+            for (const sql of MIGRATION_3) await db.execute(sql);
+          }
+          await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
+          if (!recover) return;
           // Run once per JS process, before any new session can be started.
           const stale = (
             await db.execute(
@@ -149,6 +160,8 @@ export function createRepository(
     return read(() => transaction(action));
   }
   const toSession = (row: Record<string, unknown>): SessionRecord => ({
+    ownerId: row.owner_id == null ? null : String(row.owner_id),
+    uploadStatus: String(row.upload_status),
     id: String(row.id),
     startedAt: String(row.started_at),
     endedAt: row.ended_at === null ? null : String(row.ended_at),
@@ -162,6 +175,101 @@ export function createRepository(
   const sessionSelect = `SELECT s.*, (SELECT COUNT(*) FROM measurements m WHERE m.session_id=s.id AND m.state='complete') AS measurement_count FROM sessions s`;
   return {
     initialize,
+    hasActiveSession: () =>
+      read(async () =>
+        Boolean(
+          (
+            await db.execute(
+              "SELECT 1 FROM sessions WHERE state='active' LIMIT 1",
+            )
+          ).rows.length,
+        ),
+      ),
+    accountSessions: ownerId =>
+      read(async () =>
+        (
+          await db.execute(
+            `${sessionSelect} WHERE s.owner_id=? ORDER BY s.started_at DESC`,
+            [ownerId],
+          )
+        ).rows.map(toSession),
+      ),
+    setUploadStatus: (ownerId, sessionId, status) =>
+      write(async () => {
+        await db.execute(
+          'UPDATE sessions SET upload_status=? WHERE id=? AND owner_id=?',
+          [status, sessionId, ownerId],
+        );
+      }),
+    sessionManifest: (ownerId, sessionId) =>
+      read(async () => {
+        const session = (
+          await db.execute(
+            "SELECT id FROM sessions WHERE id=? AND owner_id=? AND state!='active'",
+            [sessionId, ownerId],
+          )
+        ).rows[0];
+        if (!session) throw new Error('Closed account session not found');
+        const records = (
+          await db.execute(
+            `SELECT entity_type,entity_id,version FROM sync_queue WHERE
+        (entity_type='session' AND entity_id=?) OR
+        (entity_type='measurement' AND entity_id IN (SELECT id FROM measurements WHERE session_id=?)) OR
+        (entity_type='event' AND entity_id IN (SELECT id FROM connectivity_events WHERE session_id=?)) OR
+        (entity_type='snapshot' AND entity_id IN (SELECT id FROM network_snapshots WHERE session_id=?)) ORDER BY id`,
+            [sessionId, sessionId, sessionId, sessionId],
+          )
+        ).rows;
+        return records.map(r => ({
+          type: String(r.entity_type),
+          id: String(r.entity_id),
+          version: Number(r.version),
+          payload: {},
+        }));
+      }),
+    deleteAccountRecords: ownerId =>
+      write(async () => {
+        if (
+          (
+            await db.execute(
+              "SELECT 1 FROM sessions WHERE owner_id=? AND state='active'",
+              [ownerId],
+            )
+          ).rows.length
+        )
+          throw new Error('Stop collection before deleting');
+        for (const [table, kind] of [
+          ['measurements', 'measurement'],
+          ['connectivity_events', 'event'],
+          ['network_snapshots', 'snapshot'],
+        ] as const) {
+          await db.execute(
+            `DELETE FROM sync_queue WHERE entity_type=? AND entity_id IN (SELECT id FROM ${table} WHERE session_id IN (SELECT id FROM sessions WHERE owner_id=?))`,
+            [kind, ownerId],
+          );
+          await db.execute(
+            `DELETE FROM ${table} WHERE session_id IN (SELECT id FROM sessions WHERE owner_id=?)`,
+            [ownerId],
+          );
+        }
+        await db.execute(
+          "DELETE FROM sync_queue WHERE entity_type='session' AND entity_id IN (SELECT id FROM sessions WHERE owner_id=?)",
+          [ownerId],
+        );
+        await db.execute(
+          'DELETE FROM debug_logs WHERE session_id IN (SELECT id FROM sessions WHERE owner_id=?)',
+          [ownerId],
+        );
+        await db.execute(
+          'UPDATE sessions SET resumed_from_id=NULL WHERE resumed_from_id IN (SELECT id FROM sessions WHERE owner_id=?)',
+          [ownerId],
+        );
+        await db.execute('DELETE FROM sessions WHERE owner_id=?', [ownerId]);
+        await db.execute('DELETE FROM app_settings WHERE key=? OR key LIKE ?', [
+          `last_session_config:${ownerId}`,
+          `upload-retry:${ownerId}:%`,
+        ]);
+      }),
     saveSnapshot: (sessionId, snapshot) =>
       write(async () => {
         const saved = { ...snapshot, id: await id() };
@@ -216,7 +324,7 @@ export function createRepository(
           snapshots,
         };
       }),
-    getSyncBatch: (limit = 50) =>
+    getSyncBatch: (limit = 50, ownerId, sessionId) =>
       read(async () => {
         const installationId = String(
           (await db.execute('SELECT id FROM device_info LIMIT 1')).rows[0].id,
@@ -224,13 +332,20 @@ export function createRepository(
         const candidates = (
           await db.execute(
             `SELECT q.* FROM sync_queue q WHERE q.state='pending' AND q.next_attempt_at<=? AND EXISTS (
-        SELECT 1 FROM sessions s WHERE s.state!='active' AND s.id=CASE q.entity_type
+        SELECT 1 FROM sessions s WHERE s.state!='active' AND (? IS NULL OR s.owner_id=?) AND (? IS NULL OR s.id=?) AND s.id=CASE q.entity_type
           WHEN 'session' THEN q.entity_id
           WHEN 'measurement' THEN (SELECT session_id FROM measurements WHERE id=q.entity_id)
           WHEN 'event' THEN (SELECT session_id FROM connectivity_events WHERE id=q.entity_id)
           WHEN 'snapshot' THEN (SELECT session_id FROM network_snapshots WHERE id=q.entity_id) END
       ) ORDER BY q.id LIMIT ?`,
-            [Date.now(), limit],
+            [
+              Date.now(),
+              ownerId ?? null,
+              ownerId ?? null,
+              sessionId ?? null,
+              sessionId ?? null,
+              limit,
+            ],
           )
         ).rows;
         const records = [];
@@ -301,6 +416,45 @@ export function createRepository(
         }
         return { installationId, records };
       }),
+    uploadReady: (ownerId, sessionId) =>
+      read(async () => {
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            `upload-retry:${ownerId}:${sessionId}`,
+          ])
+        ).rows[0];
+        return !row || JSON.parse(String(row.value_json)).nextAt <= Date.now();
+      }),
+    deferUpload: (ownerId, sessionId, reset = false) =>
+      write(async () => {
+        const key = `upload-retry:${ownerId}:${sessionId}`;
+        if (reset) {
+          await db.execute('DELETE FROM app_settings WHERE key=?', [key]);
+          return;
+        }
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            key,
+          ])
+        ).rows[0];
+        const attempts =
+          (row ? Number(JSON.parse(String(row.value_json)).attempts) : 0) + 1;
+        const nextAt =
+          Date.now() +
+          Math.min(3600000, 15000 * 2 ** Math.min(attempts - 1, 8));
+        await db.execute(
+          'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
+          [key, JSON.stringify({ attempts, nextAt })],
+        );
+      }),
+    requeueSync: records =>
+      write(async () => {
+        for (const r of records)
+          await db.execute(
+            "UPDATE sync_queue SET state='pending',next_attempt_at=0,acknowledged_at=NULL WHERE entity_type=? AND entity_id=? AND version=?",
+            [r.type, r.id, r.version],
+          );
+      }),
     acknowledgeSync: records =>
       write(async () => {
         for (const record of records) {
@@ -325,23 +479,27 @@ export function createRepository(
           );
         }
       }),
-    createSession: (config, resumedFromId) =>
+    createSession: (config, resumedFromId, ownerId) =>
       write(async () => {
         const sessionId = await id();
         const timestamp = now();
         await db.execute(
-          "INSERT INTO sessions(id,started_at,last_observed_at,state,config_json,resumed_from_id) VALUES (?,?,?,'active',?,?)",
+          "INSERT INTO sessions(id,started_at,last_observed_at,state,config_json,resumed_from_id,owner_id) VALUES (?,?,?,'active',?,?,?)",
           [
             sessionId,
             timestamp,
             timestamp,
             JSON.stringify(config),
             resumedFromId ?? null,
+            ownerId ?? null,
           ],
         );
         await db.execute(
           'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
-          ['last_session_config', JSON.stringify(config)],
+          [
+            ownerId ? `last_session_config:${ownerId}` : 'last_session_config',
+            JSON.stringify(config),
+          ],
         );
         await event(sessionId, 'session_started', {
           resumedFromId: resumedFromId ?? null,

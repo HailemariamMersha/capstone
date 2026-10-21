@@ -7,7 +7,7 @@ import {
   Text,
 } from 'react-native';
 import { act, create } from 'react-test-renderer';
-import App from '../App';
+import App from '../src/participant/LegacyCollector';
 import {
   getServiceStatus,
   startSession,

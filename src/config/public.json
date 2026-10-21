@@ -1,0 +1,11 @@
+{
+  "supabaseUrl": "",
+  "supabasePublishableKey": "",
+  "apiUrl": "",
+  "probeUrl": "https://probe.example.invalid",
+  "udpHost": "",
+  "udpPort": 9876,
+  "probeRegion": "fra1",
+  "redirectUrl": "com.labpracticeapp://auth/callback",
+  "collectorVersion": "skymeasure-libraries-1"
+}

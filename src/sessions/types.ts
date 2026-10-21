@@ -1,6 +1,9 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  notes?: string;
+  collectorVersion?: string;
+  probeRegion?: string;
   /** Absent on historical sessions: retain their HTTP schedule. New UI defaults to false. */
   httpEnabled?: boolean;
   mode?: 'ndt7_reference' | 'speedchecker_reference';
@@ -41,6 +44,8 @@ export interface BackgroundExecutor {
   stop(): Promise<void>;
 }
 export interface SessionRecord {
+  ownerId?: string | null;
+  uploadStatus?: string;
   id: string;
   startedAt: string;
   endedAt: string | null;

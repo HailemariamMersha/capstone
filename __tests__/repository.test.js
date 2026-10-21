@@ -69,7 +69,7 @@ test('diagnostic payload is reserved atomically and raw samples survive export a
 test('enables WAL, migrations and durable result/queue records', async () => {
   const id = await store.createSession(config);
   expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal');
-  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(2);
+  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(3);
   const attempt = await store.beginAttempt(
     id,
     'http_rtt',
@@ -224,7 +224,7 @@ test('version-one migration preserves existing records and recovers an open sess
   );
   await store.finishAttempt(success(attempt));
   db.exec(
-    'ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
+    'DROP INDEX sessions_owner; ALTER TABLE sessions DROP COLUMN owner_id; ALTER TABLE sessions DROP COLUMN upload_status; ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
   );
   db.close();
   open();
@@ -401,4 +401,53 @@ test('TCP attempts retain their own endpoint while old sessions use the HTTP end
     ).toBe(tcp.probeServer);
     await store.endSession(session, 'completed', 'test');
   }
+});
+
+test('account-owned queues exclude legacy and another participant, with durable ownership', async () => {
+  const legacy = await store.createSession(config);
+  await store.endSession(legacy, 'completed', 'done');
+  const a = await store.createSession(config, undefined, 'account-a');
+  const b = await store.createSession(config, undefined, 'account-b');
+  await store.endSession(a, 'completed', 'done');
+  await store.endSession(b, 'completed', 'done');
+  expect((await store.accountSessions('account-a')).map(s => s.id)).toEqual([
+    a,
+  ]);
+  const batch = await store.getSyncBatch(50, 'account-a', a);
+  expect(
+    batch.records.every(r => r.payload.sessionId === a || r.id === a),
+  ).toBe(true);
+  await expect(store.sessionManifest('account-b', a)).rejects.toThrow();
+  await store.deleteAccountRecords('account-a');
+  expect(await store.accountSessions('account-a')).toEqual([]);
+  expect((await store.accountSessions('account-b')).length).toBe(1);
+  expect(await store.getSession(legacy)).not.toBeNull();
+});
+
+test('headless initialization leaves persisted collection active until explicit foreground recovery', async () => {
+  const id = await store.createSession(config, undefined, 'account-a');
+  db.close();
+  open();
+  await store.initialize(false);
+  expect(await store.hasActiveSession()).toBe(true);
+  expect((await store.getSyncBatch(50, 'account-a')).records).toEqual([]);
+  await store.initialize(true);
+  expect((await store.getSession(id)).state).toBe('interrupted');
+});
+
+test('upload retry backoff survives process restarts and a server-reported missing version can be requeued', async () => {
+  const id = await store.createSession(config, undefined, 'a');
+  await store.endSession(id, 'completed', 'done');
+  const records = (await store.getSyncBatch(50, 'a', id)).records;
+  await store.acknowledgeSync(records);
+  await store.deferUpload('a', id);
+  db.close();
+  open();
+  expect(await store.uploadReady('a', id)).toBe(false);
+  await store.requeueSync(records);
+  expect((await store.getSyncBatch(50, 'a', id)).records).toHaveLength(
+    records.length,
+  );
+  await store.deferUpload('a', id, true);
+  expect(await store.uploadReady('a', id)).toBe(true);
 });

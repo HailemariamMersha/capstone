@@ -96,14 +96,15 @@ export function createSessionController(
     startSession(
       input: MeasurementConfig = DEFAULT_SESSION_CONFIG,
       resumedFromId?: string,
+      ownerId?: string,
     ): Promise<string> {
       return enqueue(async () => {
-        await store.initialize();
+        await store.initialize(true);
         if (status.state === 'running' && status.sessionId) {
           return status.sessionId;
         }
         const config = validateSessionConfig(input);
-        const id = await store.createSession(config, resumedFromId);
+        const id = await store.createSession(config, resumedFromId, ownerId);
         status = { ...emptyStatus(), state: 'starting', sessionId: id };
         publish();
         try {
@@ -187,7 +188,7 @@ export function createSessionController(
       return enqueue(() => shutdown());
     },
     async getServiceStatus(): Promise<ServiceStatus> {
-      await store.initialize();
+      await store.initialize(true);
       return snapshot();
     },
     subscribeToStatus(listener: (current: ServiceStatus) => void): () => void {

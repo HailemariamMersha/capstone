@@ -82,3 +82,13 @@ __pycache__/
 
 # Local collected research data
 backend/data/
+
+# Deployment inputs and web build artifacts
+.env
+.env.*
+!.env.example
+.next/
+playwright-report/
+test-results/
+
+*.tsbuildinfo
