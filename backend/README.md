@@ -1,3 +1,9 @@
+# SkyMeasure backend
+
+Authenticated participant and researcher APIs live under `/api/v2`. Follow [staging setup](../docs/skymeasure/setup.md) for Supabase Auth, PostgreSQL migrations, administrator bootstrap, Docker/UDP deployment, and Google sign-in. `python -m backend.research.manage migrate` creates the new research tables; it does not remove old SQLite evidence. The legacy ingestion route is disabled unless `CAPSTONE_LOCAL_DEV=1` is explicitly set.
+
+The following probe and historical development documentation remains useful for reproducing earlier tests.
+
 # Controlled probe server (M2)
 
 Run from the repository root:
@@ -49,9 +55,9 @@ Tests cover exact payload sizes, protocol headers, upload acknowledgement, inval
 
 `POST /api/v1/ingest` accepts at most 50 versioned records / 8 MiB per batch. Records are keyed by installation ID, type and record ID. A transaction commits before acknowledgements are returned; retrying an identical batch is idempotent. Same-version conflicting payloads return 409. Newer versions replace older ones without creating duplicates.
 
-Storage defaults to `backend/data/ingestion.sqlite`; override with `CAPSTONE_INGEST_DB`. This local single-server store is a prototype adapter, not the planned PostgreSQL/TimescaleDB deployment. Inspect it with a SQLite browser or Python's sqlite3 module; data is in the `records` table, with JSON in `payload_json`.
+Storage defaults to `backend/data/ingestion.sqlite`; override with `CAPSTONE_INGEST_DB`. This local single-server store is a prototype adapter, separate from the authenticated PostgreSQL deployment. Inspect it with a SQLite browser or Python's sqlite3 module; data is in the `records` table, with JSON in `payload_json`.
 
-Set `CAPSTONE_SYNC_TOKEN` for remote deployments; clients send it as a bearer token. Without a token the endpoint accepts loopback connections only. Serve remote deployments over HTTPS and configure reverse-proxy trust correctly; do not expose a tokenless backend behind a loopback proxy. The mobile app does not persist the token or log it.
+Only in explicit local development mode (`CAPSTONE_LOCAL_DEV=1`), set `CAPSTONE_SYNC_TOKEN` for controlled LAN testing; clients send it as a bearer token. Without a token the endpoint accepts loopback connections only. Serve remote deployments over HTTPS and configure reverse-proxy trust correctly; do not expose a tokenless backend behind a loopback proxy. The mobile app does not persist the token or log it.
 
 `GET /api/v1/context` returns the observed public IP (null for local/private addresses) and ASN when enrichment is configured. To enable ASN, install `geoip2` in the backend environment and set `CAPSTONE_ASN_DB` to a local compatible ASN MMDB file. No external lookup is made, no MMDB is bundled, and missing enrichment returns null. Configure Uvicorn's trusted proxy settings explicitly when deployed behind a proxy; never trust arbitrary client-supplied forwarding headers.
 

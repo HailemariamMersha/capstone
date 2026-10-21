@@ -882,7 +882,7 @@
     },
     "signalStrength": {
       "datatype": "integer",
-      "units": "0\u2013100 scale",
+      "units": "0–100 scale",
       "meaning": "NetInfo Wi-Fi strength, not dBm or satellite RF signal strength.",
       "source": "n.signalStrength <- NetInfo.details.strength",
       "example": 99,
@@ -2139,5 +2139,23 @@
         }
       }
     }
+  },
+  "combinedPacketProjection": {
+    "packetOutcome": ["outcome"],
+    "ipVersion": ["ipVersion"],
+    "localAddress": ["localAddress"],
+    "localPort": ["localPort"],
+    "targetAddress": ["targetAddress", "resolvedAddress"],
+    "packetTargetPort": ["targetPort"],
+    "probeTtl": ["probeTtl"],
+    "replyTtl": ["response.replyTtl"],
+    "responderAddress": ["response.responderAddress"],
+    "receivedSocketBytes": ["response.receivedSocketBytes"],
+    "receivedScope": ["response.receivedScope"],
+    "icmpType": ["response.icmpType"],
+    "icmpCode": ["response.icmpCode"],
+    "icmpIdentifier": ["response.icmpIdentifier"],
+    "icmpSequence": ["response.icmpSequence"],
+    "icmpChecksum": ["response.icmpChecksum"]
   }
 }

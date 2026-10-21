@@ -17,6 +17,11 @@ HEADERS = {
 }
 app = FastAPI(title="Capstone Probe Server", version="0.2.0")
 app.include_router(router)
+from backend.research.api import router as research_router
+from fastapi.middleware.cors import CORSMiddleware
+app.include_router(research_router)
+app.add_middleware(CORSMiddleware, allow_origins=[x for x in os.environ.get('DASHBOARD_ORIGINS', '').split(',') if x], allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
+
 
 
 @app.get("/api/v1/probe/ping")
@@ -66,3 +71,10 @@ async def upload(request: Request):
     if length is not None and received != declared:
         raise HTTPException(400, "Body length does not match Content-Length")
     return JSONResponse({"receivedBytes": received}, headers=HEADERS)
+
+from backend.research.limits import RequestLimits
+app.add_middleware(RequestLimits)
+
+@app.get('/health')
+def health():
+    return {'status': 'ok', 'region': HEADERS['X-Probe-Region']}

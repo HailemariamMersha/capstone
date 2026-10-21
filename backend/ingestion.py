@@ -29,6 +29,8 @@ class Batch(BaseModel):
 
 
 def authorize(request: Request):
+    if os.environ.get('CAPSTONE_LOCAL_DEV') != '1':
+        raise HTTPException(404, 'Legacy ingestion is disabled')
     expected = os.environ.get('CAPSTONE_SYNC_TOKEN', '')
     if expected:
         if not hmac.compare_digest(request.headers.get('authorization', ''), f'Bearer {expected}'):
