@@ -1,3 +1,5 @@
+> **Researcher downloads:** the SkyMeasure dashboard additionally provides a combined measurement/sample CSV and original session JSON. This does not alter the existing eight-file phone export. See [combined row meanings](skymeasure/combined-csv.md).
+
 > **Current library-only CSVs (format 4):** CSV columns cover library observations, TypeScript summaries and application/context metadata. Custom socket timestamps, send buffers, Linux error-queue fields and handset TCP_INFO columns are omitted. Raw JSON still preserves saved records, including historical native sessions.
 
 # Probe-level exports

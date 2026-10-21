@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.venv
+backend/data
+**/.env
+**/.env.*
+**/__pycache__
+android
+ios
+dashboard

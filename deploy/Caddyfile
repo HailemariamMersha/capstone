@@ -1,0 +1,12 @@
+{$API_DOMAIN} {
+  # Measurement response bytes must not be transformed/compressed by the proxy.
+  request_body {
+    max_size 101MB
+  }
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    Strict-Transport-Security "max-age=31536000"
+  }
+  reverse_proxy api:8000
+}

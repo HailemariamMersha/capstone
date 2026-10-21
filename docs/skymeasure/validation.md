@@ -1,0 +1,55 @@
+# SkyMeasure implementation and validation — 2026-10-22
+
+## Delivered source increments
+
+| Area | Implemented behavior |
+| --- | --- |
+| Participant app | SkyMeasure light theme; Google welcome/consent; Home, Sessions and Account tabs; ten-minute / 100 MiB packet defaults; Advanced settings; owned session results and upload badges; optional Wi-Fi permissions; historical ownerless exports. |
+| Authentication and ownership | Supabase browser PKCE with S256, exact callback checks and Keychain storage; offline cached participant identity; API-derived ownership; additive SQLite migration; participant/researcher/admin access; server administrator command; account deletion and identity-deletion worker. |
+| Ingestion and research workspace | Immutable closed-session manifests, bounded versioned batches, exact acknowledgements, persistent retry backoff and reconciliation; collection/upload activity gate; Android Headless JS hooks; PostgreSQL indexed fields and JSONB; researcher filters, charts, individual observations, raw evidence and CSV/JSON downloads. |
+| Staging preparation | Docker API/UDP/HTTPS proxy, separate deletion worker, environment templates, public mobile configuration generator, Vercel instructions, Frankfurt region labels, and physical-device acceptance procedure. |
+
+The collector libraries, scheduler algorithms and original phone CSV bundle remain in place. Researcher combined CSV is an additional view. No kernel collection was added.
+
+## Executed checks
+
+- **196 mobile/core tests across 30 suites** passed, including existing measurement/export/repository tests and new onboarding, navigation, secure callbacks, offline identity, account scope, headless persisted-state protection, sync acknowledgements, retry backoff and reconciliation tests. Navigation/auth tests use controlled mocks; they do not validate Google itself.
+- Mobile TypeScript and ESLint checks passed.
+- Android debug and bundled release APK builds passed. Release packaging uses the project's existing development signing setup, not an app-store signing key.
+- The bundled app launched on the Android API 36.1 emulator without a JavaScript/runtime crash. Welcome/setup-pending UI was inspected at normal and 200% font size. Accessibility hierarchy includes the Google button label; full TalkBack navigation with signed-in screens remains a physical acceptance item.
+- Android registered persisted JobScheduler job 999, with 15-minute minimum cadence, start-on-boot and Headless JS. After confirming the background app process had exited, a forced job created a new process and called `finish` / `jobFinished`; this verifies callback wiring, not authenticated background delivery or real scheduling reliability.
+- **34 backend tests passed with SQLite**, with the PostgreSQL-only policy check skipped in that run. The research suite also passed against **local PostgreSQL 17**, **11 research integration tests passed on PostgreSQL**, including denied cross-account operations, participant role escalation, revoked/invalid auth, partial/duplicate/conflicting uploads, deletion, preserved future fields, malformed records and original-dataset round trips.
+- PostgreSQL migration enabled RLS. `anon` and `authenticated` could not read account rows even when temporarily granted SELECT inside a rolled-back test transaction. Application access uses FastAPI's validated identity and server-owned role checks.
+- Next.js production build and TypeScript passed. Three Playwright browser tests passed: participant denied research navigation, approved researcher inspection/downloads, and narrow-screen sign-in. Browser API data/auth are sanitized fixtures, not a live Supabase deployment.
+- The staging Docker image built. Container smoke checks passed for health, HTTP probe response, and disabled legacy ingestion.
+
+## Saved experiment agreement
+
+The original private `2026-10-12-library-ten-minute` JSON was read locally, registered through the API, uploaded in bounded batches, reconciled and exported. Its raw measurement objects remained equal after the round trip. No original private dataset is committed or sent to cloud services by these tests.
+
+| Quantity | Expected | Observed |
+| --- | ---: | ---: |
+| Measurements | 41 | 41 |
+| Stored samples, including baseline observations | 232 | 232 |
+| ICMP replies / attempts | 98 / 100 | 98 / 100 |
+| UDP replies / attempts | 40 / 40 | 40 / 40 |
+| Standalone measurements without samples | 14 | 14 |
+| Combined CSV rows | 246 | 246 |
+
+Counts use distinct parent measurement IDs. Combined CSV parent fields repeat on sample rows and must not be summed. Zero RTT and missing RTT are separate cases. Large decimal-string timestamps survive unchanged. Spreadsheet formula prefixes are escaped.
+
+## Pending live acceptance
+
+The user confirmed that Supabase and Google OAuth accounts are not set up yet. No physical Android phone was connected during this implementation. Therefore **cloud deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
+
+Follow [setup.md](setup.md) to configure staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. PostgreSQL was tested locally, not on a Supabase-managed instance. iOS background behavior is unvalidated.
+
+The existing React Native toolchain has npm audit advisories that require a separate upgrade assessment before a public production release. This increment preserves the current measurement-tested React Native version rather than silently upgrading it. The dashboard dependency install reported no advisories at installation time. No store publication or production readiness claim is made here.
+
+## UI previews
+
+The dashboard images use synthetic browser-test records; the Android image shows the actual bundled app with staging configuration pending.
+
+- [Android welcome](previews/android-welcome.png)
+- [Research overview](previews/research-overview.png)
+- [Session evidence](previews/session-detail.png)
