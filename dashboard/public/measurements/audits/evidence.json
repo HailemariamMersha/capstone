@@ -1,0 +1,948 @@
+{
+  "analysisVersion": 1,
+  "description": "Aggregate audit evidence only; private source exports are not committed. SHA-256 identifies each unchanged input. Different run conditions prevent causal reliability comparison.",
+  "runs": {
+    "custom-one-hour": {
+      "counts": {
+        "measurements": 244,
+        "samples": 1342,
+        "events": 99,
+        "snapshots": 49
+      },
+      "durationSeconds": 3600.18,
+      "totals": {
+        "error": 0,
+        "warning": 852,
+        "unavailable": 313
+      },
+      "checks": {
+        "snapshot_id": {
+          "checked": 49,
+          "passed": 49
+        },
+        "event_id": {
+          "checked": 99,
+          "passed": 99
+        },
+        "timestamp": {
+          "checked": 2497,
+          "passed": 2497
+        },
+        "numeric_type": {
+          "checked": 20151,
+          "passed": 20151
+        },
+        "nonnegative": {
+          "checked": 4971,
+          "passed": 4971
+        },
+        "percentage_range": {
+          "checked": 658,
+          "passed": 658
+        },
+        "boolean_type": {
+          "checked": 1251,
+          "passed": 1251
+        },
+        "integer_type": {
+          "checked": 10714,
+          "passed": 10714
+        },
+        "icmp_word_range": {
+          "checked": 3594,
+          "passed": 3594
+        },
+        "icmp_byte_range": {
+          "checked": 3080,
+          "passed": 3080
+        },
+        "nanosecond_string": {
+          "checked": 4844,
+          "passed": 4844
+        },
+        "measurement_id": {
+          "checked": 244,
+          "passed": 244
+        },
+        "session_join": {
+          "checked": 244,
+          "passed": 244
+        },
+        "context_join": {
+          "checked": 244,
+          "passed": 244
+        },
+        "success_value": {
+          "checked": 232,
+          "passed": 232
+        },
+        "sample_identity": {
+          "checked": 1216,
+          "passed": 1216
+        },
+        "sample_outcome": {
+          "checked": 975,
+          "passed": 975
+        },
+        "hex_encoding": {
+          "checked": 1679,
+          "passed": 1679
+        },
+        "buffer_length": {
+          "checked": 1679,
+          "passed": 1679
+        },
+        "monotonic_order": {
+          "checked": 713,
+          "passed": 713
+        },
+        "monotonic_elapsed": {
+          "checked": 713,
+          "passed": 713
+        },
+        "icmp_header": {
+          "checked": 2995,
+          "passed": 2995
+        },
+        "summary_replies": {
+          "checked": 180,
+          "passed": 180
+        },
+        "summary_medianMs": {
+          "checked": 168,
+          "passed": 168
+        },
+        "summary_p95Ms": {
+          "checked": 168,
+          "passed": 168
+        },
+        "summary_successiveDifferenceMs": {
+          "checked": 108,
+          "passed": 108
+        },
+        "completed_count": {
+          "checked": 72,
+          "passed": 72
+        },
+        "loss_formula": {
+          "checked": 72,
+          "passed": 72
+        },
+        "primary_summary": {
+          "checked": 144,
+          "passed": 144
+        },
+        "throughput_formula": {
+          "checked": 48,
+          "passed": 48
+        },
+        "tcp_info_integer": {
+          "checked": 3000,
+          "passed": 3000
+        },
+        "trace_identity": {
+          "checked": 126,
+          "passed": 126
+        },
+        "error_queue_icmp": {
+          "checked": 228,
+          "passed": 228
+        },
+        "trace_reached": {
+          "checked": 4,
+          "passed": 4
+        },
+        "trace_value": {
+          "checked": 4,
+          "passed": 4
+        },
+        "catalog_headers": {
+          "checked": 4,
+          "passed": 4
+        }
+      },
+      "groups": {
+        "http_rtt": {
+          "attempts": 60,
+          "successful": 60,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_full_transaction"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "icmp_burst": {
+          "attempts": 60,
+          "successful": 60,
+          "probes": 600,
+          "replies": 599,
+          "methods": [
+            "icmp_echo_burst"
+          ],
+          "providers": [
+            "capstone-linux-sockets@1.0.0"
+          ],
+          "unavailableDeclarations": [
+            "completeIpPacketCapture",
+            "hardwareTransmitTimestamp"
+          ]
+        },
+        "download": {
+          "attempts": 12,
+          "successful": 12,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_download_to_file"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "upload": {
+          "attempts": 12,
+          "successful": 12,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_full_transaction"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "tcp_connect": {
+          "attempts": 60,
+          "successful": 60,
+          "probes": 60,
+          "replies": 60,
+          "methods": [
+            "native_tcp_connect_and_info"
+          ],
+          "providers": [
+            "capstone-linux-sockets@1.0.0"
+          ],
+          "unavailableDeclarations": [
+            "completeIpPacketCapture",
+            "hardwareTransmitTimestamp"
+          ]
+        },
+        "traceroute": {
+          "attempts": 4,
+          "successful": 4,
+          "probes": 126,
+          "replies": 114,
+          "methods": [
+            "native_udp_traceroute_error_queue"
+          ],
+          "providers": [
+            "capstone-linux-sockets@1.0.0"
+          ],
+          "unavailableDeclarations": [
+            "completeIpPacketCapture",
+            "hardwareTransmitTimestamp"
+          ]
+        },
+        "udp_echo": {
+          "attempts": 12,
+          "successful": 0,
+          "probes": 240,
+          "replies": 0,
+          "methods": [
+            "native_udp_echo_datagrams"
+          ],
+          "providers": [
+            "capstone-linux-sockets@1.0.0"
+          ],
+          "unavailableDeclarations": [
+            "completeIpPacketCapture",
+            "hardwareTransmitTimestamp"
+          ]
+        },
+        "loaded_download": {
+          "attempts": 12,
+          "successful": 12,
+          "probes": 64,
+          "replies": 64,
+          "methods": [
+            "http_loaded_latency_bounded_transfer"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "loaded_upload": {
+          "attempts": 12,
+          "successful": 12,
+          "probes": 180,
+          "replies": 180,
+          "methods": [
+            "http_loaded_latency_bounded_transfer"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        }
+      },
+      "availability": {
+        "icmp.csv": {
+          "rows": 600,
+          "fields": {
+            "sessionId": 600,
+            "measurementId": 600,
+            "measurementType": 600,
+            "method": 600,
+            "library": 600,
+            "libraryVersion": 600,
+            "recordPath": 600,
+            "sampleTimestamp": 600,
+            "targetHost": 600,
+            "outcome": 600,
+            "sequence": 600,
+            "rttMs": 599,
+            "timingScope": 600,
+            "payloadBytes": 600,
+            "payloadSizeSource": 600,
+            "probeTtl": 600,
+            "replyTtl": 599,
+            "responderAddress": 599,
+            "addressEvidence": 600,
+            "icmpType": 599,
+            "icmpCode": 599,
+            "icmpIdentifier": 599,
+            "icmpSequence": 599,
+            "receivedSocketBytes": 599,
+            "errorType": 1
+          }
+        },
+        "tcp.csv": {
+          "rows": 60,
+          "fields": {
+            "sessionId": 60,
+            "measurementId": 60,
+            "measurementType": 60,
+            "method": 60,
+            "library": 60,
+            "libraryVersion": 60,
+            "recordPath": 60,
+            "sampleTimestamp": 60,
+            "targetHost": 60,
+            "outcome": 60,
+            "targetPort": 60,
+            "connectDurationMs": 60,
+            "timingScope": 60,
+            "kernelRttMs": 60,
+            "kernelRttVariationMs": 60,
+            "tcpTotalRetransmissions": 60,
+            "congestionWindowSegments": 60,
+            "sendMssBytes": 60,
+            "congestionWindowBytesEstimate": 60,
+            "localAddress": 60,
+            "localPort": 60,
+            "targetAddress": 60,
+            "errorType": 0
+          }
+        },
+        "traceroute.csv": {
+          "rows": 126,
+          "fields": {
+            "sessionId": 126,
+            "measurementId": 126,
+            "measurementType": 126,
+            "method": 126,
+            "library": 126,
+            "libraryVersion": 126,
+            "recordPath": 126,
+            "sampleTimestamp": 0,
+            "targetHost": 126,
+            "outcome": 126,
+            "sequence": 126,
+            "hop": 126,
+            "targetPort": 126,
+            "rttMs": 114,
+            "timingScope": 126,
+            "responderAddress": 114,
+            "addressEvidence": 126,
+            "replyTtl": 114,
+            "icmpType": 114,
+            "icmpCode": 114,
+            "nativeVariant": 0,
+            "payloadBytes": 126,
+            "routeReached": 126,
+            "reachedHop": 126,
+            "errorType": 0
+          }
+        },
+        "udp.csv": {
+          "rows": 240,
+          "fields": {
+            "sessionId": 240,
+            "measurementId": 240,
+            "measurementType": 240,
+            "method": 240,
+            "library": 240,
+            "libraryVersion": 240,
+            "recordPath": 240,
+            "sampleTimestamp": 240,
+            "targetHost": 240,
+            "outcome": 240,
+            "sequence": 240,
+            "targetPort": 240,
+            "rttMs": 0,
+            "timingScope": 240,
+            "payloadBytes": 240,
+            "payloadSizeSource": 240,
+            "sentSocketBytes": 240,
+            "receivedSocketBytes": 0,
+            "errorType": 240
+          }
+        },
+        "http.csv": {
+          "rows": 108,
+          "fields": {
+            "sessionId": 108,
+            "measurementId": 108,
+            "measurementType": 108,
+            "method": 108,
+            "library": 0,
+            "libraryVersion": 0,
+            "recordPath": 108,
+            "sampleTimestamp": 108,
+            "targetHost": 108,
+            "outcome": 108,
+            "success": 108,
+            "requestedBytes": 108,
+            "transferredBytes": 108,
+            "httpStatus": 108,
+            "httpLatencyMs": 84,
+            "transferDurationMs": 48,
+            "throughputMbps": 48,
+            "baselineMedianMs": 24,
+            "loadedMedianMs": 24,
+            "loadedOverlapCount": 24,
+            "errorType": 0
+          }
+        },
+        "http-latency-samples.csv": {
+          "rows": 316,
+          "fields": {
+            "sessionId": 316,
+            "measurementId": 316,
+            "measurementType": 316,
+            "method": 316,
+            "library": 0,
+            "libraryVersion": 0,
+            "recordPath": 316,
+            "sampleTimestamp": 316,
+            "targetHost": 0,
+            "outcome": 316,
+            "sampleGroup": 316,
+            "sequence": 316,
+            "httpLatencyMs": 316,
+            "timingScope": 316,
+            "errorType": 0
+          }
+        }
+      },
+      "limitations": [
+        "Availability counts describe retained evidence, not support guarantees. Empty values are never converted to zero.",
+        "HTTP over a USB-forwarded local endpoint does not measure satellite/internet throughput.",
+        "Connect timing, kernel RTT, ICMP RTT and HTTP latency have different scopes.",
+        "No full IP/TCP capture or congestion-window time series during a transfer is collected.",
+        "Single-run evidence cannot establish library/native superiority; use matched conditions for an endurance comparison."
+      ],
+      "inputSha256": "d77b856e48b1f249ed9df2f22b83c42474fbbee410b3b085151921fbd579cfcc",
+      "issuesByCode": [
+        {
+          "severity": "unavailable",
+          "code": "monotonic_elapsed",
+          "occurrences": 313
+        },
+        {
+          "severity": "warning",
+          "code": "udp_no_replies",
+          "occurrences": 12
+        },
+        {
+          "severity": "warning",
+          "code": "legacy_size_mapping_gap",
+          "occurrences": 840
+        }
+      ]
+    },
+    "library-smoke": {
+      "counts": {
+        "measurements": 12,
+        "samples": 99,
+        "events": 13,
+        "snapshots": 3
+      },
+      "durationSeconds": 120.184,
+      "totals": {
+        "error": 0,
+        "warning": 48,
+        "unavailable": 22
+      },
+      "checks": {
+        "snapshot_id": {
+          "checked": 3,
+          "passed": 3
+        },
+        "event_id": {
+          "checked": 13,
+          "passed": 13
+        },
+        "timestamp": {
+          "checked": 147,
+          "passed": 147
+        },
+        "numeric_type": {
+          "checked": 507,
+          "passed": 507
+        },
+        "nonnegative": {
+          "checked": 265,
+          "passed": 265
+        },
+        "percentage_range": {
+          "checked": 33,
+          "passed": 33
+        },
+        "boolean_type": {
+          "checked": 66,
+          "passed": 66
+        },
+        "integer_type": {
+          "checked": 255,
+          "passed": 255
+        },
+        "icmp_word_range": {
+          "checked": 60,
+          "passed": 60
+        },
+        "icmp_byte_range": {
+          "checked": 40,
+          "passed": 40
+        },
+        "measurement_id": {
+          "checked": 12,
+          "passed": 12
+        },
+        "session_join": {
+          "checked": 12,
+          "passed": 12
+        },
+        "context_join": {
+          "checked": 12,
+          "passed": 12
+        },
+        "success_value": {
+          "checked": 11,
+          "passed": 11
+        },
+        "sample_identity": {
+          "checked": 69,
+          "passed": 69
+        },
+        "sample_outcome": {
+          "checked": 49,
+          "passed": 49
+        },
+        "hex_encoding": {
+          "checked": 20,
+          "passed": 20
+        },
+        "buffer_length": {
+          "checked": 20,
+          "passed": 20
+        },
+        "icmp_header": {
+          "checked": 100,
+          "passed": 100
+        },
+        "library_bytes": {
+          "checked": 20,
+          "passed": 20
+        },
+        "summary_replies": {
+          "checked": 9,
+          "passed": 9
+        },
+        "summary_medianMs": {
+          "checked": 8,
+          "passed": 8
+        },
+        "summary_p95Ms": {
+          "checked": 8,
+          "passed": 8
+        },
+        "summary_successiveDifferenceMs": {
+          "checked": 6,
+          "passed": 6
+        },
+        "completed_count": {
+          "checked": 3,
+          "passed": 3
+        },
+        "loss_formula": {
+          "checked": 3,
+          "passed": 3
+        },
+        "primary_summary": {
+          "checked": 6,
+          "passed": 6
+        },
+        "throughput_formula": {
+          "checked": 4,
+          "passed": 4
+        },
+        "trace_identity": {
+          "checked": 30,
+          "passed": 30
+        },
+        "trace_reached": {
+          "checked": 1,
+          "passed": 1
+        },
+        "trace_value": {
+          "checked": 1,
+          "passed": 1
+        },
+        "callback_base64": {
+          "checked": 20,
+          "passed": 20
+        },
+        "callback_payload_length": {
+          "checked": 20,
+          "passed": 20
+        },
+        "catalog_headers": {
+          "checked": 4,
+          "passed": 4
+        }
+      },
+      "groups": {
+        "http_rtt": {
+          "attempts": 2,
+          "successful": 2,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_full_transaction"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "icmp_burst": {
+          "attempts": 2,
+          "successful": 2,
+          "probes": 20,
+          "replies": 20,
+          "methods": [
+            "icmp_echo_burst"
+          ],
+          "providers": [
+            "icmpenguin@1.0.0-rc.3"
+          ],
+          "unavailableDeclarations": [
+            "completeIpPacketCapture",
+            "kernelSendReceiveTimestamps",
+            "kernelAssignedRequestIdentifier",
+            "icmpTypeCodeForSpecializedErrorVariants"
+          ]
+        },
+        "download": {
+          "attempts": 1,
+          "successful": 1,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_download_to_file"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "upload": {
+          "attempts": 1,
+          "successful": 1,
+          "probes": 0,
+          "replies": 0,
+          "methods": [
+            "http_full_transaction"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "tcp_connect": {
+          "attempts": 2,
+          "successful": 2,
+          "probes": 2,
+          "replies": 2,
+          "methods": [
+            "tcp_connect_with_resolution"
+          ],
+          "providers": [
+            "react-native-tcp-socket@6.4.3"
+          ],
+          "unavailableDeclarations": [
+            "tcpSegments",
+            "synRtt",
+            "retransmissions",
+            "tcpInfo",
+            "kernelSendReceiveTimestamps"
+          ]
+        },
+        "traceroute": {
+          "attempts": 1,
+          "successful": 1,
+          "probes": 30,
+          "replies": 27,
+          "methods": [
+            "udp_traceroute_icmpenguin"
+          ],
+          "providers": [
+            "icmpenguin@1.0.0-rc.3"
+          ],
+          "unavailableDeclarations": [
+            "packetCapture",
+            "icmpTypeForAllErrorVariants",
+            "kernelErrorOriginExceptNetError",
+            "kernelSendReceiveTimestamps"
+          ]
+        },
+        "udp_echo": {
+          "attempts": 1,
+          "successful": 0,
+          "probes": 20,
+          "replies": 0,
+          "methods": [
+            "udp_echo_round_trip"
+          ],
+          "providers": [
+            "react-native-udp@4.1.7"
+          ],
+          "unavailableDeclarations": [
+            "ipHeader",
+            "icmpHeader",
+            "kernelSendReceiveTimestamps"
+          ]
+        },
+        "loaded_download": {
+          "attempts": 1,
+          "successful": 1,
+          "probes": 5,
+          "replies": 5,
+          "methods": [
+            "http_loaded_latency_bounded_transfer"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        },
+        "loaded_upload": {
+          "attempts": 1,
+          "successful": 1,
+          "probes": 16,
+          "replies": 16,
+          "methods": [
+            "http_loaded_latency_bounded_transfer"
+          ],
+          "providers": [],
+          "unavailableDeclarations": []
+        }
+      },
+      "availability": {
+        "icmp.csv": {
+          "rows": 20,
+          "fields": {
+            "sessionId": 20,
+            "measurementId": 20,
+            "measurementType": 20,
+            "method": 20,
+            "library": 20,
+            "libraryVersion": 20,
+            "recordPath": 20,
+            "sampleTimestamp": 20,
+            "targetHost": 20,
+            "outcome": 20,
+            "sequence": 20,
+            "rttMs": 20,
+            "timingScope": 20,
+            "payloadBytes": 20,
+            "payloadSizeSource": 20,
+            "probeTtl": 20,
+            "replyTtl": 20,
+            "responderAddress": 0,
+            "addressEvidence": 20,
+            "icmpType": 20,
+            "icmpCode": 20,
+            "icmpIdentifier": 20,
+            "icmpSequence": 20,
+            "receivedSocketBytes": 20,
+            "errorType": 0
+          }
+        },
+        "tcp.csv": {
+          "rows": 2,
+          "fields": {
+            "sessionId": 2,
+            "measurementId": 2,
+            "measurementType": 2,
+            "method": 2,
+            "library": 2,
+            "libraryVersion": 2,
+            "recordPath": 2,
+            "sampleTimestamp": 2,
+            "targetHost": 2,
+            "outcome": 2,
+            "targetPort": 2,
+            "connectDurationMs": 2,
+            "timingScope": 2,
+            "kernelRttMs": 0,
+            "kernelRttVariationMs": 0,
+            "tcpTotalRetransmissions": 0,
+            "congestionWindowSegments": 0,
+            "sendMssBytes": 0,
+            "congestionWindowBytesEstimate": 0,
+            "localAddress": 2,
+            "localPort": 2,
+            "targetAddress": 2,
+            "errorType": 0
+          }
+        },
+        "traceroute.csv": {
+          "rows": 30,
+          "fields": {
+            "sessionId": 30,
+            "measurementId": 30,
+            "measurementType": 30,
+            "method": 30,
+            "library": 30,
+            "libraryVersion": 30,
+            "recordPath": 30,
+            "sampleTimestamp": 0,
+            "targetHost": 30,
+            "outcome": 30,
+            "sequence": 30,
+            "hop": 30,
+            "targetPort": 0,
+            "rttMs": 27,
+            "timingScope": 30,
+            "responderAddress": 27,
+            "addressEvidence": 30,
+            "replyTtl": 0,
+            "icmpType": 0,
+            "icmpCode": 0,
+            "nativeVariant": 30,
+            "payloadBytes": 30,
+            "routeReached": 30,
+            "reachedHop": 30,
+            "errorType": 0
+          }
+        },
+        "udp.csv": {
+          "rows": 20,
+          "fields": {
+            "sessionId": 20,
+            "measurementId": 20,
+            "measurementType": 20,
+            "method": 20,
+            "library": 20,
+            "libraryVersion": 20,
+            "recordPath": 20,
+            "sampleTimestamp": 20,
+            "targetHost": 20,
+            "outcome": 20,
+            "sequence": 20,
+            "targetPort": 20,
+            "rttMs": 0,
+            "timingScope": 20,
+            "payloadBytes": 20,
+            "payloadSizeSource": 20,
+            "sentSocketBytes": 0,
+            "receivedSocketBytes": 0,
+            "errorType": 20
+          }
+        },
+        "http.csv": {
+          "rows": 6,
+          "fields": {
+            "sessionId": 6,
+            "measurementId": 6,
+            "measurementType": 6,
+            "method": 6,
+            "library": 0,
+            "libraryVersion": 0,
+            "recordPath": 6,
+            "sampleTimestamp": 6,
+            "targetHost": 6,
+            "outcome": 6,
+            "success": 6,
+            "requestedBytes": 6,
+            "transferredBytes": 6,
+            "httpStatus": 6,
+            "httpLatencyMs": 4,
+            "transferDurationMs": 4,
+            "throughputMbps": 4,
+            "baselineMedianMs": 2,
+            "loadedMedianMs": 2,
+            "loadedOverlapCount": 2,
+            "errorType": 0
+          }
+        },
+        "http-latency-samples.csv": {
+          "rows": 27,
+          "fields": {
+            "sessionId": 27,
+            "measurementId": 27,
+            "measurementType": 27,
+            "method": 27,
+            "library": 0,
+            "libraryVersion": 0,
+            "recordPath": 27,
+            "sampleTimestamp": 27,
+            "targetHost": 0,
+            "outcome": 27,
+            "sampleGroup": 27,
+            "sequence": 27,
+            "httpLatencyMs": 27,
+            "timingScope": 27,
+            "errorType": 0
+          }
+        }
+      },
+      "limitations": [
+        "Availability counts describe retained evidence, not support guarantees. Empty values are never converted to zero.",
+        "HTTP over a USB-forwarded local endpoint does not measure satellite/internet throughput.",
+        "Connect timing, kernel RTT, ICMP RTT and HTTP latency have different scopes.",
+        "No full IP/TCP capture or congestion-window time series during a transfer is collected.",
+        "Single-run evidence cannot establish library/native superiority; use matched conditions for an endurance comparison."
+      ],
+      "inputSha256": "874cf9f4ce671df0f969fdc092881587083dfa846f04bdf863ff91b45de0a43f",
+      "issuesByCode": [
+        {
+          "severity": "unavailable",
+          "code": "monotonic_elapsed",
+          "occurrences": 20
+        },
+        {
+          "severity": "warning",
+          "code": "historical_target_alias",
+          "occurrences": 20
+        },
+        {
+          "severity": "warning",
+          "code": "ambiguous_trace_label",
+          "occurrences": 27
+        },
+        {
+          "severity": "warning",
+          "code": "udp_no_replies",
+          "occurrences": 1
+        },
+        {
+          "severity": "unavailable",
+          "code": "kernel_tcp_info",
+          "occurrences": 2
+        }
+      ]
+    }
+  }
+}
