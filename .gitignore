@@ -87,6 +87,7 @@ backend/data/
 .env
 .env.*
 !.env.example
+!.env.pilot.example
 .next/
 playwright-report/
 test-results/

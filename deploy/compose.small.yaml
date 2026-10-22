@@ -1,0 +1,37 @@
+# Overlay for a one-GiB pilot host; load-test before increasing participation.
+# Build the shared image once with `docker compose ... build api`.
+x-small-service: &small-service
+  image: skymeasure-backend:local
+  pids_limit: 128
+  logging: &bounded-logs
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  api:
+    <<: *small-service
+    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log", "--no-proxy-headers", "--limit-concurrency", "16"]
+    mem_limit: 384m
+    memswap_limit: 384m
+    ports: ["127.0.0.1:8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+  udp:
+    <<: *small-service
+    mem_limit: 64m
+    memswap_limit: 64m
+  proxy:
+    mem_limit: 96m
+    memswap_limit: 96m
+    pids_limit: 128
+    logging: *bounded-logs
+  identity-deletions:
+    <<: *small-service
+    mem_limit: 128m
+    memswap_limit: 128m

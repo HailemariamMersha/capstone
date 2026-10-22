@@ -6,6 +6,7 @@ const fields = {
   apiUrl: 'SKYMEASURE_API_URL',
   probeUrl: 'SKYMEASURE_PROBE_URL',
   udpHost: 'SKYMEASURE_UDP_IPV4',
+  probeRegion: 'SKYMEASURE_PROBE_REGION',
 };
 const target = 'src/config/public.json';
 const config = JSON.parse(fs.readFileSync(target, 'utf8'));
@@ -14,6 +15,10 @@ for (const [key, env] of Object.entries(fields)) {
     throw new Error(`Set ${env} before configuring a participant build`);
   config[key] = process.env[env];
 }
+if (!/^[a-z][a-z0-9-]{1,31}$/.test(config.probeRegion))
+  throw new Error(
+    'Set SKYMEASURE_PROBE_REGION to the actual probe region, such as lon1',
+  );
 for (const key of ['supabaseUrl', 'apiUrl', 'probeUrl']) {
   const url = new URL(config[key]);
   if (
