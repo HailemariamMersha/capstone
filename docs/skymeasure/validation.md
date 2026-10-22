@@ -40,11 +40,21 @@ Counts use distinct parent measurement IDs. Combined CSV parent fields repeat on
 
 ## Pending live acceptance
 
-The user confirmed that Supabase and Google OAuth accounts are not set up yet. No physical Android phone was connected during this implementation. Therefore **cloud deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
+The user confirmed that Supabase and Google OAuth accounts are not set up yet. The initial implementation used an emulator; the subsequent physical-phone smoke check below validates installation and limited unauthenticated behavior. **Cloud deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
 
 Follow [setup.md](setup.md) to configure staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. PostgreSQL was tested locally, not on a Supabase-managed instance. iOS background behavior is unvalidated.
 
 The existing React Native toolchain has npm audit advisories that require a separate upgrade assessment before a public production release. This increment preserves the current measurement-tested React Native version rather than silently upgrading it. The dashboard dependency install reported no advisories at installation time. No store publication or production readiness claim is made here.
+
+## Physical-phone smoke check — 2026-10-22–23
+
+- Updated a Samsung Galaxy A34 (SM-A346E), Android 13, using `adb install -r` and the bundled ARM64 release APK. No uninstall or app-data clearing was performed; no collection service was active before the update.
+- Built the app and instrumentation APK successfully after quarantining one corrupted local Gradle transform cache entry.
+- Updated `AppLaunchTest` to expect the SkyMeasure Google welcome screen instead of the retired prototype heading. Ran `AppLaunchTest` and `LibraryProbeTest` on the phone: **5 tests passed**.
+- The library checks cover IPv4/IPv6 loopback ICMP header/payload bytes, loopback UDP traceroute library results, error-field interpretation, and ICMP cancellation followed by another probe. They do not establish Internet-path reliability or test the React Native UDP echo service.
+- Inspected the physical screen and accessibility hierarchy: welcome content rendered, Google sign-in was disabled, and the staging-setup explanation appeared. The app remained open without starting a measurement session.
+- Confirmed persisted BackgroundFetch JobScheduler job 999 with a 15-minute interval. Registration alone does not establish that authenticated uploads run in the background.
+- Public Supabase/API configuration remains empty. No account was created, no new session was collected, and no phone-to-dashboard upload was tested. Historical session contents were not audited during this smoke check.
 
 ## UI previews
 

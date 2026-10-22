@@ -26,7 +26,7 @@ class AppLaunchTest {
             var rendered = false
             while (!rendered && android.os.SystemClock.elapsedRealtime() < deadline) {
                 scenario.onActivity { activity ->
-                    rendered = containsText(activity.window.decorView, "Packet measurement session")
+                    rendered = containsText(activity.window.decorView, "Continue with Google")
                 }
                 if (!rendered) Thread.sleep(100)
             }
