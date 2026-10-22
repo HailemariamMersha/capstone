@@ -1,6 +1,6 @@
 # SkyMeasure staging setup
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. No cloud account, OAuth client, domain, or service key has been provisioned by this implementation.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The user has provisioned a one-GiB London Droplet; its initial probe-only setup is described below. Supabase, Google OAuth, a domain and the public dashboard remain pending.
 
 ## 1. Supabase and Google
 
@@ -59,6 +59,39 @@ The UDP service only echoes the exact existing 128-byte measurement format and p
 
 Deletion removes the research rows immediately and records an upload-blocking tombstone. The worker retries Supabase identity removal every five minutes. Monitor failures and run `python -m backend.research.manage delete-identities` manually if needed. The minimal tombstone remains to reject valid-but-old tokens and queued uploads from another device. Define retention, backup deletion, and study contact wording before participant recruitment.
 
+### One-GiB pilot and preparation without a domain
+
+The initial purchased pilot uses a one-GiB Basic Droplet in **London (`lon1`)**. Frankfurt above remains the original deployment choice; always use the server's actual region in both `PROBE_REGION` and the mobile `probeRegion`. Do not label London measurements as Frankfurt measurements. Google targets still have no claimed probe region.
+
+On a fresh Ubuntu 24.04 host, install Docker Engine and the Compose plugin using [Docker's official apt instructions](https://docs.docker.com/engine/install/ubuntu/). A one-GiB swap file with `vm.swappiness=10` provides host/build headroom. It is not extra measurement capacity: the small overlay disables container swap, sets memory limits, runs one API worker with a concurrency limit of 16, and rotates each container's logs at 10 MB × 3 files. Under load, requests may receive 503 or containers may reach their memory limit; monitor those outcomes before increasing test volume. No larger participant count is validated by this configuration alone.
+
+Use `deploy/compose.small.yaml` after the base file in **every** Compose command. Its image is shared by the API, UDP service and deletion worker; build it once through `api`. The database and dashboard remain on their separate managed services, not this one-GiB host.
+
+For initial preparation without a domain or Supabase credentials, copy only deployment source to `/opt/skymeasure` (never private datasets or local secrets), then:
+
+```sh
+cd /opt/skymeasure
+cp deploy/.env.pilot.example deploy/.env
+chmod 600 deploy/.env
+# Edit PROBE_REGION if this server is not in lon1.
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.small.yaml config --quiet
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.small.yaml build api
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.small.yaml up -d --no-build api udp
+curl --fail http://127.0.0.1:8000/health
+```
+
+This starts public UDP on 9876 and HTTP bound **only to host loopback** on 8000. Keep the Cloud Firewall's public TCP 8000 closed. The UDP endpoint accepts only the existing 128-byte test format, at most 100 replies per second, with no payload amplification. Allow UDP 9876 explicitly in the Cloud Firewall; Docker-published ports can bypass UFW, so UFW alone is not an adequate rule check. Do not start `proxy` or `identity-deletions` with the placeholder environment. Authenticated ingestion remains unconfigured, and legacy ingestion stays disabled.
+
+To inspect the HTTP API from a Mac before HTTPS is configured:
+
+```sh
+ssh -N -L 18000:127.0.0.1:8000 root@YOUR_SERVER_IP
+# In another terminal:
+curl --fail http://127.0.0.1:18000/health
+```
+
+After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the remaining services with `up -d --no-build`. Backups, real Google sign-in and the phone-to-dashboard acceptance run are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
+
 ## 4. Dashboard on Vercel
 
 Import this repository with **Root Directory `dashboard`**, Next.js framework, `npm ci` and `npm run build`. Fill the three public values in `dashboard/.env.example` into the Vercel staging environment. Deploy to the final staging domain and add its exact origin to `DASHBOARD_ORIGINS` and its exact callback to Supabase. Do not configure `SUPABASE_SERVICE_ROLE_KEY` or `DATABASE_URL` as `NEXT_PUBLIC_*` values. Preview deployments need explicit origins/callbacks; they do not automatically get research access.
@@ -76,7 +109,7 @@ The web app checks roles for presentation; FastAPI independently enforces them f
 
 ## 5. Android public configuration
 
-Set `SKYMEASURE_SUPABASE_URL`, `SKYMEASURE_SUPABASE_PUBLISHABLE_KEY`, `SKYMEASURE_API_URL`, `SKYMEASURE_PROBE_URL`, and `SKYMEASURE_UDP_IPV4` in your local shell, then:
+Set `SKYMEASURE_SUPABASE_URL`, `SKYMEASURE_SUPABASE_PUBLISHABLE_KEY`, `SKYMEASURE_API_URL`, `SKYMEASURE_PROBE_URL`, `SKYMEASURE_UDP_IPV4`, and `SKYMEASURE_PROBE_REGION` in your local shell, then:
 
 ```sh
 npm run skymeasure:configure

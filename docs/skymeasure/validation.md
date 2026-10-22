@@ -56,6 +56,17 @@ The existing React Native toolchain has npm audit advisories that require a sepa
 - Confirmed persisted BackgroundFetch JobScheduler job 999 with a 15-minute interval. Registration alone does not establish that authenticated uploads run in the background.
 - Public Supabase/API configuration remains empty. No account was created, no new session was collected, and no phone-to-dashboard upload was tested. Historical session contents were not audited during this smoke check.
 
+## London pilot server preparation — 2026-10-23
+
+- Confirmed the purchased Basic Droplet reports `lon1` from DigitalOcean metadata, Ubuntu 24.04, 961 MiB usable RAM and a roughly 25-GB disk. Installed Docker Engine/Compose and a persistent one-GiB host swap file (`swappiness=10`).
+- Copied only backend/deployment source and the measurement dictionary; original private experiments and local credentials were excluded. Validated the merged base/small Compose configuration and built one shared image on the server.
+- Started only `api` and `udp`, with one API worker, concurrency 16, bounded logs and memory limits. Container swap is disabled to avoid silently relying on disk-backed memory during measurements. The API is bound to host `127.0.0.1:8000`; UDP is published on 9876. HTTPS proxy and identity-deletion worker remain stopped pending configuration.
+- HTTP health returned `{"status":"ok","region":"lon1"}`. Real server-loopback requests downloaded exactly one MiB and acknowledged exactly one MiB uploaded. These transfers do not validate an Internet HTTP path.
+- From the Mac, **5/5 UDP probes** returned their exact 128-byte payload from the server. Public TCP port 8000 was not reachable. This is one short Mac-to-server check, not a phone or reliability experiment. DigitalOcean Cloud Firewall settings were not inspected through its control plane.
+- **20 existing HTTP/UDP backend tests passed** inside a temporary container on the host. An unauthenticated profile request returned 401; legacy ingestion returned 404. No account or research database was provisioned.
+- An idle snapshot after tests showed about 65 MiB for the API, 17 MiB for UDP, 482 MiB host memory available and zero swap usage. This is not a concurrent-load capacity result. Monitor server saturation/restarts alongside future measurements.
+- The mobile configuration generator now requires `SKYMEASURE_PROBE_REGION`. Temporary-fixture checks confirmed `lon1` is written and missing/invalid regions are rejected without overwriting output; Node-compatible script lint passed. No participant build was reconfigured or installed during this server preparation.
+
 ## UI previews
 
 The dashboard images use synthetic browser-test records; the Android image shows the actual bundled app with staging configuration pending.

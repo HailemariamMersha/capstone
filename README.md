@@ -6,7 +6,7 @@ SkyMeasure now includes a participant app and a private researcher workspace aro
 
 The participant app uses React Native Paper and React Navigation, Google OAuth through Supabase PKCE, encrypted Keychain sessions, and account-owned OP-SQLite records. Home, Sessions, and Account replace the technical prototype screen. The Next.js dashboard shows received sessions, individual observations, researcher membership, and authenticated JSON/CSV downloads. FastAPI `/api/v2` stores queryable evidence and original JSONB in PostgreSQL. Public signup does not grant researcher access.
 
-**Staging inputs are required:** Supabase/Google configuration, deployment domains, approved research information, and a connected Android phone for real Google/background validation. The checked-in app deliberately displays setup pending until public service configuration is supplied. No cloud service has been deployed by these source changes.
+**Staging inputs are required:** Supabase/Google configuration, deployment domains, approved research information, and a connected Android phone for real Google/background validation. The checked-in app deliberately displays setup pending until public service configuration is supplied. A one-GiB London pilot now runs the bounded public UDP service and an HTTP API reachable only through server loopback/SSH; public HTTPS, account ingestion and the dashboard are not deployed yet.
 
 ## Crowdsourced satellite network measurements on moving platforms
 
@@ -112,7 +112,7 @@ M3 is an experimental gate: an active notification alone does not prove that Typ
 
 Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 seconds, download/upload every five minutes, metadata on change plus periodic snapshots, public IP/ASN at session start and network changes, optional low-frequency location, and sync independently when connectivity is suitable.
 
-SQLite persists measurements before upload attempts; the local backend acknowledges ingestion batches. Current backend: FastAPI in Docker on DigitalOcean Frankfurt, Supabase PostgreSQL, and a Vercel researcher dashboard; TimescaleDB is not required. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
+SQLite persists measurements before upload attempts; the local backend acknowledges ingestion batches. The deployment stack is FastAPI in Docker on DigitalOcean, Supabase PostgreSQL, and a Vercel researcher dashboard; TimescaleDB is not required. The initial probe host is in London (`lon1`), replacing the originally planned Frankfurt host. Authenticated cloud ingestion and the dashboard still await setup. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
 
 Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, advanced provider classification, a public dataset interface are later work. The private researcher dashboard is implemented in `dashboard/`. Optional Android traceroute and reference-test adapters are now implemented; field validation remains open. Participant signup uses Google through Supabase; third-party speed-test reference flows remain developer tools.
 
