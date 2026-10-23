@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     read_only: true
     tmpfs: ["/tmp"]
+    volumes:
+      - ./certs:/etc/skymeasure/certs:ro
     expose: ["8000"]
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -35,6 +37,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     env_file: .env
+    volumes:
+      - ./certs:/etc/skymeasure/certs:ro
     command: ["python", "-m", "backend.research.deletion_worker"]
     restart: unless-stopped
     read_only: true
