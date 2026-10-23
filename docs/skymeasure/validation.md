@@ -40,9 +40,9 @@ Counts use distinct parent measurement IDs. Combined CSV parent fields repeat on
 
 ## Pending live acceptance
 
-The user confirmed that Supabase and Google OAuth accounts are not set up yet. The initial implementation used an emulator; the subsequent physical-phone smoke check below validates installation and limited unauthenticated behavior. **Cloud deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
+The initial implementation used an emulator; subsequent physical-phone and server checks are recorded below. Supabase and the Google provider are now configured, and the private backend has a verified database connection. **Public HTTPS/dashboard deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
 
-Follow [setup.md](setup.md) to configure staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. PostgreSQL was tested locally, not on a Supabase-managed instance. iOS background behavior is unvalidated.
+Follow [setup.md](setup.md) to complete staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. The full PostgreSQL integration suite was run locally; the hosted Supabase connection/migration checks below do not replace it with real Google users. iOS background behavior is unvalidated.
 
 The existing React Native toolchain has npm audit advisories that require a separate upgrade assessment before a public production release. This increment preserves the current measurement-tested React Native version rather than silently upgrading it. The dashboard dependency install reported no advisories at installation time. No store publication or production readiness claim is made here.
 
@@ -66,6 +66,16 @@ The existing React Native toolchain has npm audit advisories that require a sepa
 - **20 existing HTTP/UDP backend tests passed** inside a temporary container on the host. An unauthenticated profile request returned 401; legacy ingestion returned 404. No account or research database was provisioned.
 - An idle snapshot after tests showed about 65 MiB for the API, 17 MiB for UDP, 482 MiB host memory available and zero swap usage. This is not a concurrent-load capacity result. Monitor server saturation/restarts alongside future measurements.
 - The mobile configuration generator now requires `SKYMEASURE_PROBE_REGION`. Temporary-fixture checks confirmed `lon1` is written and missing/invalid regions are rejected without overwriting output; Node-compatible script lint passed. No participant build was reconfigured or installed during this server preparation.
+
+## Hosted Supabase database connection — 2026-10-23
+
+- Verified the project's public auth settings: Google provider enabled and public signup allowed. This does not establish that a real user can complete OAuth or that every redirect is configured correctly.
+- After the user updated their password locally, authenticated successfully to the London session pooler. Obtained the public CA from the download URL in Supabase Studio's official source; certificate-chain and hostname verification then succeeded with `sslmode=verify-full`.
+- Provisioned `skymeasure_api` with a generated, separately stored password and no superuser, create-database, create-role, replication or bypass-RLS privileges. It owns only the dedicated `skymeasure` schema and its application tables. It is not granted to browser roles. The project's `postgres` administrator can manage this role; the backend has no administrator password.
+- Created `sky_accounts`, `sky_sessions`, `sky_records` and `sky_samples` using the existing SQLAlchemy models in one transaction, with RLS enabled and direct table grants revoked from PUBLIC, anon and authenticated. Browser roles also have no USAGE on the private schema. As table owner, the backend relies on FastAPI for per-account authorization; RLS does not independently constrain its own queries.
+- Transferred only runtime credentials and the public CA to the London host over SSH; mounted the CA read-only and recreated only the API service. A real connection from that container confirmed verified TLS, `current_user=skymeasure_api`, `current_schema=skymeasure`, four protected tables and zero research rows.
+- Missing and deliberately invalid bearer tokens both returned HTTP 401 from the running API. Health remained `ok` with region `lon1`. No user or measurement records were inserted, no real-account ingestion was exercised and no historical private datasets were uploaded.
+- Credential files are ignored by Git and restricted to owner access. No credential values are included in this record. The account-deletion worker remains stopped because its separate service-role credential is not configured. Public HTTPS and the dashboard remain pending.
 
 ## UI previews
 

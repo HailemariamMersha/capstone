@@ -1,10 +1,10 @@
 # SkyMeasure staging setup
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The user has provisioned a one-GiB London Droplet; its initial probe-only setup is described below. Supabase, Google OAuth, a domain and the public dashboard remain pending.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet now has a Supabase-backed private API. The Google provider is enabled; real user sign-in, a domain, public HTTPS and the public dashboard remain pending.
 
 ## 1. Supabase and Google
 
-Create a Supabase project in **Central EU / Frankfurt**, then enable Google under Authentication → Sign-in providers. In Google Cloud create a Web OAuth client. Register the Supabase callback URL shown by the provider settings (`https://PROJECT.supabase.co/auth/v1/callback`) with Google. Put the Google client ID/secret **only into Supabase**. Configure the OAuth consent screen and test users while the Google project is in testing.
+Create a Supabase project near the backend; the initial deployment uses **West Europe / London (`eu-west-2`)** alongside the London Droplet. Then enable Google under Authentication → Sign-in providers. In Google Cloud create a Web OAuth client. Register the Supabase callback URL shown by the provider settings (`https://PROJECT.supabase.co/auth/v1/callback`) with Google. Put the Google client ID/secret **only into Supabase**. Configure the OAuth consent screen and test users while the Google project is in testing.
 
 In Supabase URL Configuration, use the dashboard HTTPS domain as the site URL and allow these exact redirects:
 
@@ -20,15 +20,30 @@ References: [Google OAuth](https://supabase.com/docs/guides/auth/social-login/au
 
 ## 2. Database and API
 
-Use the Supabase session pooler connection when the server cannot reach the direct IPv6 endpoint. Use SQLAlchemy's `postgresql+psycopg://` scheme and require TLS. Create a dedicated login `skymeasure_api` with ownership of only the `sky_*` application tables, not a superuser. Run the migration with the table-owning role. `anon` and `authenticated` receive no direct grants and RLS is enabled without permissive browser policies; all application access goes through FastAPI. FastAPI validates each token with Supabase Auth, derives ownership from that result, and checks the server-owned role table. Do not grant the browser SQL privileges to work around a denied request.
+Use the Supabase session pooler connection when the server cannot reach the direct IPv6 endpoint. Use SQLAlchemy's `postgresql+psycopg://` scheme with `sslmode=verify-full` and the [public Supabase CA](../../deploy/certs/README.md). System CA bundles alone do not trust this pooler's private certificate authority. Compose mounts the certificate read-only; local Python commands must instead use its local filesystem path.
+
+The initial deployment uses a dedicated `skymeasure_api` login and a private `skymeasure` schema. Provision them once through the administrator connection, using a generated password stored in protected local configuration:
+
+```sql
+CREATE ROLE skymeasure_api LOGIN PASSWORD 'REPLACE_WITH_GENERATED_PASSWORD'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT
+  CONNECTION LIMIT 12;
+GRANT skymeasure_api TO postgres;
+GRANT CONNECT ON DATABASE postgres TO skymeasure_api;
+CREATE SCHEMA skymeasure AUTHORIZATION skymeasure_api;
+REVOKE ALL ON SCHEMA skymeasure FROM PUBLIC, anon, authenticated;
+ALTER ROLE skymeasure_api IN DATABASE postgres
+  SET search_path = skymeasure, pg_catalog;
+```
+
+These provisioning statements are for a new deployment, not a password-rotation script. Do not rerun them against existing objects without checking ownership. The pooler login is `skymeasure_api.PROJECT_REF`; the PostgreSQL role itself is `skymeasure_api`. The runtime URL in `deploy/.env.example` explicitly sets the schema search path. The administrator password is used only for provisioning and is not sent to the backend host. In Supabase Table Editor, select the **skymeasure** schema to see the four research tables; they are not in `public`.
+
+Run migrations with the table-owning role. `anon` and `authenticated` receive no direct schema/table grants and RLS is enabled without permissive browser policies; do not expose the private schema through Supabase Data API. The backend role owns its tables and therefore bypasses their RLS as owner; FastAPI independently enforces account ownership and researcher roles using verified Supabase identities. Do not grant browser SQL privileges to work around a denied request.
 
 Copy `deploy/.env.example` to `deploy/.env` and fill in values. The service-role key is needed by the identity deletion worker, not the ingestion path. Create the schema:
 
 ```sh
-set -a
-source deploy/.env
-set +a
-backend/.venv/bin/python -m backend.research.manage migrate
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.small.yaml run --rm --no-deps api python -m backend.research.manage migrate
 ```
 
 The migration creates new research tables and enables policies; it does not reset the old SQLite ingestion database or the phone database. OP-SQLite upgrades from version 2 to 3 add owner/upload metadata. Existing sessions have a null owner and remain local/exportable. They are never silently assigned to the first account.
@@ -36,10 +51,12 @@ The migration creates new research tables and enables policies; it does not rese
 Bootstrap the first administrator using their Supabase **Auth user UUID**, after their Google signup:
 
 ```sh
-backend/.venv/bin/python -m backend.research.manage admin AUTH_USER_UUID
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.small.yaml run --rm --no-deps api python -m backend.research.manage admin AUTH_USER_UUID
 ```
 
 An administrator can then grant/revoke collaborators under Participants. A participant cannot grant roles, read researcher endpoints, or register/upload another participant's session. Research queries use pseudonymous participant IDs, not email addresses.
+
+The Mac's ignored `deploy/.env.bootstrap.local` stores administrator setup inputs as literal data, not executable shell commands. `deploy/.env.db-role.local` holds the generated backend password; `deploy/.env` holds the runtime connection string. Never print or commit these files. Compose reads runtime `.env` directly; do not `source` an unquoted database URL containing shell metacharacters. The optional service-role credential is still needed before starting identity deletion; it is separate from the database password.
 
 For local API-only tests, use `DATABASE_URL=sqlite:////absolute/path/to/staging.sqlite`; this is a test convenience, not the production database. Auth still requires Supabase unless replaced by a test dependency override. Legacy `/api/v1/ingest` works only with `CAPSTONE_LOCAL_DEV=1`. The public probe endpoints remain available because the existing measurement libraries call them directly.
 
