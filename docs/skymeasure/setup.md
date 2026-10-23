@@ -1,6 +1,6 @@
 # SkyMeasure staging setup
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet now has a Supabase-backed private API. The Google provider is enabled; real user sign-in, a domain, public HTTPS and the public dashboard remain pending.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet serves the Supabase-backed API at `https://api.hailemariam.com`. The Google provider is enabled; real user sign-in and the public dashboard remain pending.
 
 ## 1. Supabase and Google
 
@@ -107,11 +107,17 @@ ssh -N -L 18000:127.0.0.1:8000 root@YOUR_SERVER_IP
 curl --fail http://127.0.0.1:18000/health
 ```
 
-After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the remaining services with `up -d --no-build`. Backups, real Google sign-in and the phone-to-dashboard acceptance run are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
+After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the HTTPS proxy with `up -d --no-deps proxy`. Start `identity-deletions` separately only after its service-role credential is configured. Backups, real Google sign-in and the phone-to-dashboard acceptance run are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
+
+### Current London HTTPS endpoint
+
+The GoDaddy DNS A record `api.hailemariam.com` points to `142.93.34.57`. `API_DOMAIN=api.hailemariam.com` configures Caddy, which listens on TCP 80/443 and persists its automatic certificate state in the Compose volumes. HTTP redirects to HTTPS. The backend remains bound to host loopback on port 8000; UDP still uses `142.93.34.57:9876` directly.
+
+Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Keep `PROBE_REGION=lon1` and add the actual dashboard origin to `DASHBOARD_ORIGINS` after deploying it.
 
 ## 4. Dashboard on Vercel
 
-Import this repository with **Root Directory `dashboard`**, Next.js framework, `npm ci` and `npm run build`. Fill the three public values in `dashboard/.env.example` into the Vercel staging environment. Deploy to the final staging domain and add its exact origin to `DASHBOARD_ORIGINS` and its exact callback to Supabase. Do not configure `SUPABASE_SERVICE_ROLE_KEY` or `DATABASE_URL` as `NEXT_PUBLIC_*` values. Preview deployments need explicit origins/callbacks; they do not automatically get research access.
+The current implementation is on branch `feature/skymeasure-participant-dashboard`; configure Vercel to deploy that branch. Import this repository with **Root Directory `dashboard`**, Next.js framework, `npm ci` and `npm run build`. Fill the three public values in `dashboard/.env.example` into the Vercel staging environment. Deploy to the final staging domain and add its exact origin to `DASHBOARD_ORIGINS` and its exact callback to Supabase. Do not configure `SUPABASE_SERVICE_ROLE_KEY` or `DATABASE_URL` as `NEXT_PUBLIC_*` values. Preview deployments need explicit origins/callbacks; they do not automatically get research access.
 
 For a local dashboard:
 

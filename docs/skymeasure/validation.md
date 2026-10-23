@@ -40,7 +40,7 @@ Counts use distinct parent measurement IDs. Combined CSV parent fields repeat on
 
 ## Pending live acceptance
 
-The initial implementation used an emulator; subsequent physical-phone and server checks are recorded below. Supabase and the Google provider are now configured, and the private backend has a verified database connection. **Public HTTPS/dashboard deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**.
+The initial implementation used an emulator; subsequent physical-phone and server checks are recorded below. Supabase and the Google provider are now configured, and the private backend has a verified database connection. **Dashboard deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**. The public HTTPS checks are recorded below.
 
 Follow [setup.md](setup.md) to complete staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. The full PostgreSQL integration suite was run locally; the hosted Supabase connection/migration checks below do not replace it with real Google users. iOS background behavior is unvalidated.
 
@@ -76,6 +76,16 @@ The existing React Native toolchain has npm audit advisories that require a sepa
 - Transferred only runtime credentials and the public CA to the London host over SSH; mounted the CA read-only and recreated only the API service. A real connection from that container confirmed verified TLS, `current_user=skymeasure_api`, `current_schema=skymeasure`, four protected tables and zero research rows.
 - Missing and deliberately invalid bearer tokens both returned HTTP 401 from the running API. Health remained `ok` with region `lon1`. No user or measurement records were inserted, no real-account ingestion was exercised and no historical private datasets were uploaded.
 - Credential files are ignored by Git and restricted to owner access. No credential values are included in this record. The account-deletion worker remains stopped because its separate service-role credential is not configured. Public HTTPS and the dashboard remain pending.
+
+## Public HTTPS activation — 2026-10-24
+
+- Verified that GoDaddy-managed `api.hailemariam.com` resolves to the London Droplet. Set `API_DOMAIN` in the protected runtime environment and started only the Caddy proxy; the API and UDP containers were not recreated.
+- Caddy obtained a publicly trusted certificate. The Mac validated its certificate chain and hostname without bypassing verification; the observed certificate expires on 2027-01-21 UTC. Caddy persists certificate state for automatic renewal. Public HTTP returned a 308 redirect to the matching HTTPS URL.
+- `https://api.hailemariam.com/health` returned HTTP 200 with `status=ok` and `region=lon1`. The HTTPS ping returned `pong`. A real Mac-to-server download contained exactly 1 MiB and remained uncompressed even when the request advertised gzip/Brotli support; a 1 MiB upload acknowledged exactly 1 MiB.
+- The public profile endpoint returned 401 for both missing and deliberately invalid bearer tokens. Disabled legacy ingestion returned 404. These checks do not validate successful Google authentication or account-owned ingestion.
+- The existing public UDP endpoint returned **5/5 exact 128-byte replies** from `142.93.34.57:9876`. This short check does not establish phone or long-run reliability.
+- All three services remained running, with the API healthy. A snapshot showed approximately 96 MiB API, 13 MiB proxy and 11 MiB UDP memory usage. The internal API port remains published only on host loopback. Public TCP 80/443 and UDP 9876 were reachable, but the DigitalOcean firewall rule set was not inspected through its control plane.
+- Updated only public endpoint values in the Mac's ignored runtime/mobile/dashboard environment files. No mobile rebuild, account creation, historical-data upload or dashboard deployment was performed. The identity-deletion worker still awaits its server-only credential.
 
 ## UI previews
 
