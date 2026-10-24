@@ -1,6 +1,6 @@
 # SkyMeasure staging setup
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet serves the Supabase-backed API at `https://api.hailemariam.com`. The Google provider is enabled; real user sign-in and the public dashboard remain pending.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet serves the Supabase-backed API at `https://api.hailemariam.com`. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. The physical-phone-to-dashboard acceptance run remains pending.
 
 ## 1. Supabase and Google
 
@@ -107,17 +107,28 @@ ssh -N -L 18000:127.0.0.1:8000 root@YOUR_SERVER_IP
 curl --fail http://127.0.0.1:18000/health
 ```
 
-After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the HTTPS proxy with `up -d --no-deps proxy`. Start `identity-deletions` separately only after its service-role credential is configured. Backups, real Google sign-in and the phone-to-dashboard acceptance run are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
+After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the HTTPS proxy with `up -d --no-deps proxy`. Start `identity-deletions` separately only after its service-role credential is configured. Backups and the phone-to-dashboard acceptance run, including mobile Google sign-in, are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
 
 ### Current London HTTPS endpoint
 
 The GoDaddy DNS A record `api.hailemariam.com` points to `142.93.34.57`. `API_DOMAIN=api.hailemariam.com` configures Caddy, which listens on TCP 80/443 and persists its automatic certificate state in the Compose volumes. HTTP redirects to HTTPS. The backend remains bound to host loopback on port 8000; UDP still uses `142.93.34.57:9876` directly.
 
-Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Keep `PROBE_REGION=lon1` and add the actual dashboard origin to `DASHBOARD_ORIGINS` after deploying it.
+Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Keep `PROBE_REGION=lon1`. The current API allows `https://capstone-backend-henna.vercel.app` in `DASHBOARD_ORIGINS`; add any future dashboard origin explicitly.
 
 ## 4. Dashboard on Vercel
 
 The current implementation is on branch `feature/skymeasure-participant-dashboard`; configure Vercel to deploy that branch. Import this repository with **Root Directory `dashboard`**, Next.js framework, `npm ci` and `npm run build`. Fill the three public values in `dashboard/.env.example` into the Vercel staging environment. Deploy to the final staging domain and add its exact origin to `DASHBOARD_ORIGINS` and its exact callback to Supabase. Do not configure `SUPABASE_SERVICE_ROLE_KEY` or `DATABASE_URL` as `NEXT_PUBLIC_*` values. Preview deployments need explicit origins/callbacks; they do not automatically get research access.
+
+### Current Vercel deployment and troubleshooting
+
+The stable dashboard address is `https://capstone-backend-henna.vercel.app`. Use this as Supabase's Site URL and add `https://capstone-backend-henna.vercel.app/auth/callback` to its Redirect URLs. Retain the Android callback above. In Google Cloud, the Web OAuth client's authorized redirect URI is the **Supabase** callback `https://ospntgsbsmssfeqwtwbl.supabase.co/auth/v1/callback`. These are two different stages of the sign-in flow; registering the dashboard callback with Google does not replace the Supabase callback.
+
+- `dashboard` exists on `feature/skymeasure-participant-dashboard`, not the current `main`. If Vercel initially imports `main`, change Settings → Environments → Production → Branch Tracking to the feature branch, set Root Directory to `dashboard`, and create a deployment from that branch.
+- Use the Next.js preset, `npm ci`, and `npm run build`. Keep the **Output Directory override off**. After changing build settings, create a new deployment; an existing deployment does not acquire the new build settings.
+- Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_API_URL` in each intended Vercel environment (Production and Preview for this staging project). The API URL is `https://api.hailemariam.com`. Missing values leave the Google button disabled with a staging-configuration message.
+- These public variables are embedded during the Next.js build. Save them and rebuild after changes; promoting an older preview cannot supply settings absent from that build. The public JavaScript bundle was checked after redeployment to confirm all three expected values.
+- Google `redirect_uri_mismatch` requires correcting the exact authorized redirect URI on the Web OAuth client configured in Supabase. That provider-setting change does not require a Vercel rebuild.
+- New Google users are participants. Bootstrap the first administrator using the management command above and their confirmed Auth user UUID, then refresh the dashboard. Do not commit personal account identifiers or credentials to deployment documentation.
 
 For a local dashboard:
 

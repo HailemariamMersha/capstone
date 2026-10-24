@@ -40,7 +40,7 @@ Counts use distinct parent measurement IDs. Combined CSV parent fields repeat on
 
 ## Pending live acceptance
 
-The initial implementation used an emulator; subsequent physical-phone and server checks are recorded below. Supabase and the Google provider are now configured, and the private backend has a verified database connection. **Dashboard deployment, real Google sign-in, final research consent, and the complete physical-phone-to-dashboard path are not validated**. The public HTTPS checks are recorded below.
+The initial implementation used an emulator; subsequent physical-phone and server checks are recorded below. Supabase and the Google provider are now configured, and the private backend has a verified database connection. The dashboard deployment and browser Google sign-in checks are recorded below, with user-reported results distinguished from direct checks. **Final research consent, mobile Google sign-in, and the complete physical-phone-to-dashboard path are not validated**.
 
 Follow [setup.md](setup.md) to complete staging and perform locked-screen, Recents removal, connectivity restoration, reboot, force-stop, account switching, expiry/revocation, deletion and TalkBack checks. OS background execution is opportunistic; passing a forced emulator callback is not proof of autonomous retry timing. The full PostgreSQL integration suite was run locally; the hosted Supabase connection/migration checks below do not replace it with real Google users. iOS background behavior is unvalidated.
 
@@ -86,6 +86,15 @@ The existing React Native toolchain has npm audit advisories that require a sepa
 - The existing public UDP endpoint returned **5/5 exact 128-byte replies** from `142.93.34.57:9876`. This short check does not establish phone or long-run reliability.
 - All three services remained running, with the API healthy. A snapshot showed approximately 96 MiB API, 13 MiB proxy and 11 MiB UDP memory usage. The internal API port remains published only on host loopback. Public TCP 80/443 and UDP 9876 were reachable, but the DigitalOcean firewall rule set was not inspected through its control plane.
 - Updated only public endpoint values in the Mac's ignored runtime/mobile/dashboard environment files. No mobile rebuild, account creation, historical-data upload or dashboard deployment was performed. The identity-deletion worker still awaits its server-only credential.
+
+## Vercel dashboard and first administrator — 2026-10-25
+
+- The user deployed the dashboard from the feature branch. Initial public checks found Vercel 404 responses; after correcting build settings and redeploying, the stable URL `https://capstone-backend-henna.vercel.app/` returned HTTP 200. Preview URLs required Vercel authentication and were not inspected beyond that access boundary.
+- Added only the stable dashboard origin to the API's existing CORS allowlist and recreated only the API container. An external OPTIONS request to `/api/v2/profile` returned 200 with that exact allowed origin and Authorization header support. The public health endpoint also returned 200 with `region=lon1`. CORS does not grant researcher authorization.
+- Inspected the public page bundle after the user reported a setup-pending message: all three required public service settings were absent. After the user configured Vercel environment values and rebuilt, verified the expected Supabase URL, publishable key and API URL in the new bundle. No private credentials were read or added to browser code.
+- A public Supabase authorization request confirmed the Google redirect targets the project's Supabase `/auth/v1/callback`. The user corrected Google's redirect registration and reported successful Google sign-in. This was user-confirmed browser authentication, not an automated physical-phone test.
+- With explicit user authorization and the supplied Auth user UUID, ran the existing server-side `manage admin` command. A separate read-only database query verified that the specified account has role `administrator` and is not deleted. Personal identity details and the UUID are intentionally omitted here. The signed-in administrator dashboard itself has not yet been independently inspected.
+- No measurement sessions were created or uploaded by these checks. Mobile configuration/rebuild, real phone uploads, background retry scenarios, hosted account-isolation tests and identity deletion remain pending. No original private dataset was uploaded.
 
 ## UI previews
 
