@@ -10,6 +10,8 @@ Use **Measurement guide** in the sidebar, or **What do these variables mean?** i
 4. Open **Choose columns** above a table. Search for a field, read its description, and select the columns you need. Click a column heading to sort.
 5. Use **Download visible columns CSV** to export all matching rows across pages, in the selected order, with only the selected columns.
 
+Wide tables scroll horizontally within their card. Swipe sideways, use a trackpad, or use the **Left / Right** buttons above the table to reach additional columns. The scroll area also accepts keyboard focus. Pagination stays outside the horizontal scroll area.
+
 **Reset filters** clears row filters. **Restore default columns** restores the columns for that table. Filters and column choices remain during the automatic refresh; they reset when you leave the session or reload the page.
 
 ## Scope and interpretation

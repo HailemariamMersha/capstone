@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -29,6 +29,40 @@ export function DataTable<T>({
   exportName?: string;
 }) {
   const [search, setSearch] = useState('');
+  const scrollId = useId();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [scrollable, setScrollable] = useState({ left: false, right: false });
+  const updateScroll = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const next = {
+      left: element.scrollLeft > 1,
+      right: element.scrollLeft + element.clientWidth < element.scrollWidth - 1,
+    };
+    setScrollable(previous =>
+      previous.left === next.left && previous.right === next.right
+        ? previous
+        : next,
+    );
+  }, []);
+  useEffect(() => {
+    const observer = new ResizeObserver(updateScroll);
+    if (scrollRef.current) observer.observe(scrollRef.current);
+    if (tableRef.current) observer.observe(tableRef.current);
+    updateScroll();
+    return () => observer.disconnect();
+  }, [updateScroll]);
+  function scrollColumns(direction: number) {
+    const element = scrollRef.current;
+    if (element) {
+      element.scrollBy({
+        left: direction * Math.max(200, element.clientWidth * 0.8),
+        behavior: 'auto',
+      });
+      updateScroll();
+    }
+  }
   const [sorting, setSorting] = useState<SortingState>([]);
   const defaults = () =>
     Object.fromEntries(
@@ -70,7 +104,7 @@ export function DataTable<T>({
   }
   return (
     <div
-      className="space-y-3"
+      className="space-y-3 min-w-0"
       role={name ? 'region' : undefined}
       aria-label={name}
     >
@@ -155,57 +189,95 @@ export function DataTable<T>({
           </p>
         </div>
       )}
-      <div className="panel overflow-x-auto">
-        <table className="w-full" aria-label={name}>
-          <thead>
-            {table.getHeaderGroups().map(g => (
-              <tr key={g.id}>
-                {g.headers.map(h => (
-                  <th
-                    key={h.id}
-                    scope="col"
-                    aria-sort={
-                      name
-                        ? h.column.getIsSorted() === 'asc'
-                          ? 'ascending'
-                          : h.column.getIsSorted() === 'desc'
-                          ? 'descending'
-                          : 'none'
-                        : undefined
-                    }
-                  >
-                    {name && h.column.getCanSort() ? (
-                      <button
-                        className="text-left min-h-11"
-                        onClick={h.column.getToggleSortingHandler()}
-                      >
-                        {flexRender(h.column.columnDef.header, h.getContext())}{' '}
-                        {h.column.getIsSorted() === 'asc'
-                          ? '↑'
-                          : h.column.getIsSorted() === 'desc'
-                          ? '↓'
-                          : '↕'}
-                      </button>
-                    ) : (
-                      flexRender(h.column.columnDef.header, h.getContext())
-                    )}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map(r => (
-              <tr key={r.id} className="hover:bg-slate-50">
-                {r.getVisibleCells().map(c => (
-                  <td key={c.id}>
-                    {flexRender(c.column.columnDef.cell, c.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
+          <p className="text-xs muted">
+            Scroll sideways to see more columns, or use the arrow buttons.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              aria-label="Scroll columns left"
+              aria-controls={scrollId}
+              disabled={!scrollable.left}
+              onClick={() => scrollColumns(-1)}
+            >
+              ← Left
+            </Button>
+            <Button
+              variant="outline"
+              aria-label="Scroll columns right"
+              aria-controls={scrollId}
+              disabled={!scrollable.right}
+              onClick={() => scrollColumns(1)}
+            >
+              Right →
+            </Button>
+          </div>
+        </div>
+        <div
+          id={scrollId}
+          ref={scrollRef}
+          className="table-scroll"
+          tabIndex={0}
+          role="region"
+          aria-label={`${name ?? 'Data table'} scroll area`}
+          onScroll={updateScroll}
+        >
+          <table ref={tableRef} className="w-full" aria-label={name}>
+            <thead>
+              {table.getHeaderGroups().map(g => (
+                <tr key={g.id}>
+                  {g.headers.map(h => (
+                    <th
+                      key={h.id}
+                      scope="col"
+                      aria-sort={
+                        name
+                          ? h.column.getIsSorted() === 'asc'
+                            ? 'ascending'
+                            : h.column.getIsSorted() === 'desc'
+                            ? 'descending'
+                            : 'none'
+                          : undefined
+                      }
+                    >
+                      {name && h.column.getCanSort() ? (
+                        <button
+                          className="text-left min-h-11"
+                          onClick={h.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(
+                            h.column.columnDef.header,
+                            h.getContext(),
+                          )}{' '}
+                          {h.column.getIsSorted() === 'asc'
+                            ? '↑'
+                            : h.column.getIsSorted() === 'desc'
+                            ? '↓'
+                            : '↕'}
+                        </button>
+                      ) : (
+                        flexRender(h.column.columnDef.header, h.getContext())
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.map(r => (
+                <tr key={r.id} className="hover:bg-slate-50">
+                  {r.getVisibleCells().map(c => (
+                    <td key={c.id}>
+                      {flexRender(c.column.columnDef.cell, c.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {paginate && rows.length > 50 && (
           <div className="flex flex-wrap justify-between items-center gap-4 p-4">
             <Button

@@ -380,6 +380,76 @@ test('narrow screen supports filters and ICMP field selection', async ({
     fullPage: true,
   });
 });
+
+for (const width of [390, 1280]) {
+  test(`all selected columns are reachable with horizontal scrolling at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openEvidence(page);
+    for (const name of [
+      'Measurement results',
+      'Individual samples',
+      'Scheduling results',
+    ]) {
+      const region = page.getByRole('region', { name, exact: true });
+      await region.getByText('Choose columns', { exact: true }).click();
+      await region
+        .getByRole('button', { name: 'Show all columns', exact: true })
+        .click();
+      const viewport = region
+        .getByRole('table', { name, exact: true })
+        .locator('..');
+      await expect(viewport).toHaveCSS('overflow-x', 'auto');
+      await expect(viewport).toHaveAttribute('tabindex', '0');
+      const overflowing = await viewport.evaluate(
+        el => el.scrollWidth > el.clientWidth,
+      );
+      if (name !== 'Scheduling results' || width === 390)
+        expect(overflowing).toBeTruthy();
+      if (overflowing) {
+        await viewport.scrollIntoViewIfNeeded();
+        await viewport.hover();
+        await page.mouse.wheel(400, 0);
+        await expect
+          .poll(() => viewport.evaluate(el => el.scrollLeft))
+          .toBeGreaterThan(0);
+        const right = region.getByRole('button', {
+          name: 'Scroll columns right',
+        });
+        for (let i = 0; i < 40; i++) {
+          const position = await viewport.evaluate(el => ({
+            left: el.scrollLeft,
+            atEnd: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
+          }));
+          if (position.atEnd) break;
+          await right.click();
+          await expect
+            .poll(() => viewport.evaluate(el => el.scrollLeft))
+            .toBeGreaterThan(position.left);
+        }
+        await expect(right).toBeDisabled();
+        const reachable = await viewport.evaluate(el => {
+          const last = el
+            .querySelector('th:last-child')!
+            .getBoundingClientRect();
+          const bounds = el.getBoundingClientRect();
+          return last.right <= bounds.right + 1 && last.left >= bounds.left - 1;
+        });
+        expect(reachable).toBeTruthy();
+        await region
+          .getByRole('button', { name: 'Scroll columns left' })
+          .click();
+        await expect(right).toBeEnabled();
+      }
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBeTruthy();
+  });
+}
 test('sample interpretation preserves zeros and qualifies traceroute responses', () => {
   const probes = sampleRows(mixedEvidence);
   expect(probes.find(s => s.parent === 'icmp-parent')?.icmpCode).toBe(0);

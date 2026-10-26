@@ -58,3 +58,19 @@ td {
 .muted {
   color: #53677b;
 }
+/* Keep scrolling separate from .panel's rounded-corner clipping. */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.table-scroll table {
+  min-width: max-content;
+}
+.table-scroll th,
+.table-scroll td {
+  white-space: nowrap;
+}
+.table-scroll:focus-visible {
+  outline-offset: -3px;
+}
