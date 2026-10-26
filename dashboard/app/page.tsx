@@ -6,23 +6,10 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import {
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
-  type ColumnDef,
-  type CellContext,
-} from '@tanstack/react-table';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { type ColumnDef } from '@tanstack/react-table';
+import { DataTable } from '@/components/data-table';
+import { SessionEvidence } from '@/components/session-evidence';
+import { sampleRows } from '@/lib/evidence';
 import {
   Activity,
   ArrowDownToLine,
@@ -55,8 +42,6 @@ type Summary = {
 type Raw = Record<string, any>;
 const date = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : 'Unavailable';
-const value = (v: unknown) =>
-  v === null || v === undefined ? 'Unavailable' : String(v);
 function useData<T>(path: string) {
   return useQuery<T>({
     queryKey: [path],
@@ -97,76 +82,6 @@ function Badge({ complete }: { complete: boolean }) {
     </span>
   );
 }
-function DataTable<T>({
-  rows,
-  columns,
-  paginate = false,
-}: {
-  paginate?: boolean;
-  rows: T[];
-  columns: ColumnDef<T>[];
-}) {
-  const table = useReactTable({
-    data: rows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: paginate ? getPaginationRowModel() : undefined,
-    initialState: { pagination: { pageIndex: 0, pageSize: 50 } },
-  });
-  return (
-    <div className="panel overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          {table.getHeaderGroups().map(g => (
-            <tr key={g.id}>
-              {g.headers.map(h => (
-                <th key={h.id} scope="col">
-                  {flexRender(h.column.columnDef.header, h.getContext())}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map(r => (
-            <tr key={r.id} className="hover:bg-slate-50">
-              {r.getVisibleCells().map(c => (
-                <td key={c.id}>
-                  {flexRender(c.column.columnDef.cell, c.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {paginate && rows.length > 50 && (
-        <div className="flex justify-between items-center gap-4 p-4">
-          <Button
-            variant="outline"
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
-          >
-            Previous observations
-          </Button>
-          <span className="text-sm muted">
-            Page {table.getState().pagination.pageIndex + 1} of{' '}
-            {table.getPageCount()}
-          </span>
-          <Button
-            variant="outline"
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
-          >
-            Next observations
-          </Button>
-        </div>
-      )}
-      {!rows.length && (
-        <p className="p-8 muted">No received records match this view.</p>
-      )}
-    </div>
-  );
-}
 function SessionDetail({ id, close }: { id: string; close: () => void }) {
   const data = useData<Raw>(`/research/sessions/${id}`);
   const [error, setError] = useState('');
@@ -174,47 +89,7 @@ function SessionDetail({ id, close }: { id: string; close: () => void }) {
   if (!data.data) return <Notice>Loading session evidence…</Notice>;
   const d = data.data;
   const measurements: Raw[] = d.measurements;
-  const probes: Raw[] = measurements.flatMap(m => [
-    ...(m.details?.samples ?? []).map((s: Raw) => ({
-      ...s,
-      parent: m.id,
-      protocol: m.type,
-      phase: 'probe',
-    })),
-    ...(m.details?.baselineSamples ?? []).map((s: Raw) => ({
-      ...s,
-      parent: m.id,
-      protocol: m.type,
-      phase: 'baseline',
-    })),
-    ...(m.route?.samples ?? []).map((s: Raw) => ({
-      ...s,
-      parent: m.id,
-      protocol: m.type,
-      phase: 'traceroute',
-    })),
-  ]);
-  const timing = measurements
-    .filter(m => m.unit === 'ms')
-    .map(m => ({
-      time: new Date(m.timestamp).toLocaleTimeString(),
-      [m.type]: m.value,
-      method: m.type,
-    }));
-  const probeColumns: ColumnDef<Raw>[] = [
-    'protocol',
-    'phase',
-    'sequence',
-    'hop',
-    'rttMs',
-    'address',
-    'kind',
-    'errorType',
-  ].map(k => ({
-    accessorKey: k,
-    header: k === 'rttMs' ? 'Probe RTT (ms)' : k,
-    cell: (c: CellContext<Raw, unknown>) => value(c.getValue()),
-  }));
+  const probes = sampleRows(measurements);
   return (
     <div className="space-y-6">
       <Button variant="ghost" onClick={close}>
@@ -271,109 +146,15 @@ function SessionDetail({ id, close }: { id: string; close: () => void }) {
           </div>
         ))}
       </div>
-      <section className="panel p-6">
-        <h2 className="text-xl font-semibold">Timing observations</h2>
-        <p className="muted text-sm mt-2 mb-6">
-          One point per measurement in milliseconds. Connection duration and
-          echo RTT are different methods; gaps mean unavailable evidence.
-        </p>
-        {timing.length ? (
-          <div className="h-72">
-            <ResponsiveContainer>
-              <LineChart data={timing}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" />
-                <YAxis unit=" ms" />
-                <Tooltip />
-                {[
-                  ...new Set(
-                    measurements
-                      .filter(m => m.unit === 'ms')
-                      .map(m => String(m.type)),
-                  ),
-                ].map((method, i) => (
-                  <Line
-                    key={method}
-                    dataKey={method}
-                    stroke={['#087f79', '#355b91', '#986422', '#7b4c94'][i % 4]}
-                    connectNulls={false}
-                    dot={true}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <p>No timing values available.</p>
-        )}
-      </section>
-      <section>
-        <h2 className="text-xl font-semibold mb-4">
-          Transfers and measurement outcomes
-        </h2>
-        <DataTable<Raw>
-          paginate
-          rows={measurements.map(m => ({
-            ...m,
-            loadMbps: m.details?.load?.value,
-            loadBytes: m.details?.load?.transferredBytes,
-          }))}
-          columns={[
-            'type',
-            'value',
-            'unit',
-            'success',
-            'transferredBytes',
-            'durationMs',
-            'loadMbps',
-            'loadBytes',
-            'method',
-          ].map(k => ({
-            accessorKey: k,
-            header: k,
-            cell: (c: CellContext<Raw, unknown>) => value(c.getValue()),
-          }))}
-        />
-      </section>
-      <section>
-        <h2 className="text-xl font-semibold mb-2">
-          Individual probes and traceroute hops
-        </h2>
-        <p className="muted mb-4">
-          Traceroute kind labels are library classifications, not independently
-          decoded ICMP evidence. A blank reply source or TTL means the library
-          did not provide it.
-        </p>
-        <DataTable paginate rows={probes} columns={probeColumns} />
-      </section>
-      <section>
-        <h2 className="text-xl font-semibold mb-4">Scheduling observations</h2>
-        <DataTable<Raw>
-          paginate
-          rows={measurements.map(m => ({
-            type: m.type,
-            scheduled: m.scheduledAt,
-            executed: m.timestamp,
-            delayMs:
-              m.scheduledAt && m.timestamp
-                ? Date.parse(m.timestamp) - Date.parse(m.scheduledAt)
-                : null,
-          }))}
-          columns={['type', 'scheduled', 'executed', 'delayMs'].map(k => ({
-            accessorKey: k,
-            header: k,
-            cell: (c: CellContext<Raw, unknown>) => value(c.getValue()),
-          }))}
-        />
-        <p className="muted text-sm mt-2">
-          Delay uses two wall-clock timestamps; device clock changes may affect
-          it. It is not packet RTT.
-        </p>
-      </section>
+      <p className="text-sm muted">
+        The downloads above contain the complete session. Use the filtered table
+        downloads below for selected observations and columns.
+      </p>
+      <SessionEvidence key={id} data={d} />
       {['configuration', 'context', 'raw evidence'].map((name, i) => (
         <details key={name} className="panel p-6">
           <summary className="cursor-pointer font-semibold capitalize">
-            {name}
+            {name} (complete session)
           </summary>
           <pre className="overflow-auto text-xs mt-4 max-h-96">
             {JSON.stringify(
