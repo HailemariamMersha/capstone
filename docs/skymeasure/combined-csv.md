@@ -1,5 +1,7 @@
 # SkyMeasure combined CSV
 
+To select variables or observations before downloading, use the session dashboard's [filters and selectable columns](dashboard-filters.md). The complete combined export described here remains available separately.
+
 Each row is an individual saved sample, or a standalone measurement when it has no samples. The saved ten-minute experiment produces 246 rows: 232 samples plus 14 standalone measurements. Baseline latency samples and timeouts are included.
 
 - `row.kind`: `sample` or `measurement`.
