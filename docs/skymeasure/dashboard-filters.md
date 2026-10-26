@@ -26,7 +26,7 @@ Filtered CSV headers use field keys; **Choose columns** supplies readable labels
 
 The **Original session JSON** and **Combined measurement / sample CSV** buttons still download the complete received session, irrespective of filters. Configuration, context, events and raw-evidence panels also remain complete-session views. Unknown future fields remain accessible through raw JSON and the complete export; they are not automatically added to the curated selectable columns.
 
-See the [combined CSV guide](combined-csv.md) and [measurement dictionary](measurements/columns.md) for the complete export format. This change affects dashboard presentation and adds filtered downloads; phone collection, ingestion and existing exports are unchanged.
+See the [combined CSV guide](combined-csv.md) and [measurement dictionary](../measurements/columns.md) for the complete export format. This change affects dashboard presentation and adds filtered downloads; phone collection, ingestion and existing exports are unchanged.
 
 ## Validation — 2026-10-26
 
