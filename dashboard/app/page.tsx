@@ -101,6 +101,8 @@ function SessionDetail({
     refetchInterval: query =>
       query.state.data?.receipt?.completedAt ? false : 15000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     staleTime: 60000,
     retry: false,
   });

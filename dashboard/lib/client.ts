@@ -56,7 +56,10 @@ async function request<T>(
       );
     return await consume(response);
   } catch (error) {
-    throw requestError(error);
+    // Browsers can report AbortError while consuming a timed-out response body.
+    throw requestError(
+      timeout.aborted && !init.signal?.aborted ? timeout.reason : error,
+    );
   }
 }
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {

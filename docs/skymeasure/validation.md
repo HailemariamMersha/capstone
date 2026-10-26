@@ -1,5 +1,16 @@
 # SkyMeasure implementation and validation — 2026-10-22
 
+## Session loading and variable reference — 2026-10-26
+
+- Added a searchable Measurement guide with current library methods and definitions for every selectable dashboard column. Column choices and definitions share a field catalog; units and statistical formulas reuse the export dictionary.
+- The previous dashboard downloaded full session evidence on a 15-second interval under a 30-second deadline. The largest saved session's JSON occupied approximately 17.8 MB in the database. Aggregate checks found a fast health response, no API OOM kill/restart, and no waiting database lock at the time checked; these do not reproduce the user's exact browser/network failure.
+- Deployed the readable session view and research-JSON compression to the existing API. Full JSON/CSV exports and stored records remain intact; HTTP measurement payloads remain uncompressed. No database migration was needed.
+- On-server measurement of the latest session's 3,273 raw records: compact original JSON **16,706,563 bytes**; readable JSON **6,712,928 bytes**; readable gzip **869,157 bytes**. Database read **1.407 seconds**; projection and compression **0.732 seconds**. These are record-level diagnostics, excluding authentication, session-envelope metadata and browser/network transfer; no raw records were copied off the server.
+- Dashboard session requests/downloads allow two minutes, handle timeout errors with retry, keep existing evidence visible after failed refresh, and load original byte dumps only on demand. Completed sessions no longer poll or refetch on window focus/reconnect. Visible list views and partial sessions retain 15-second polling.
+- **35 backend tests passed**, one PostgreSQL-only test skipped in the local SQLite run. **10 Playwright tests passed** with sanitized data, including definition coverage, timeout recovery, completed-session polling, retained filters and mobile-width layout. Next.js production build and TypeScript passed. These checks do not replace real signed-in browser validation or assess measurement reliability.
+
+See [dashboard-filters.md](dashboard-filters.md) for use and scope.
+
 ## Delivered source increments
 
 | Area | Implemented behavior |
