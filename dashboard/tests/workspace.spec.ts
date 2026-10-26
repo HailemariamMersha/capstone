@@ -1,6 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import {
+  measurementFields,
+  probeFields,
+  scheduleFields,
+  variableDefinition,
+} from '../lib/variable-reference';
+import {
   csvText,
   filterMeasurements,
   sampleRows,
@@ -392,4 +398,141 @@ test('sample interpretation preserves zeros and qualifies traceroute responses',
   expect(csvText(['zero', 'missing', 'untrusted'], [[0, null, '=1+1']])).toBe(
     "zero,missing,untrusted\r\n0,,'=1+1\r\n",
   );
+});
+
+test('measurement guide defines every selectable field and supports search', async ({
+  page,
+}) => {
+  for (const [scope, fields] of Object.entries({
+    Measurements: measurementFields,
+    Samples: probeFields,
+    Scheduling: scheduleFields,
+  })) {
+    for (const [key] of fields) {
+      const definition = variableDefinition(scope, key);
+      for (const name of [
+        'datatype',
+        'units',
+        'source',
+        'calculation',
+        'blank',
+      ] as const)
+        expect(definition[name], `${scope}.${key}.${name}`).toBeTruthy();
+    }
+  }
+  await openEvidence(page);
+  await page
+    .getByRole('button', { name: 'What do these variables mean?' })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Measurement guide', exact: true }),
+  ).toBeVisible();
+  await page.getByText('TCP connection', { exact: true }).click();
+  await expect(
+    page.getByText('Includes name resolution, native dispatch', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.getByLabel('Search variables').fill('checksum');
+  await expect(
+    page.getByText('1 variables match', { exact: true }),
+  ).toBeVisible();
+  await page.getByText('ICMP checksum', { exact: true }).click();
+  await expect(
+    page.getByText('sample.packet.response.icmpChecksum', { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Search variables').fill('no-such-variable');
+  await expect(
+    page.getByText('No variables match.', { exact: false }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByLabel('Search variables').fill('');
+  await page.getByLabel('Variable table').selectOption('Scheduling');
+  await expect(
+    page.getByText('4 variables match', { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: 'test-results/measurement-guide.png',
+    fullPage: true,
+  });
+});
+
+test('session timeout explains the failure and allows retry; completed evidence does not poll', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    (
+      window as Window & { simulateSessionTimeout?: boolean }
+    ).simulateSessionTimeout = true;
+    window.fetch = async (...args) => {
+      if (
+        String(args[0]).includes('view=readable') &&
+        (window as Window & { simulateSessionTimeout?: boolean })
+          .simulateSessionTimeout
+      ) {
+        throw new DOMException('signal timed out', 'TimeoutError');
+      }
+      return original(...args);
+    };
+  });
+  await signedIn(page, 'researcher', mixedEvidence);
+  await page.goto('/');
+  await page
+    .getByRole('button', { name: /10\/12\/2026/ })
+    .first()
+    .click();
+  await expect(page.getByRole('main').getByRole('alert')).toContainText(
+    'The server took too long',
+  );
+  await expect(page.getByRole('main').getByRole('alert')).not.toContainText(
+    'signal timed out',
+  );
+  let detailRequests = 0;
+  page.on('request', request => {
+    if (request.url().includes('view=readable')) detailRequests++;
+  });
+  await page.evaluate(() => {
+    (
+      window as Window & { simulateSessionTimeout?: boolean }
+    ).simulateSessionTimeout = false;
+  });
+  await page.getByRole('button', { name: 'Retry loading session' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Explore measurements' }),
+  ).toBeVisible();
+  await page.clock.install();
+  await page.clock.fastForward(45000);
+  expect(detailRequests).toBe(1);
+  await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
+  await expect.poll(() => detailRequests).toBe(2);
+});
+
+test('a failed refresh retains loaded session evidence and filters', async ({
+  page,
+}) => {
+  await openEvidence(page);
+  await page
+    .getByLabel('Measurement type', { exact: true })
+    .selectOption('udp_echo');
+  await page.route('**/api/v2/research/sessions/*?view=readable', route =>
+    route.fulfill({ status: 503, body: 'temporarily unavailable' }),
+  );
+  await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('alert')).toContainText(
+    'Previously loaded evidence is still shown',
+  );
+  await expect(
+    page.getByLabel('Measurement type', { exact: true }),
+  ).toHaveValue('udp_echo');
+  await expect(
+    page
+      .getByRole('region', { name: 'Individual samples', exact: true })
+      .locator('tbody tr'),
+  ).toHaveCount(50);
 });

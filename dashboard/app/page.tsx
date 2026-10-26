@@ -9,9 +9,11 @@ import {
 import { type ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table';
 import { SessionEvidence } from '@/components/session-evidence';
+import { MeasurementGuide } from '@/components/measurement-guide';
 import { sampleRows } from '@/lib/evidence';
 import {
   Activity,
+  BookOpen,
   ArrowDownToLine,
   ArrowLeft,
   CircleUserRound,
@@ -42,10 +44,11 @@ type Summary = {
 type Raw = Record<string, any>;
 const date = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : 'Unavailable';
-function useData<T>(path: string) {
+function useData<T>(path: string, enabled = true) {
   return useQuery<T>({
     queryKey: [path],
-    queryFn: () => api<T>(path),
+    queryFn: ({ signal }) => api<T>(path, { signal }),
+    enabled,
     refetchInterval: 15000,
     refetchIntervalInBackground: false,
     retry: false,
@@ -82,11 +85,48 @@ function Badge({ complete }: { complete: boolean }) {
     </span>
   );
 }
-function SessionDetail({ id, close }: { id: string; close: () => void }) {
-  const data = useData<Raw>(`/research/sessions/${id}`);
+function SessionDetail({
+  id,
+  close,
+  guide,
+}: {
+  id: string;
+  close: () => void;
+  guide: () => void;
+}) {
+  const data = useQuery<Raw>({
+    queryKey: [`/research/sessions/${id}?view=readable`],
+    queryFn: ({ signal }) =>
+      api(`/research/sessions/${id}?view=readable`, { signal }),
+    refetchInterval: query =>
+      query.state.data?.receipt?.completedAt ? false : 15000,
+    refetchIntervalInBackground: false,
+    staleTime: 60000,
+    retry: false,
+  });
+  const [raw, setRaw] = useState<Raw | null>(null);
+  const [loadingRaw, setLoadingRaw] = useState(false);
   const [error, setError] = useState('');
-  if (data.error) return <Notice error>{data.error.message}</Notice>;
-  if (!data.data) return <Notice>Loading session evidence…</Notice>;
+  if (!data.data)
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" onClick={close}>
+          All sessions
+        </Button>
+        {data.error ? (
+          <>
+            <Notice error>{data.error.message}</Notice>
+            <Button onClick={() => data.refetch()}>
+              Retry loading session
+            </Button>
+          </>
+        ) : (
+          <Notice>
+            Loading session evidence… Larger sessions can take longer to load.
+          </Notice>
+        )}
+      </div>
+    );
   const d = data.data;
   const measurements: Raw[] = d.measurements;
   const probes = sampleRows(measurements);
@@ -130,6 +170,18 @@ function SessionDetail({ id, close }: { id: string; close: () => void }) {
           Combined measurement / sample CSV
         </Button>
       </div>
+      <Button variant="outline" onClick={guide}>
+        <BookOpen size={16} />
+        What do these variables mean?
+      </Button>
+      {data.error && (
+        <Notice error>
+          {data.error.message} Previously loaded evidence is still shown.{' '}
+          <button className="underline" onClick={() => data.refetch()}>
+            Retry loading session
+          </button>
+        </Notice>
+      )}
       {error && <Notice error>{error}</Notice>}
       <div className="grid gap-5 md:grid-cols-3">
         {[
@@ -151,28 +203,52 @@ function SessionDetail({ id, close }: { id: string; close: () => void }) {
         downloads below for selected observations and columns.
       </p>
       <SessionEvidence key={id} data={d} />
-      {['configuration', 'context', 'raw evidence'].map((name, i) => (
+      {['configuration', 'context'].map((name, i) => (
         <details key={name} className="panel p-6">
           <summary className="cursor-pointer font-semibold capitalize">
             {name} (complete session)
           </summary>
           <pre className="overflow-auto text-xs mt-4 max-h-96">
-            {JSON.stringify(
-              i === 0 ? d.session.config : i === 1 ? d.snapshots : d,
-              null,
-              2,
-            )}
+            {JSON.stringify(i === 0 ? d.session.config : d.snapshots, null, 2)}
           </pre>
         </details>
       ))}
-      <a
-        className="underline"
-        href="/measurement-guide.md"
-        target="_blank"
-        rel="noreferrer"
-      >
-        Measurement definitions and missing values
-      </a>
+      <section className="panel p-6 space-y-3">
+        <h2 className="font-semibold">Raw evidence (complete session)</h2>
+        <p className="text-sm muted">
+          Raw callbacks and byte dumps are loaded only on request. Full JSON
+          downloads above always include the original records.
+        </p>
+        <Button
+          variant="outline"
+          disabled={loadingRaw}
+          onClick={async () => {
+            setLoadingRaw(true);
+            setError('');
+            try {
+              setRaw(await api(`/research/sessions/${id}`));
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setLoadingRaw(false);
+            }
+          }}
+        >
+          {loadingRaw
+            ? 'Loading original evidence…'
+            : 'Load original raw evidence'}
+        </Button>
+        {raw && (
+          <details>
+            <summary className="cursor-pointer py-2">
+              Show original JSON
+            </summary>
+            <pre className="overflow-auto text-xs mt-4 max-h-96">
+              {JSON.stringify(raw, null, 2)}
+            </pre>
+          </details>
+        )}
+      </section>
     </div>
   );
 }
@@ -202,21 +278,28 @@ function Workspace({ profile }: { profile: Profile }) {
   for (const [key, v] of [...filters]) if (!v) filters.delete(key);
   const sessions = useData<{ items: Summary[]; total: number }>(
     `/research/sessions?${filters}&offset=${offset}&limit=25`,
+    !selected && ['Overview', 'Sessions', 'Downloads'].includes(section),
   );
-  const overview = useData<Record<string, number>>('/research/overview');
+  const overview = useData<Record<string, number>>(
+    '/research/overview',
+    !selected && section === 'Overview',
+  );
   const participants = useData<{
     items: {
       participantId: string;
       sessions: number;
       latestCollection: string;
     }[];
-  }>('/research/participants');
+  }>('/research/participants', !selected && section === 'Participants');
   const members = useQuery<{
     items: { participantId: string; role: string }[];
   }>({
     queryKey: ['members'],
     queryFn: () => api('/admin/members'),
-    enabled: profile.role === 'administrator',
+    enabled:
+      profile.role === 'administrator' &&
+      !selected &&
+      section === 'Participants',
     retry: false,
   });
   const client = useQueryClient();
@@ -274,29 +357,35 @@ function Workspace({ profile }: { profile: Profile }) {
           className="flex flex-wrap lg:flex-col gap-2"
           aria-label="Research workspace"
         >
-          {[LayoutDashboard, Rows3, Users, ArrowDownToLine].map((Icon, i) => {
-            const title = ['Overview', 'Sessions', 'Participants', 'Downloads'][
-              i
-            ];
-            return (
-              <button
-                key={title}
-                onClick={() => {
-                  setSection(title);
-                  setSelected(null);
-                }}
-                className={`flex gap-3 items-center text-sm rounded-xl p-3 text-left ${
-                  section === title
-                    ? 'bg-teal-50 text-teal-900 font-semibold'
-                    : 'muted hover:bg-slate-50'
-                }`}
-                aria-current={section === title ? 'page' : undefined}
-              >
-                <Icon size={18} />
-                {title}
-              </button>
-            );
-          })}
+          {[LayoutDashboard, Rows3, Users, ArrowDownToLine, BookOpen].map(
+            (Icon, i) => {
+              const title = [
+                'Overview',
+                'Sessions',
+                'Participants',
+                'Downloads',
+                'Measurement guide',
+              ][i];
+              return (
+                <button
+                  key={title}
+                  onClick={() => {
+                    setSection(title);
+                    setSelected(null);
+                  }}
+                  className={`flex gap-3 items-center text-sm rounded-xl p-3 text-left ${
+                    section === title
+                      ? 'bg-teal-50 text-teal-900 font-semibold'
+                      : 'muted hover:bg-slate-50'
+                  }`}
+                  aria-current={section === title ? 'page' : undefined}
+                >
+                  <Icon size={18} />
+                  {title}
+                </button>
+              );
+            },
+          )}
         </nav>
         <div className="mt-auto pt-10">
           <p className="text-xs muted mb-4">
@@ -327,7 +416,15 @@ function Workspace({ profile }: { profile: Profile }) {
           </Button>
         </header>
         {selected ? (
-          <SessionDetail id={selected} close={() => setSelected(null)} />
+          <SessionDetail
+            key={selected}
+            id={selected}
+            close={() => setSelected(null)}
+            guide={() => {
+              setSelected(null);
+              setSection('Measurement guide');
+            }}
+          />
         ) : (
           <div className="space-y-7">
             <div>
@@ -349,15 +446,18 @@ function Workspace({ profile }: { profile: Profile }) {
               <Activity size={20} className="shrink-0" />
               <p>
                 Uploads arrive after collection ends. This workspace cannot see
-                active phones or sessions that have not been sent. Visible data
-                refreshes every 15 seconds.
+                active phones or sessions that have not been sent. Active list
+                views and partial sessions refresh every 15 seconds. Completed
+                session evidence loads once; use Refresh data to reload it.
               </p>
             </div>
-            {(error || sessions.error || overview.error) && (
-              <Notice error>
-                {error || sessions.error?.message || overview.error?.message}
-              </Notice>
-            )}
+            {section !== 'Measurement guide' &&
+              (error || sessions.error || overview.error) && (
+                <Notice error>
+                  {error || sessions.error?.message || overview.error?.message}
+                </Notice>
+              )}
+            {section === 'Measurement guide' && <MeasurementGuide />}
             {section === 'Overview' && (
               <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
                 {[
