@@ -1,5 +1,7 @@
 # SkyMeasure combined CSV
 
+To select variables or observations before downloading, use the session dashboard's [filters and selectable columns](/dashboard-filters.md). The complete combined export described here remains available separately.
+
 Each row is an individual saved sample, or a standalone measurement when it has no samples. The saved ten-minute experiment produces 246 rows: 232 samples plus 14 standalone measurements. Baseline latency samples and timeouts are included.
 
 - `row.kind`: `sample` or `measurement`.
@@ -21,4 +23,4 @@ Empty cells mean not supplied, not applicable, or unavailable following an unsuc
 
 Traceroute `kind` labels are the library's classifications. Historical labels such as `port_unreachable` are not independent proof that ICMP type/code was observed. A target address copied into an old library result is not necessarily an observed reply source. UDP timeouts do not prove that react-native-udp cannot measure RTT.
 
-Read the [measurement guide](measurements/guide.md), [column dictionary](measurements/columns.md), and [machine-readable dictionary](measurements/columns.json). Existing wide CSV exports and their definitions remain unchanged. Unknown future scalar fields appear by their raw JSON path; consult the collector version before assigning an interpretation to them. Original JSON preserves all fields, including future nested objects and arrays.
+Read the [measurement guide](/measurements/guide.md), [column dictionary](/measurements/columns.md), and [machine-readable dictionary](/measurements/columns.json). Existing wide CSV exports and their definitions remain unchanged. Unknown future scalar fields appear by their raw JSON path; consult the collector version before assigning an interpretation to them. Original JSON preserves all fields, including future nested objects and arrays.

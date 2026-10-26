@@ -16,7 +16,18 @@ fs.copyFileSync(
 );
 fs.writeFileSync(
   'dashboard/public/measurement-guide.md',
-  fs.readFileSync('docs/skymeasure/combined-csv.md'),
+  fs
+    .readFileSync('docs/skymeasure/combined-csv.md', 'utf8')
+    .replaceAll('(../measurements/', '(/measurements/')
+    .replaceAll('(../../scripts/measurements/', '(/measurements/')
+    .replaceAll('(dashboard-filters.md)', '(/dashboard-filters.md)'),
+);
+fs.writeFileSync(
+  'dashboard/public/dashboard-filters.md',
+  fs
+    .readFileSync('docs/skymeasure/dashboard-filters.md', 'utf8')
+    .replaceAll('(../measurements/', '(/measurements/')
+    .replaceAll('(combined-csv.md)', '(/measurement-guide.md)'),
 );
 console.log(
   'Dashboard measurement documentation refreshed from the repository dictionary.',
