@@ -1,7 +1,7 @@
 import math
 import json
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from sqlalchemy import select, delete, func, or_, case
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .database import Account, ResearchSession, Record, Sample, database, now
 from .auth import account, researcher, administrator, identity
 from .exports import samples, combined_rows, csv_text
+from .presentation import readable, evidence_response
 
 def number(value):
     try:
@@ -265,7 +266,7 @@ def overview(a=Depends(researcher), db: Session = Depends(database)):
 
 
 @router.get('/research/sessions/{session_id}')
-def detail(session_id: str, format: Literal['json', 'csv'] = 'json', a=Depends(researcher), db: Session = Depends(database)):
+def detail(session_id: str, request: Request, format: Literal['json', 'csv'] = 'json', view: Literal['full', 'readable'] = 'full', a=Depends(researcher), db: Session = Depends(database)):
     s = db.get(ResearchSession, session_id)
     if not s:
         raise HTTPException(404, 'Session not found')
@@ -276,7 +277,9 @@ def detail(session_id: str, format: Literal['json', 'csv'] = 'json', a=Depends(r
             'snapshots': [r.raw for r in records if r.kind == 'snapshot'], 'receipt': summary(db, s)}
     if format == 'csv':
         return Response(csv_text(combined_rows(data)), media_type='text/csv', headers={'Content-Disposition': f'attachment; filename="{session_id}-combined.csv"'})
-    return data
+    if view == 'readable':
+        data = {**readable(data), 'view': 'readable', 'rawEvidenceIncluded': False}
+    return evidence_response(data, request.headers.get('accept-encoding', ''))
 
 
 @router.get('/research/participants')

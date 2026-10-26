@@ -223,3 +223,37 @@ def test_malformed_known_evidence_is_rejected_without_acknowledgement(client):
     assert client.post(f'/api/v2/sessions/{sid}/records', json={'records': records}, headers=auth()).status_code == 422
     with Session(engine()) as db:
         assert list(db.scalars(select(Record))) == []
+
+
+def test_readable_session_retains_values_and_full_export_retains_raw_evidence(client):
+    sid, manifest, records = register(client)
+    measurement = records[1]['payload']
+    measurement['raw'] = {'library': 'example-library', 'version': '1', 'callbacks': [{'bytes': 'x' * 16000}]}
+    measurement['details']['samples'][0]['packet'] = {
+        'probeTtl': 64, 'libraryResult': {'dataBase64': 'A' * 16000},
+        'response': {'icmpType': 0, 'icmpCode': 0, 'replyTtl': 51, 'receivedHex': '00' * 8000, 'receivedSocketBytes': 72}}
+    assert client.post(f'/api/v2/sessions/{sid}/records', json={'records': records}, headers=auth()).status_code == 200
+    url = f'/api/v2/research/sessions/{sid}'
+    assert client.get(url + '?view=readable', headers=auth()).status_code == 403
+    full = client.get(url, headers=auth('researcher'))
+    assert full.json()['measurements'][0] == measurement
+    small = client.get(url + '?view=readable', headers=auth('researcher'))
+    data = small.json()
+    assert data['view'] == 'readable' and data['rawEvidenceIncluded'] is False
+    assert len(small.content) < len(full.content) / 2
+    m = data['measurements'][0]
+    assert m['raw'] == {'library': 'example-library', 'version': '1'}
+    assert m['details']['samples'][0]['rttMs'] == 0
+    assert m['details']['samples'][1]['rttMs'] is None
+    packet = m['details']['samples'][0]['packet']
+    assert packet['probeTtl'] == 64 and packet['response']['icmpCode'] == 0
+    assert 'receivedHex' not in packet['response'] and 'libraryResult' not in packet
+    assert small.headers['content-encoding'] == 'gzip'
+    assert 'no-store' in small.headers['cache-control']
+    plain = client.get(url, headers={**auth('researcher'), 'Accept-Encoding': 'gzip;q=0'})
+    assert 'content-encoding' not in plain.headers and plain.json() == full.json()
+    assert client.get(url + '?format=csv&view=readable', headers=auth('researcher')).text == client.get(url + '?format=csv', headers=auth('researcher')).text
+    # The compact view must not mutate persisted records or change probe bytes.
+    assert client.get(url, headers=auth('researcher')).json()['measurements'][0] == measurement
+    probe = client.get('/api/v1/probe/download/1024', headers={'Accept-Encoding': 'gzip'})
+    assert len(probe.content) == 1024 and 'content-encoding' not in probe.headers
