@@ -1,0 +1,30 @@
+[Unit]
+Description=SkyMeasure bounded UDP echo probe
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=skymeasure
+Group=skymeasure
+WorkingDirectory=/opt/skymeasure/current
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/skymeasure/venv/bin/python -m backend.udp_echo --host 0.0.0.0 --port 9876 --allow 0.0.0.0/0
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=64M
+TasksMax=32
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

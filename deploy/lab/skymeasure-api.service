@@ -1,0 +1,32 @@
+[Unit]
+Description=SkyMeasure authenticated API and HTTP probes
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=skymeasure
+Group=skymeasure
+WorkingDirectory=/opt/skymeasure/current
+EnvironmentFile=/etc/skymeasure/api.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/skymeasure/venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 18000 --workers 1 --no-access-log --no-proxy-headers --limit-concurrency 16
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+TasksMax=128
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

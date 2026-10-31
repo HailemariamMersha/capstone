@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew only the SkyMeasure HTTPS certificate
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Isolated certificate state; never renew or edit the lab's other certificates.
+ExecStart=/opt/skymeasure/current/deploy/lab/renew-certificate.sh
