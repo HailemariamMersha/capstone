@@ -8,22 +8,33 @@ import { NDT7_VERSION, REFERENCE_BYTE_THRESHOLD } from './html';
 export async function createReferenceSession(
   store: MeasurementStore,
   accepted: boolean,
+  participant?: { ownerId: string; collectorVersion: string },
 ) {
   if (!accepted) {
     throw new Error('Accept M-Lab data publication before starting.');
+  }
+  if (participant && !participant.ownerId.trim()) {
+    throw new Error('Sign in before starting a speed test.');
   }
   const release = acquireActivity('reference');
   let id: string | undefined;
   const attempts: Measurement[] = [];
   try {
-    id = await store.createSession({
-      ...DEFAULT_SESSION_CONFIG,
-      mode: 'ndt7_reference',
-      serverUrl: 'https://locate.measurementlab.net',
-      referenceByteThreshold: REFERENCE_BYTE_THRESHOLD,
-      maxPayloadBytes: 2 * REFERENCE_BYTE_THRESHOLD,
-      maxDurationMs: 45000,
-    });
+    id = await store.createSession(
+      {
+        ...DEFAULT_SESSION_CONFIG,
+        mode: 'ndt7_reference',
+        serverUrl: 'https://locate.measurementlab.net',
+        referenceByteThreshold: REFERENCE_BYTE_THRESHOLD,
+        maxPayloadBytes: 2 * REFERENCE_BYTE_THRESHOLD,
+        maxDurationMs: 45000,
+        ...(participant
+          ? { collectorVersion: participant.collectorVersion }
+          : {}),
+      },
+      undefined,
+      participant?.ownerId,
+    );
     await store.addEvent(id, 'reference_consent', {
       policyUrl: 'https://www.measurementlab.net/privacy/',
       library: '@m-lab/ndt7',

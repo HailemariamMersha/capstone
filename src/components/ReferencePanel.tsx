@@ -20,16 +20,18 @@ export default function ReferencePanel({
   idle,
   onBusyChange,
   onSaved,
+  participant,
 }: {
   idle: boolean;
   onBusyChange: (busy: boolean) => void;
   onSaved: () => void;
+  participant?: { ownerId: string; collectorVersion: string };
 }) {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [source, setSource] = useState<{ html: string } | null>(null);
   const [message, setMessage] = useState(
-    'Ready for a separate NDT7 reference test.',
+    'Ready to measure download and upload speed.',
   );
   const active = useRef<ReferenceSession | null>(null);
   const latest = useRef<ReferenceResult[]>([]);
@@ -56,7 +58,35 @@ export default function ReferencePanel({
         await run.finish(latest.current, reason);
         if (mounted.current) {
           setMessage(
-            `Reference test ended: ${reason}. Results and partial samples are in Saved sessions.`,
+            `${latest.current
+              .map(result => {
+                const bytes =
+                  result.direction === 'download'
+                    ? result.clientBytes
+                    : result.serverBytes;
+                const seconds =
+                  result.direction === 'download'
+                    ? result.clientSeconds
+                    : result.serverSeconds;
+                const valid =
+                  result.reason === 'complete' &&
+                  result.opened &&
+                  result.cleanClose &&
+                  bytes != null &&
+                  bytes > 0 &&
+                  seconds != null &&
+                  seconds > 0;
+                return `${
+                  result.direction === 'download' ? 'Download' : 'Upload'
+                }: ${
+                  valid
+                    ? ((bytes! * 8) / seconds! / 1000000).toFixed(2) + ' Mbps'
+                    : 'unavailable (incomplete test)'
+                }`;
+              })
+              .join(
+                ' · ',
+              )}\nTest ended: ${reason}. Results are saved in Sessions. Incomplete tests retain partial evidence without reporting a completed speed.`,
           );
           onSaved();
         }
@@ -76,6 +106,9 @@ export default function ReferencePanel({
   );
   const finishRef = useRef(finish);
   finishRef.current = finish;
+  useEffect(() => {
+    if (!idle && working.current) finishRef.current('cancelled');
+  }, [idle]);
   useEffect(() => {
     mounted.current = true;
     const listener = AppState.addEventListener('change', state => {
@@ -105,7 +138,11 @@ export default function ReferencePanel({
     onBusyChange(true);
     setMessage('Preparing reference test…');
     try {
-      const run = await createReferenceSession(measurementStore, accepted);
+      const run = await createReferenceSession(
+        measurementStore,
+        accepted,
+        participant,
+      );
       active.current = run;
       if (mounted.current) {
         setAccepted(false);
@@ -131,11 +168,13 @@ export default function ReferencePanel({
   }
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>M-Lab NDT7 reference test</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        Internet speed test
+      </Text>
       <Text>
-        Runs a download and upload to M-Lab, separately from scheduled
-        collection. M-Lab collects your public IP address and publishes
-        measurement results. This is optional.
+        Uses M-Lab NDT7 for a download and upload test, separately from
+        scheduled collection. M-Lab collects your public IP address and
+        publishes measurement results. This is optional.
       </Text>
       <Button
         title="Read M-Lab data policy"
@@ -149,22 +188,23 @@ export default function ReferencePanel({
         Each direction normally runs for about 10 seconds. We stop at a reported
         50 MiB per direction, but buffered traffic can exceed that threshold.
         This is not a hard data cap. Keep the app open; leaving it cancels the
-        test.
+        test. This has its own data threshold, separate from your session
+        allowance.
       </Text>
       <Text>I accept M-Lab data publication and this test’s data usage.</Text>
       <Switch
-        accessibilityLabel="Accept M-Lab reference test"
+        accessibilityLabel="Accept M-Lab data publication and speed test data usage"
         value={accepted}
         disabled={busy}
         onValueChange={setAccepted}
       />
       <Button
-        title="Start NDT7 reference test"
+        title="Start speed test"
         disabled={!idle || !accepted || busy}
         onPress={start}
       />
       <Button
-        title="Cancel reference test"
+        title="Cancel speed test"
         disabled={!busy}
         onPress={() => finish('cancelled')}
       />

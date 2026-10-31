@@ -62,7 +62,9 @@ jest.mock('react-native-safe-area-context', () => {
 });
 jest.mock('@react-navigation/native', () => ({
   NavigationContainer: ({ children }: any) => children,
+  useIsFocused: () => true,
 }));
+jest.mock('react-native-webview', () => ({ WebView: () => null }));
 jest.mock('@react-navigation/bottom-tabs', () => {
   const ReactLocal = require('react');
   const { View: V, Button: B } = require('react-native');

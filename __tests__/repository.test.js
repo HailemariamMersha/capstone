@@ -281,6 +281,32 @@ test('NDT7 reference results survive export, sync, and interrupted attempt recov
   });
 });
 
+test('participant NDT7 sessions enter only their owner account history and upload batches', async () => {
+  const { createReferenceSession } = require('../src/reference/session');
+  const run = await createReferenceSession(store, true, {
+    ownerId: 'account-a',
+    collectorVersion: 'skymeasure-libraries-1',
+  });
+  await run.finish([], 'cancelled');
+  expect((await store.accountSessions('account-a')).map(row => row.id)).toEqual(
+    [run.id],
+  );
+  expect(await store.accountSessions('account-b')).toEqual([]);
+  expect(
+    (await store.getSyncBatch(50, 'account-a', run.id)).records.length,
+  ).toBeGreaterThan(0);
+  expect((await store.getSyncBatch(50, 'account-b', run.id)).records).toEqual(
+    [],
+  );
+  expect(await store.getSession(run.id)).toMatchObject({
+    ownerId: 'account-a',
+    config: {
+      mode: 'ndt7_reference',
+      collectorVersion: 'skymeasure-libraries-1',
+    },
+  });
+});
+
 test('traceroute and SpeedChecker records retain their distinct units and payloads through export and sync', async () => {
   const id = await store.createSession({
     ...config,

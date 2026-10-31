@@ -17,7 +17,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useIsFocused } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -68,6 +68,8 @@ import type {
 import { validateSessionConfig } from '../sessions/config';
 import { participantDefaults } from './defaults';
 import { theme } from './theme';
+import ReferencePanel from '../components/ReferencePanel';
+import publicConfig from '../config/public.json';
 
 const CONSENT = 'skymeasure-staging-2026-10-22';
 const researchText =
@@ -140,6 +142,12 @@ function Toggle({
 function Home() {
   const { session, status, refresh } = useAccount();
   const network = useNetInfo();
+  const focused = useIsFocused();
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const referenceSaved = useCallback(() => {
+    refresh().catch(e => setError(message(e)));
+    syncAccount().catch(e => setError(message(e)));
+  }, [refresh]);
   const [settings, setSettings] =
     useState<MeasurementConfig>(participantDefaults);
   const [advanced, setAdvanced] = useState(false);
@@ -227,7 +235,7 @@ function Home() {
             contentStyle={styles.control}
             onPress={act}
             loading={busy}
-            disabled={busy || !status}
+            disabled={busy || referenceBusy || !status}
           >
             {active ? 'Stop session' : 'Start session'}
           </Button>
@@ -384,6 +392,15 @@ function Home() {
           </List.Accordion>
         </>
       )}
+      <ReferencePanel
+        participant={{
+          ownerId: session.user.id,
+          collectorVersion: publicConfig.collectorVersion,
+        }}
+        idle={focused && !active && !busy && status !== null}
+        onBusyChange={setReferenceBusy}
+        onSaved={referenceSaved}
+      />
     </Page>
   );
 }
@@ -486,6 +503,8 @@ function Sessions() {
                 http_rtt: 'HTTP latency',
                 loaded_download: 'Latency during download',
                 loaded_upload: 'Latency during upload',
+                ndt7_download: 'M-Lab download speed',
+                ndt7_upload: 'M-Lab upload speed',
               } as Record<string, string>
             )[type] ?? type.replaceAll('_', ' '),
           value: `${g.total} measurements · ${

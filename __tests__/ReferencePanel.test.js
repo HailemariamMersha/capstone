@@ -23,7 +23,7 @@ async function acceptAndStart() {
   await act(async () =>
     renderer.root.findByType(Switch).props.onValueChange(true),
   );
-  await act(async () => button('Start NDT7 reference test').props.onPress());
+  await act(async () => button('Start speed test').props.onPress());
 }
 beforeEach(() => {
   jest.useFakeTimers();
@@ -49,11 +49,11 @@ afterEach(async () => {
 });
 test('mounts no network-capable WebView before explicit consent and start', async () => {
   await render();
-  expect(button('Start NDT7 reference test').props.disabled).toBe(true);
+  expect(button('Start speed test').props.disabled).toBe(true);
   expect(webviews()).toHaveLength(0);
   expect(createReferenceSession).not.toHaveBeenCalled();
   await acceptAndStart();
-  expect(createReferenceSession).toHaveBeenCalledWith({}, true);
+  expect(createReferenceSession).toHaveBeenCalledWith({}, true, undefined);
   expect(webviews()).toHaveLength(1);
   expect(renderer.root.findByType(Switch).props.value).toBe(false);
 });
@@ -78,7 +78,7 @@ test('cancellation during database initialization never mounts WebView', async (
   );
   let starting;
   await act(async () => {
-    starting = button('Start NDT7 reference test').props.onPress();
+    starting = button('Start speed test').props.onPress();
   });
   await act(async () => listener('background'));
   await act(async () => {

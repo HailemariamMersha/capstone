@@ -73,6 +73,31 @@ test('partial and missing directions stay failures after a threshold stop', asyn
   ).toBe(true);
   expect(store.finishAttempt.mock.calls[0][0].transferredBytes).toBe(2000);
 });
+test('participant speed tests are bound to the initiating account and collector version', async () => {
+  const run = await createReferenceSession(store, true, {
+    ownerId: 'account-a',
+    collectorVersion: 'skymeasure-libraries-1',
+  });
+  expect(store.createSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      mode: 'ndt7_reference',
+      collectorVersion: 'skymeasure-libraries-1',
+    }),
+    undefined,
+    'account-a',
+  );
+  await run.finish([], 'cancelled');
+  expect(currentActivity()).toBeNull();
+});
+test('missing participant identity cannot create an ownerless session', async () => {
+  await expect(
+    createReferenceSession(store, true, {
+      ownerId: '',
+      collectorVersion: 'test',
+    }),
+  ).rejects.toThrow('Sign in');
+  expect(store.createSession).not.toHaveBeenCalled();
+});
 test('persistence failure interrupts the session and releases activity', async () => {
   const run = await createReferenceSession(store, true);
   store.finishAttempt.mockRejectedValue(new Error('disk full'));
