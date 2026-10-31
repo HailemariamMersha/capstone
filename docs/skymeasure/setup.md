@@ -1,5 +1,7 @@
 # SkyMeasure staging setup
 
+**31 October 2026:** a replacement API and UDP service are staged on the shared lab server. See [lab migration and current cutover status](lab-migration.md) before following the historical DigitalOcean provisioning instructions below.
+
 This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet serves the Supabase-backed API at `https://api.hailemariam.com`. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. The physical-phone-to-dashboard acceptance run remains pending.
 
 ## 1. Supabase and Google
