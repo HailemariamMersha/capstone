@@ -1,5 +1,14 @@
 # SkyMeasure implementation and validation — 2026-10-22
 
+## Lab-server DNS cutover — 2026-10-31
+
+- The API hostname now resolves to `23.235.205.53` on both authoritative nameservers and Google/Cloudflare public resolvers. The lab obtained and installed its own domain certificate; its isolated renewal dry run passed.
+- External HTTPS, 1 MiB download, 256 KiB upload, uncompressed probe responses, authentication rejection, CORS, and 20/20 UDP replies passed after issuance. Existing lab services remained active.
+- Supabase and Vercel remain unchanged. No database migration or record deletion occurred. The original DigitalOcean server remains running for rollback and is still billable.
+- An ARM64 Android update with the lab UDP address and `lab-location-unconfirmed` region was built and its bundled configuration verified. No phone was connected, so installation and a real phone-to-dashboard run remain pending.
+
+See [lab-migration.md](lab-migration.md) for configuration, limitations, and rollback.
+
 ## Session loading and variable reference — 2026-10-26
 
 - Added a searchable Measurement guide with current library methods and definitions for every selectable dashboard column. Column choices and definitions share a field catalog; units and statistical formulas reuse the export dictionary.

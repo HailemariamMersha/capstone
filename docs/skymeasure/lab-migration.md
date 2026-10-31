@@ -2,8 +2,11 @@
 
 ## Deployment status — 31 October 2026
 
-SkyMeasure is staged on the lab's InMotion server, `23.235.205.53`. DNS cutover
-and physical-phone validation are pending. The original DigitalOcean server,
+SkyMeasure's API hostname now points to the lab's InMotion server,
+`23.235.205.53`. Both GoDaddy authoritative nameservers and Google/Cloudflare
+resolvers returned the new address with a 600-second TTL. Some clients may
+still have the old address cached. Physical-phone validation remains pending.
+The original DigitalOcean server,
 `142.93.34.57`, remains running for rollback; it continues to incur charges.
 No existing lab application, database, file, or service was deleted. No system
 packages were upgraded and the machine was not rebooted.
@@ -101,7 +104,9 @@ as on DigitalOcean; this move does not enable the service-role-dependent worker.
 4. On the lab server, start `skymeasure-cert-renew.service`. The isolated
    renewal script obtains a new domain certificate only once DNS resolves
    exclusively to this host. Before that it retains the transferred certificate,
-   valid through 21 January 2027. Certificate issuance and renewal use the
+   originally valid through 21 January 2027. On 31 October, the lab obtained
+   and installed its own certificate, valid through **29 January 2027**.
+   Certificate issuance and renewal use the
    existing `/opt/certbot-venv/bin/certbot`, without touching other domains.
    The deploy hook checks the key pair, retains the previous pair, tests Apache,
    and gracefully reloads it. Run a renewal dry run after initial issuance:
@@ -165,8 +170,12 @@ Pre-switch checks passed:
 - Existing Apache, MySQL, PostgreSQL, transcription, dashboard, and PM2 services
   stayed active. Existing website HTTP status codes matched their baseline.
 - HTTP redirects to HTTPS with status 308. The ACME challenge path bypasses the
-  redirect. Renewal timer setup passed; actual issuance and renewal dry run
-  await DNS cutover.
+  redirect. Following DNS cutover, independent certificate issuance and a
+  renewal dry run both passed. HTTPS/transfer/authentication checks and 20/20
+  UDP replies passed again using the new certificate. Normal DNS-based
+  `/health` requests from the lab reached the new server. The Mac resolver
+  initially retained the old address; authoritative and public DNS checks
+  confirmed the change.
 
 The server's SFTP subsystem closed the file-transfer connection. Deployment
 used SSH streams instead; no SFTP or SSH configuration was changed.

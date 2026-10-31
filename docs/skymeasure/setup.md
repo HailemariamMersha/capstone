@@ -1,8 +1,8 @@
 # SkyMeasure staging setup
 
-**31 October 2026:** a replacement API and UDP service are staged on the shared lab server. See [lab migration and current cutover status](lab-migration.md) before following the historical DigitalOcean provisioning instructions below.
+**31 October 2026:** the API hostname now points to the shared lab server at `23.235.205.53`; its API, UDP service, independent HTTPS certificate, and renewal dry run are verified. The phone update/test remains pending. See [lab migration and current cutover status](lab-migration.md) before following the historical DigitalOcean provisioning instructions below.
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The one-GiB London Droplet serves the Supabase-backed API at `https://api.hailemariam.com`. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. The physical-phone-to-dashboard acceptance run remains pending.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The shared lab server now serves the Supabase-backed API at `https://api.hailemariam.com`; the former London Droplet remains available for rollback. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. Earlier physical-phone-to-dashboard runs succeeded on DigitalOcean; validation of the lab-configured Android build remains pending.
 
 ## 1. Supabase and Google
 
@@ -111,11 +111,11 @@ curl --fail http://127.0.0.1:18000/health
 
 After configuring the domain and Supabase, replace the placeholder values using `deploy/.env.example`, retain the actual region, run `manage migrate` with the same two Compose files, and start the HTTPS proxy with `up -d --no-deps proxy`. Start `identity-deletions` separately only after its service-role credential is configured. Backups and the phone-to-dashboard acceptance run, including mobile Google sign-in, are still required. Host swap and container memory limits do not establish probe timing accuracy; check server load alongside experiments.
 
-### Current London HTTPS endpoint
+### Original London HTTPS endpoint (rollback only)
 
-The GoDaddy DNS A record `api.hailemariam.com` points to `142.93.34.57`. `API_DOMAIN=api.hailemariam.com` configures Caddy, which listens on TCP 80/443 and persists its automatic certificate state in the Compose volumes. HTTP redirects to HTTPS. The backend remains bound to host loopback on port 8000; UDP still uses `142.93.34.57:9876` directly.
+Before the 31 October lab migration, the GoDaddy DNS A record `api.hailemariam.com` pointed to `142.93.34.57`. It now points to `23.235.205.53`; the following describes the retained rollback host. `API_DOMAIN=api.hailemariam.com` configures Caddy, which listens on TCP 80/443 and persists its automatic certificate state in the Compose volumes. HTTP redirects to HTTPS. The backend remains bound to host loopback on port 8000; UDP still uses `142.93.34.57:9876` directly.
 
-Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Keep `PROBE_REGION=lon1`. The current API allows `https://capstone-backend-henna.vercel.app` in `DASHBOARD_ORIGINS`; add any future dashboard origin explicitly.
+Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Use `PROBE_REGION=lon1` only on the original London host; the lab uses `lab-location-unconfirmed`. The API allows `https://capstone-backend-henna.vercel.app` in `DASHBOARD_ORIGINS`; add any future dashboard origin explicitly.
 
 ## 4. Dashboard on Vercel
 
