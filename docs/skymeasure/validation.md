@@ -1,5 +1,13 @@
 # SkyMeasure implementation and validation — 2026-10-22
 
+## Participant speed tests and supervisor APK — 2026-11-01
+
+- Exposed the existing official `@m-lab/ndt7` 0.1.5 integration on participant Home. Fresh M-Lab publication/data-use consent is required before each run. Account-owned sessions retain the collector version, appear in Sessions, and trigger normal upload after the reference activity releases its gate.
+- Leaving Home, backgrounding, cancellation during initialization, and the existing watchdog stop the test. Completed download/upload results use their documented client/server byte counters; partial results retain evidence without reporting a completed speed. The 50 MiB reported threshold per direction remains a best-effort stop, not a hard data cap.
+- **202 tests across 31 suites passed**, including real SQLite account isolation and existing measurement regressions. TypeScript passed; edited-file lint had no errors and two pre-existing UI callback warnings. The offline Chromium test exercised the real workers with simulated sockets, not the public M-Lab service.
+- Built the configured ARM64 pilot APK, verified its v2 signature, and checked packaged labels/endpoints/architecture. No phone was attached; Google login, live M-Lab measurement, and the new build's phone-to-dashboard path remain pending.
+- See [supervisor-pilot.md](supervisor-pilot.md) for the dated artifact, checksum, installation steps and provider limitations. SpeedChecker and Ookla are not enabled in this pilot.
+
 ## Lab-server DNS cutover — 2026-10-31
 
 - The API hostname now resolves to `23.235.205.53` on both authoritative nameservers and Google/Cloudflare public resolvers. The lab obtained and installed its own domain certificate; its isolated renewal dry run passed.

@@ -140,11 +140,12 @@ and restore the checked-in configuration placeholders afterward. The existing
 development signing key must match the installed build. Stop collection before
 updating; use `adb install -r`, never uninstall or clear app data.
 
-The current configured artifact is `android/app/build/outputs/apk/release/app-release.apk`.
-It is a pilot build with development signing, not a Play Store release.
-The ARM64 build passed on 31 October; inspection of the packaged JavaScript
+The migration-only ARM64 build passed on 31 October; inspection of the packaged JavaScript
 confirmed the lab IP and region, and absence of the old UDP IP. Its SHA-256 is
 `c5f64d1b29e53d2b11624c8c230fec106e96969ed71103d5bb28cf84098997dc`.
+That artifact has been superseded by the [1 November supervisor pilot](supervisor-pilot.md),
+which also exposes M-Lab speed tests on Home. Use the dated APK and checksum
+listed in that guide. It uses development signing, not a Play Store release.
 No phone was attached during this deployment, so the APK has not yet been
 installed or exercised on the physical phone.
 

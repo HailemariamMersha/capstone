@@ -7,11 +7,17 @@ The app integrates `@m-lab/ndt7` **0.1.5** through `react-native-webview` **14.0
 
 ## Running a reference test
 
+**Participant app update — 1 November 2026:** Home now exposes this integration
+as **Internet speed test**. New runs are bound to the signed-in account, record
+the collector version, appear in Sessions, and trigger the normal account upload
+queue after completion. Leaving Home cancels the test. Historical ownerless
+reference sessions are not reassigned or automatically uploaded.
+
 1. Install the release APK and stop scheduled collection/sync.
-2. Open **M-Lab NDT7 reference test**. Read the linked [M-Lab data policy](https://www.measurementlab.net/privacy/). Public M-Lab testing collects your public IP and publishes measurement data.
-3. Accept the disclosure, then tap **Start NDT7 reference test**. Consent resets after each start; there is no automatic reference testing.
+2. On Home, scroll to **Internet speed test**. Read the linked [M-Lab data policy](https://www.measurementlab.net/privacy/). Public M-Lab testing collects your public IP and publishes measurement data.
+3. Accept the disclosure, then tap **Start speed test**. Consent resets after each start; there is no automatic reference testing.
 4. Keep the app visible. Cancel explicitly or leave/lock the app to stop the test. Each direction normally runs for approximately ten seconds after connection; discovery/handshakes add time.
-5. Inspect the separate reference entry in **Saved sessions**, export CSV/JSON, or synchronize it with the existing backend.
+5. Inspect the separate speed-test entry in **Sessions**, export CSV/JSON, and check its upload badge. Account uploads follow the Wi-Fi/mobile-data preference.
 
 This test connects directly to public M-Lab servers over HTTPS/WSS. USB `adb reverse` and the controlled HTTP server settings do not change its destination. It measures the phone's current internet path, which is a satellite path only when that is how the phone reaches the internet.
 
