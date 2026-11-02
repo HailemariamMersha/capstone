@@ -10,6 +10,8 @@ The flight pilot separates Watching, Collecting, Paused and Finished states, rec
 
 See the [flight measurement policy and limitations](docs/measurements/flight-collection.md) and [flight rollout/MaxMind setup guide](docs/skymeasure/flight-rollout.md). This is a staged pilot: real-flight accuracy, captive-Wi-Fi routing and the complete Android lifecycle matrix still need device evidence. Public recruitment additionally requires enrollment protection, approved participant text and completed identity-deletion configuration. The API/UDP service now runs in isolated SkyMeasure services on the shared lab server; its region remains `lab-location-unconfirmed`. The DigitalOcean host is retained for rollback. The dashboard is [capstone-backend-henna.vercel.app](https://capstone-backend-henna.vercel.app/).
 
+> Android pilot: use `npm run android:pilot` for a configured APK. See [Google sign-in recovery and build validation](docs/skymeasure/sign-in-recovery.md).
+
 ## Crowdsourced satellite network measurements on moving platforms
 
 An Android capstone for measuring network performance during flights and other mobility scenarios. We ship Android this semester and develop shared React Native/TypeScript code for a later iPhone release. The research contribution is an offline-first measurement pipeline, reliability evaluation and a real or simulated mobility dataset.

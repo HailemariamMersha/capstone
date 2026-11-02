@@ -1,5 +1,7 @@
 # Participant interface — 2 November 2026
 
+For the latest configured APK and Google recovery fixes, see [sign-in recovery](sign-in-recovery.md). The dated UI artifact below records its original build.
+
 Participants see optional flight number, departure and arrival, followed by
 **Start trip** and **Skip and start**. Skip starts with no flight metadata,
 including when fields were already entered. Both paths use the same permission
