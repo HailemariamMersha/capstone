@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import net.measurementlab.ndt7.android.NDTTest
 import net.measurementlab.ndt7.android.models.ClientResponse
 import net.measurementlab.ndt7.android.models.Measurement
+import net.measurementlab.ndt7.android.models.receiverCounters
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
@@ -69,12 +70,13 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
                 if (reason != "complete") overall = reason
                 if (host.isEmpty() || testType == TestType.DOWNLOAD_AND_UPLOAD) return
                 val direction = testType.value
-                val server = servers[direction]?.appInfo
+                val server = receiverCounters(servers[direction], direction == "upload")
                 results.put(JSONObject().put("direction", direction).put("reason", reason).put("host", host)
                     .put("clientBytes", clientResponse?.appInfo?.numBytes ?: JSONObject.NULL)
                     .put("clientSeconds", clientResponse?.appInfo?.elapsedTime?.div(1e6) ?: JSONObject.NULL)
-                    .put("serverBytes", server?.numBytes ?: JSONObject.NULL)
-                    .put("serverSeconds", server?.elapsedTime?.div(1e6) ?: JSONObject.NULL)
+                    .put("serverBytes", server?.bytes ?: JSONObject.NULL)
+                    .put("serverSeconds", server?.seconds ?: JSONObject.NULL)
+                    .put("serverCounterSource", server?.source ?: JSONObject.NULL)
                     .put("opened", opened).put("cleanClose", error == null && opened)
                     .put("callbacks", callbacks[direction] ?: JSONArray()).put("droppedCallbacks", dropped[direction] ?: 0))
             }

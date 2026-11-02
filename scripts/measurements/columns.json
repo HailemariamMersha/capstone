@@ -1382,7 +1382,7 @@
     "reference": {
       "datatype": "JSON object",
       "units": "none",
-      "meaning": "Optional NDT7 summary; server telemetry is not handset TCP_INFO.",
+      "meaning": "NDT7 summary. serverCounterSource=app_info uses application payload; tcp_info uses server TCP received bytes including TLS/WebSocket overhead. Server telemetry is not handset TCP_INFO.",
       "source": "m.reference",
       "example": {
         "library": "@m-lab/ndt7",

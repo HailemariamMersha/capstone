@@ -17,7 +17,10 @@ Changes relative to the pinned source:
 - Modern Android library Gradle configuration; no deprecated Kotlin extensions
   or publishing plugin. OkHttp 4.12.0 and Gson 2.10.1 pinned.
 - Added missing receiver `AppInfo` to the server model. Upload Mbps is derived
-  from server-received bytes/time, never merely enqueued client bytes.
+  from server-received bytes/time, never merely enqueued client bytes. Public
+  device validation found a server emitting TCPInfo without AppInfo: use its
+  BytesReceived/ElapsedTime fallback with explicit `tcp_info` provenance,
+  distinguishing TLS/WebSocket-inclusive throughput from application payload.
 - Replaced semaphore/executor lifecycle with sequential, bounded directions.
   Both sockets and Locate discovery can be cancelled. Completion is delivered
   once. The caller waits for worker cleanup before releasing the activity gate.

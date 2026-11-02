@@ -8,6 +8,7 @@ export interface ReferenceResult {
   serverBytes: number | null;
   clientSeconds: number | null;
   serverSeconds: number | null;
+  serverCounterSource?: 'app_info' | 'tcp_info' | null;
   opened: boolean;
   cleanClose: boolean;
   callbacks?: RawProbeOutput['callbacks'];
@@ -55,6 +56,8 @@ export function parseReferenceMessage(
       !['download', 'upload'].includes(result.direction) ||
       directions.has(result.direction) ||
       !reasons.has(result.reason) ||
+      (result.serverCounterSource != null &&
+        !['app_info', 'tcp_info'].includes(result.serverCounterSource)) ||
       typeof result.host !== 'string' ||
       !/^[a-zA-Z0-9.-]+\.measurement-lab\.org$/.test(result.host) ||
       result.host.length > 253 ||

@@ -617,10 +617,11 @@ export function createRepository(
           httpStatus: null,
           requestedBytes: requestedPayload(type, config),
           transferredBytes: null,
-          probeServer:
-            type === 'tcp_connect'
-              ? config.tcpServerUrl ?? config.serverUrl
-              : config.serverUrl,
+          probeServer: type.startsWith('ndt7_')
+            ? 'https://locate.measurementlab.net/v2/nearest/ndt/ndt7'
+            : type === 'tcp_connect'
+            ? config.tcpServerUrl ?? config.serverUrl
+            : config.serverUrl,
           probeRegion: null,
           networkSnapshot: null,
         };

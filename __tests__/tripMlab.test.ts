@@ -170,3 +170,29 @@ test('pre-cancelled runs never contact discovery, quota failures retain evidence
   );
   expect(JSON.stringify(rows)).not.toContain('signed URL');
 });
+test('server TCP fallback is qualified rather than mislabelled as payload goodput', async () => {
+  native.run.mockResolvedValue(
+    reply([
+      result('download'),
+      result('upload', {
+        serverBytes: 76788246,
+        serverSeconds: 10.000853,
+        serverCounterSource: 'tcp_info',
+      }),
+    ]),
+  );
+  const rows = await runTripMlab(
+    store,
+    'segment',
+    MLAB_CONSENT,
+    'wifi',
+    snapshot,
+    new AbortController().signal,
+  );
+  expect(rows[1]).toMatchObject({
+    success: true,
+    method: 'ndt7_android_library_server_tcp',
+    reference: { source: 'server', serverCounterSource: 'tcp_info' },
+  });
+  expect(rows[1].value).toBeCloseTo(61.4253572, 5);
+});

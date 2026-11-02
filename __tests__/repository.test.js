@@ -507,3 +507,22 @@ test('trip revisions survive restart, remain account-owned, and live-sync initia
   await store.deleteAccountRecords('a');
   expect(await store.accountTrips('a')).toEqual([]);
 });
+test('interrupted trip NDT7 attempts retain M-Lab destination and planned bytes', async () => {
+  const id = await store.createSession({
+    ...config,
+    serverUrl: 'https://lab.example.invalid',
+    maxPayloadBytes: 300 * 1048576,
+    referenceByteThreshold: 90 * 1048576,
+  });
+  const attempt = await store.beginAttempt(
+    id,
+    'ndt7_upload',
+    new Date().toISOString(),
+  );
+  expect(attempt).toMatchObject({
+    probeServer: 'https://locate.measurementlab.net/v2/nearest/ndt/ndt7',
+    requestedBytes: 90 * 1048576,
+    success: false,
+    errorType: 'interrupted',
+  });
+});

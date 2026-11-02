@@ -79,6 +79,7 @@ export interface Measurement {
     serverBytes: number | null;
     elapsedSeconds: number | null;
     accounting: 'last_client_sample';
+    serverCounterSource?: 'app_info' | 'tcp_info' | null;
   };
   speedchecker?: {
     sdkVersion: string;

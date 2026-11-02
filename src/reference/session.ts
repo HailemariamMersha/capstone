@@ -171,7 +171,10 @@ export function referenceMeasurement(
       ? `wss://${result.host}/ndt/v7/${direction}`
       : attempt.probeServer,
     targetHost: result?.host,
-    method: provenance.method,
+    method:
+      direction === 'upload' && result?.serverCounterSource === 'tcp_info'
+        ? `${provenance.method}_server_tcp`
+        : provenance.method,
     raw: {
       library: provenance.library,
       version: provenance.version,
@@ -191,6 +194,9 @@ export function referenceMeasurement(
       serverBytes: result?.serverBytes ?? null,
       elapsedSeconds: seconds ?? null,
       accounting: 'last_client_sample',
+      ...(result?.serverCounterSource
+        ? { serverCounterSource: result.serverCounterSource }
+        : {}),
     },
   };
 }

@@ -55,4 +55,41 @@ class Ndt7OptInTest {
             manager.bindProcessToNetwork(prior)
         }
     }
+    @Test fun inspectSavedResultWithoutNetwork() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.filesDir, "ndt7-opt-in-device-check.json")
+        assumeTrue("No saved opt-in test", file.exists())
+        val data = JSONObject(file.readText())
+        val summary = org.json.JSONArray()
+        val results = data.getJSONArray("results")
+        for (i in 0 until results.length()) {
+            val result = results.getJSONObject(i)
+            val callbacks = result.getJSONArray("callbacks")
+            val rows = org.json.JSONArray()
+            for (j in 0 until callbacks.length()) {
+                val value = callbacks.getJSONObject(j).getJSONObject("value")
+                if (value.has("TCPInfo") || value.has("ConnectionInfo")) {
+                    val tcp = value.optJSONObject("TCPInfo")
+                    rows.put(JSONObject().put("keys", org.json.JSONArray(value.keys().asSequence().toList()))
+                        .put("AppInfo", value.optJSONObject("AppInfo") ?: JSONObject.NULL)
+                        .put("tcpBytesReceived", tcp?.opt("BytesReceived") ?: JSONObject.NULL)
+                        .put("tcpElapsedTime", tcp?.opt("ElapsedTime") ?: JSONObject.NULL))
+                }
+            }
+            val report = JSONObject().put("direction", result.getString("direction")).put("serverCallbacks", rows)
+            if (result.getString("direction") == "upload" && rows.length() > 0) {
+                val last = rows.getJSONObject(rows.length() - 1)
+                val measurement = com.google.gson.Gson().fromJson(JSONObject().put("TCPInfo", JSONObject()
+                    .put("BytesReceived", last.getLong("tcpBytesReceived"))
+                    .put("ElapsedTime", last.getLong("tcpElapsedTime"))).toString(), net.measurementlab.ndt7.android.models.Measurement::class.java)
+                val counters = net.measurementlab.ndt7.android.models.receiverCounters(measurement, true)
+                assertNotNull("Replay must preserve valid server counters", counters)
+                assertEquals("tcp_info", counters!!.source)
+                report.put("replayedMbps", counters.bytes * 8 / counters.seconds / 1000000)
+            }
+            summary.put(report)
+        }
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("savedTelemetry", summary.toString()) })
+    }
+
 }

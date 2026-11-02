@@ -56,7 +56,12 @@ No measurement record is duplicated as another standalone session.
   version `0.2.1-skymeasure.1` identifies the pinned patched Android client.
 - Completed download Mbps = client binary bytes × 8 / client seconds / 1,000,000.
 - Completed upload Mbps = server `AppInfo.NumBytes` × 8 /
-  (`AppInfo.ElapsedTime` / 1,000,000) / 1,000,000.
+  (`AppInfo.ElapsedTime` / 1,000,000) / 1,000,000. If AppInfo is absent, use
+  server `TCPInfo.BytesReceived` and `TCPInfo.ElapsedTime` with the same units.
+  This fallback includes TLS/WebSocket overhead. It is explicitly identified
+  by `reference.serverCounterSource = tcp_info` and
+  `method = ndt7_android_library_server_tcp`; AppInfo uses `app_info`.
+  Never substitute the client's queued upload bytes.
 - `durationMs` is the last client measurement interval, server interval fallback,
   not Locate discovery or the entire operation's wall-clock duration.
 - Missing receiver telemetry, malformed responses, timeout, cancellation,
@@ -92,3 +97,25 @@ Physical public-service and screen-locked trip validation requires acceptance
 of the new disclosure on the phone. Ground shadow tests must stay labelled as
 researcher tests; they do not validate flight detection. Do not enable fake
 flight evidence in participant builds to make a ground test qualify.
+
+## Physical ground check — 2 November 2026
+
+After the participant accepted the new disclosure, one explicitly opted-in
+instrumentation test connected through the Samsung Galaxy A34's selected Wi-Fi.
+It was not a flight trip and did not inject synthetic detector evidence.
+
+| Direction | Observation | Interpretation |
+| --- | --- | --- |
+| Download | 94,371,840 binary bytes in 7.282126 s | Reached the 90 MiB threshold; incomplete, no completed speed reported |
+| Upload | Clean close; server TCP received 76,788,246 bytes at 10.000853 s | 61.425357 Mbps server TCP throughput; includes TLS/WebSocket overhead |
+
+The initial bridge expected AppInfo, which this server did not send. Inspection
+of already captured callbacks revealed TCPInfo receiver counters. The corrected
+fallback is tested against a sanitized fixture from that same run; no second
+public test was needed or performed. The original private result is retained on
+the phone; it was not rewritten or uploaded as flight data.
+
+One-Start scheduling across segment boundaries is covered by integration tests.
+A real qualified flight, full automatic phone-to-dashboard M-Lab delivery, and
+locked-screen M-Lab execution remain physical validation tasks. A successful
+native instrumented connection alone does not establish those behaviors.

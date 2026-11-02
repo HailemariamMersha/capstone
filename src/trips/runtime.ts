@@ -96,6 +96,7 @@ async function persist() {
 const config = (): MeasurementConfig => ({
   ...participantDefaults,
   httpEnabled: true,
+  referenceByteThreshold: 90 * 1048576,
   maxDurationMs: TRIP_POLICY.maximumMs,
   maxPayloadBytes:
     trip!.policy.transferBytes +
