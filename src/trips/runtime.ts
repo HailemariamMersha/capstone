@@ -1,3 +1,9 @@
+import {
+  requireMlabConsent,
+  runTripMlab,
+  MLAB_RESERVATION,
+  MLAB_CONSENT,
+} from '../reference/tripMlab';
 import { NativeModules, NativeEventEmitter } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { measurementStore as store } from '../storage/database';
@@ -91,6 +97,10 @@ const config = (): MeasurementConfig => ({
   ...participantDefaults,
   httpEnabled: true,
   maxDurationMs: TRIP_POLICY.maximumMs,
+  maxPayloadBytes:
+    trip!.policy.transferBytes +
+    trip!.policy.diagnosticBytes +
+    trip!.policy.liveUploadBytes,
   downloadBytes: TRIP_POLICY.downloadBytes,
   uploadBytes: TRIP_POLICY.uploadBytes,
   tracerouteMaxHops: 20,
@@ -98,7 +108,16 @@ const config = (): MeasurementConfig => ({
   tripId: trip!.id,
   segmentIndex: trip!.segmentCount,
   flight: trip!.flight,
-  flightPolicy: TRIP_POLICY,
+  flightPolicy: trip!.policy,
+  mlabPolicy: trip!.mlab
+    ? {
+        consentVersion: trip!.mlab.consentVersion,
+        reservationBytes: MLAB_RESERVATION,
+        byteThresholdPerDirection: 90 * 1048576,
+        maximumPairsPerTrip: 1,
+        maximumPairsPerDay: 4,
+      }
+    : undefined,
   collectionMode: trip!.shadow ? 'detector_shadow' : 'flight_auto',
 });
 async function openSegment() {
@@ -184,6 +203,7 @@ export async function startTrip(
   try {
     if (!native)
       throw new Error('Flight collection requires the Android pilot build.');
+    await requireMlabConsent(owner);
     await recoverTrips(owner, true);
     // Platform permission/location checks happen while the app is visible.
     await native.bindWifi();
@@ -222,6 +242,12 @@ export async function startTrip(
       nextUploadAt: now + 900000,
       due: {},
       shadow,
+      mlab: {
+        consentVersion: MLAB_CONSENT,
+        dueAt: null,
+        reserved: false,
+        status: 'waiting_for_connectivity',
+      },
     };
     count = 0;
     latest = null;
@@ -484,6 +510,48 @@ async function loop(signal: AbortSignal) {
         };
         const saved = await store.saveSnapshot(segment!, snapshot);
         const cfg = config();
+        if (trip.mlab && trip.mlab.dueAt == null) {
+          // Persist randomized spacing; segment rotation never resets it.
+          trip.mlab.dueAt =
+            Date.now() + 60000 + Math.floor(Math.random() * 120000);
+          await persist();
+        }
+        if (
+          trip.mlab &&
+          !trip.mlab.reserved &&
+          trip.mlab.dueAt != null &&
+          Date.now() >= trip.mlab.dueAt &&
+          wifi.validated &&
+          !signal.aborted
+        ) {
+          const route = await native!.bindWifi().catch(() => null);
+          if (route?.bound && route.handle === wifi.handle) {
+            trip.mlab.reserved = true;
+            const allowed = reserve(trip, 'transfers', MLAB_RESERVATION);
+            trip.mlab.status = allowed ? 'running' : 'allowance_unavailable';
+            await persist();
+            if (allowed) {
+              probeAbort = new AbortController();
+              if (signal.aborted) probeAbort.abort();
+              const results = await runTripMlab(
+                store,
+                segment!,
+                trip.mlab.consentVersion,
+                wifi.handle,
+                saved,
+                probeAbort.signal,
+              );
+              for (const result of results) {
+                count++;
+                latest = result;
+              }
+              trip.mlab.status = results.every(r => r.success)
+                ? 'complete'
+                : 'incomplete';
+              await persist();
+            }
+          }
+        }
         const probe = async (type: ProbeType) => {
           if (signal.aborted) return;
           const currentWifi = await native!.bindWifi().catch(() => null);

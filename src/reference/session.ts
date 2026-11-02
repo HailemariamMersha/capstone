@@ -70,89 +70,17 @@ export async function createReferenceSession(
       finishing = (async () => {
         try {
           for (const attempt of attempts) {
-            const direction =
-              attempt.type === 'ndt7_download' ? 'download' : 'upload';
-            const result = results.find(item => item.direction === direction);
-            let reason =
-              result && result.reason !== 'running'
-                ? result.reason
-                : stopReason === 'complete'
-                ? 'invalid_response'
-                : stopReason;
-            const bytes =
-              direction === 'download'
-                ? result?.clientBytes
-                : result?.serverBytes;
-            const seconds =
-              direction === 'download'
-                ? result?.clientSeconds
-                : result?.serverSeconds;
-            const success =
-              reason === 'complete' &&
-              result?.opened === true &&
-              result?.cleanClose === true &&
-              bytes != null &&
-              bytes > 0 &&
-              seconds != null &&
-              seconds > 0;
-            if (!success && reason === 'complete') {
-              reason = 'invalid_response';
-            }
-            const failure: ProbeErrorType =
-              reason === 'cancelled' || reason === 'data_threshold'
-                ? 'cancelled'
-                : reason === 'timeout'
-                ? 'timeout'
-                : reason === 'network'
-                ? 'network'
-                : reason === 'interrupted'
-                ? 'interrupted'
-                : 'invalid_response';
-            await store.finishAttempt({
-              ...attempt,
-              success,
-              errorType: success ? null : failure,
-              errorMessage: success
-                ? null
-                : `NDT7 reference: ${reason}. Partial samples are retained.`,
-              durationMs:
-                (result?.clientSeconds ?? result?.serverSeconds ?? 0) * 1000,
-              value: success ? (bytes! * 8) / seconds! / 1000000 : null,
-              unit: 'Mbps',
-              transferredBytes: result?.clientBytes ?? null,
-              probeServer: result
-                ? `wss://${result.host}/ndt/v7/${direction}`
-                : attempt.probeServer,
-              targetHost: result?.host,
-              method: 'ndt7_webview_reference',
-              raw: {
-                library: '@m-lab/ndt7',
-                version: NDT7_VERSION,
-                source: 'web_worker_messages',
-                request: { direction, host: result?.host },
-                callbacks: result?.callbacks ?? [],
-                droppedCallbacks: result?.droppedCallbacks ?? 0,
-                unavailable: [
-                  'clientIpPacketCapture',
-                  'hardwareTransmitTimestamp',
-                ],
-              },
-              reference: {
-                library: '@m-lab/ndt7',
-                version: NDT7_VERSION,
-                source: result
-                  ? direction === 'download'
-                    ? 'client'
-                    : 'server'
-                  : null,
-                stopReason: success ? 'complete' : reason,
-                byteThreshold: REFERENCE_BYTE_THRESHOLD,
-                clientBytes: result?.clientBytes ?? null,
-                serverBytes: result?.serverBytes ?? null,
-                elapsedSeconds: seconds ?? null,
-                accounting: 'last_client_sample',
-              },
-            });
+            await store.finishAttempt(
+              referenceMeasurement(
+                attempt,
+                results.find(
+                  item =>
+                    item.direction ===
+                    (attempt.type === 'ndt7_download' ? 'download' : 'upload'),
+                ),
+                stopReason,
+              ),
+            );
           }
           await store.endSession(
             sessionId,
@@ -177,3 +105,92 @@ export async function createReferenceSession(
 export type ReferenceSession = Awaited<
   ReturnType<typeof createReferenceSession>
 >;
+
+export function referenceMeasurement(
+  attempt: Measurement,
+  result: ReferenceResult | undefined,
+  stopReason: string,
+  provenance: {
+    library: '@m-lab/ndt7' | 'ndt7-client-android';
+    version: string;
+    method: string;
+    source: string;
+    byteThreshold: number;
+  } = {
+    library: '@m-lab/ndt7',
+    version: NDT7_VERSION,
+    method: 'ndt7_webview_reference',
+    source: 'web_worker_messages',
+    byteThreshold: REFERENCE_BYTE_THRESHOLD,
+  },
+): Measurement {
+  const direction = attempt.type === 'ndt7_download' ? 'download' : 'upload';
+  let reason =
+    result && result.reason !== 'running'
+      ? result.reason
+      : stopReason === 'complete'
+      ? 'invalid_response'
+      : stopReason;
+  const bytes =
+    direction === 'download' ? result?.clientBytes : result?.serverBytes;
+  const seconds =
+    direction === 'download' ? result?.clientSeconds : result?.serverSeconds;
+  const success =
+    reason === 'complete' &&
+    result?.opened === true &&
+    result?.cleanClose === true &&
+    bytes != null &&
+    bytes > 0 &&
+    seconds != null &&
+    seconds > 0;
+  if (!success && reason === 'complete') {
+    reason = 'invalid_response';
+  }
+  const failure: ProbeErrorType =
+    reason === 'cancelled' || reason === 'data_threshold'
+      ? 'cancelled'
+      : reason === 'timeout'
+      ? 'timeout'
+      : reason === 'network'
+      ? 'network'
+      : reason === 'interrupted'
+      ? 'interrupted'
+      : 'invalid_response';
+  return {
+    ...attempt,
+    success,
+    errorType: success ? null : failure,
+    errorMessage: success
+      ? null
+      : `NDT7 reference: ${reason}. Partial samples are retained.`,
+    durationMs: (result?.clientSeconds ?? result?.serverSeconds ?? 0) * 1000,
+    value: success ? (bytes! * 8) / seconds! / 1000000 : null,
+    unit: 'Mbps',
+    transferredBytes: result?.clientBytes ?? null,
+    probeServer: result
+      ? `wss://${result.host}/ndt/v7/${direction}`
+      : attempt.probeServer,
+    targetHost: result?.host,
+    method: provenance.method,
+    raw: {
+      library: provenance.library,
+      version: provenance.version,
+      source: provenance.source,
+      request: { direction, host: result?.host },
+      callbacks: result?.callbacks ?? [],
+      droppedCallbacks: result?.droppedCallbacks ?? 0,
+      unavailable: ['clientIpPacketCapture', 'hardwareTransmitTimestamp'],
+    },
+    reference: {
+      library: provenance.library,
+      version: provenance.version,
+      source: result ? (direction === 'download' ? 'client' : 'server') : null,
+      stopReason: success ? 'complete' : reason,
+      byteThreshold: provenance.byteThreshold,
+      clientBytes: result?.clientBytes ?? null,
+      serverBytes: result?.serverBytes ?? null,
+      elapsedSeconds: seconds ?? null,
+      accounting: 'last_client_sample',
+    },
+  };
+}

@@ -74,9 +74,9 @@ import publicConfig from '../config/public.json';
 import FlightHome, { TripHistory } from './FlightHome';
 import Enrollment from './Enrollment';
 
-const CONSENT = 'skymeasure-flight-2026-11-01';
+const CONSENT = 'skymeasure-flight-mlab-2026-11-02';
 const researchText =
-  'SkyMeasure studies network connectivity using active ICMP, TCP, UDP, traceroute and small HTTP transfers. Start once per trip and stop whenever you wish. Tests use battery and data: 100 MiB of application-accounted payload per trip, including limited live record uploads. Network overhead and post-trip uploads are additional. Records save locally, with brief upload attempts every 15 minutes over Wi-Fi by default. We store timing, failures, IP addresses, available Wi-Fi identifiers, battery, derived speed/altitude/accuracy, detection decisions and optional flight details. We never save GPS coordinates or monitor other apps or browsing. Participation is pseudonymous, not unidentifiable: flight details, times and public IPs can identify a journey or person when combined with other information. Approved researchers can access these records. You can request deletion; reinstalling or resetting the app may lose access to your anonymous identity. This is staging research information requiring study-team approval before recruitment.';
+  'SkyMeasure studies network connectivity using active ICMP, TCP, UDP, traceroute and small HTTP transfers. Start once per trip and stop whenever you wish. Tests use battery and data: 300 MiB of application-accounted payload per trip, including limited live record uploads. Network overhead and post-trip uploads are additional. Records save locally, with brief upload attempts every 15 minutes over Wi-Fi by default. We store timing, failures, IP addresses, available Wi-Fi identifiers, battery, derived speed/altitude/accuracy, detection decisions and optional flight details. We never save GPS coordinates or monitor other apps or browsing. Participation is pseudonymous, not unidentifiable: flight details, times and public IPs can identify a journey or person when combined with other information. Approved researchers can access these records. Starting a trip also authorizes one automatic M-Lab NDT7 download/upload speed test after suitable connectivity is detected. Up to 200 MiB is reserved for M-Lab within the trip allowance. M-Lab collects and publicly publishes your public IP address, test time and network performance data under its platform privacy policy (https://www.measurementlab.net/privacy/). This publication is separate from our private research database; deleting SkyMeasure data does not remove M-Lab publications. We do not send M-Lab your flight form or GPS observations. Stop trip cancels further testing, but cannot retract data already sent. You can request deletion; reinstalling or resetting the app may lose access to your anonymous identity. This is staging research information requiring study-team approval before recruitment.';
 
 const Tabs = createBottomTabNavigator();
 type AccountContext = {
@@ -1075,6 +1075,16 @@ function Root() {
           subtitle="Please read how your contribution will be used."
         />
         <Text>{researchText}</Text>
+        <Button
+          accessibilityLabel="Read M-Lab public data policy"
+          onPress={() =>
+            Linking.openURL('https://www.measurementlab.net/privacy/').catch(
+              () => {},
+            )
+          }
+        >
+          M-Lab public data policy
+        </Button>
         <Text>Version {CONSENT}</Text>
         <Button
           mode="contained"

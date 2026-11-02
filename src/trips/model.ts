@@ -1,12 +1,12 @@
 /** Versioned research policy. None of these types accepts coordinates. */
 export const TRIP_POLICY = {
-  version: 'flight-2026-11-01',
+  version: 'flight-mlab-2026-11-02',
   evaluateMs: 30000,
   uploadMs: 900000,
   maximumMs: 86400000,
   disconnectMs: 600000,
   landingMs: 300000,
-  transferBytes: 60 * 1048576,
+  transferBytes: 260 * 1048576,
   diagnosticBytes: 20 * 1048576,
   liveUploadBytes: 20 * 1048576,
   downloadBytes: 5000000,
@@ -68,6 +68,13 @@ export interface Evidence {
 }
 export interface Trip {
   uploadedRevision?: number;
+  /** Optional for historical trips, which never acquire automatic M-Lab tests. */
+  mlab?: {
+    consentVersion: string;
+    dueAt: number | null;
+    reserved: boolean;
+    status: string;
+  };
   id: string;
   ownerId: string;
   revision: number;
@@ -77,7 +84,10 @@ export interface Trip {
   state: 'active' | 'completed' | 'interrupted';
   reason: string | null;
   flight: FlightDetails;
-  policy: typeof TRIP_POLICY;
+  policy: Omit<typeof TRIP_POLICY, 'version' | 'transferBytes'> & {
+    version: string;
+    transferBytes: number;
+  };
   segmentCount: number;
   firstQualifiedAt: number | null;
   candidateAt: number | null;
@@ -236,7 +246,7 @@ export function reserve(
 ): boolean {
   const cap =
     category === 'transfers'
-      ? TRIP_POLICY.transferBytes
+      ? trip.policy.transferBytes
       : category === 'diagnostics'
       ? TRIP_POLICY.diagnosticBytes
       : TRIP_POLICY.liveUploadBytes;

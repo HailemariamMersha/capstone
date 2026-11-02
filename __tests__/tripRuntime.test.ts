@@ -1,3 +1,12 @@
+jest.mock('../src/reference/tripMlab', () => ({
+  requireMlabConsent: jest.fn(async () => {}),
+  runTripMlab: jest.fn(async () => [
+    { type: 'ndt7_download', success: true },
+    { type: 'ndt7_upload', success: true },
+  ]),
+  MLAB_CONSENT: 'skymeasure-flight-mlab-2026-11-02',
+  MLAB_RESERVATION: 200 * 1048576,
+}));
 const mockEvents: unknown[] = [];
 const mockTrips: any[] = [];
 const mockSessions: any[] = [];
@@ -143,4 +152,27 @@ test('shadow collection is labelled and segment rotation does not reset probe de
   ).toBe(true);
   expect(currentTrip()!.due.traceroute).toBeGreaterThan(1000000);
   expect(mockEvents.some((row: any) => row[1] === 'upload_pause')).toBe(true);
+});
+
+test('M-Lab runs once across segment rotations and reserves 200 MiB without resetting controlled transfers', async () => {
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  await startTrip('researcher', {}, true);
+  await jest.advanceTimersByTimeAsync(1800001);
+  expect(runTripMlab).toHaveBeenCalledTimes(1);
+  expect(runTripMlab.mock.calls[0][1]).toBe('s0');
+  expect(currentTrip()!.segmentCount).toBe(3);
+  expect(currentTrip()!.mlab).toMatchObject({
+    reserved: true,
+    status: 'complete',
+  });
+  expect(currentTrip()!.used.transfers).toBe(200 * 1048576 + 6000000);
+  expect(currentTrip()!.transferPairs).toBe(1);
+  expect(mockSessions[0].config.maxPayloadBytes).toBe(300 * 1048576);
+});
+test('waiting without qualifying connectivity never publishes an M-Lab test', async () => {
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  await startTrip('owner', {});
+  await jest.advanceTimersByTimeAsync(1200001);
+  expect(runTripMlab).not.toHaveBeenCalled();
+  expect(currentTrip()!.used.transfers).toBe(0);
 });

@@ -1,4 +1,6 @@
-# Optional M-Lab NDT7 reference test
+# M-Lab NDT7 reference tests
+
+**Current participant flow:** [automatic M-Lab inside trips](skymeasure/automatic-mlab.md) uses the Android library, combined onboarding consent and one Start trip. The remaining sections describe the older manual WebView tool retained for researchers, including its different thresholds and foreground-only behavior.
 
 **Historical custom-engine baseline — 2026-09-29:** That baseline defaulted to ICMP bursts and UDP traceroute through our native Linux-socket engine; HTTP is opt-in. Original ICMP headers/error fields, payloads, timestamps and TCP_INFO are preserved in export format 3. Reference tests retain bounded worker/listener callback logs. Current sessions use library adapters and format-4 CSVs without custom-only columns; see [current export scope](packet-exports.md). See [baseline methods and validation](packet-engine.md); earlier method descriptions below are historical where they differ.
 
@@ -7,7 +9,7 @@ The app integrates `@m-lab/ndt7` **0.1.5** through `react-native-webview` **14.0
 
 ## Running a reference test
 
-**Participant app update — 1 November 2026:** Home now exposes this integration
+**Historical participant app update — 1 November 2026:** Home now exposes this integration
 as **Internet speed test**. New runs are bound to the signed-in account, record
 the collector version, appear in Sessions, and trigger the normal account upload
 queue after completion. Leaving Home cancels the test. Historical ownerless

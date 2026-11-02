@@ -1,7 +1,14 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
-  flightPolicy?: typeof import('../trips/model').TRIP_POLICY;
+  flightPolicy?: import('../trips/model').Trip['policy'];
+  mlabPolicy?: {
+    consentVersion: string;
+    reservationBytes: number;
+    byteThresholdPerDirection: number;
+    maximumPairsPerTrip: number;
+    maximumPairsPerDay: number;
+  };
   tripId?: string;
   segmentIndex?: number;
   collectionMode?: 'flight_auto' | 'research_manual' | 'detector_shadow';

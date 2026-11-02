@@ -151,3 +151,25 @@ test('optional flight details contain only explicit reported fields', () => {
     flightDetails({ flightNumber: ' QR 12 ', latitude: 12 } as never),
   ).toEqual({ flightNumber: 'QR 12' });
 });
+test.each([60, 840, 1440])(
+  '300 MiB policy keeps ten controlled pairs after M-Lab reservation for %i minutes',
+  minutes => {
+    const t = initial();
+    t.flight.expectedMinutes = minutes;
+    t.nextTransferAt = 300000;
+    expect(reserve(t, 'transfers', 200 * 1048576)).toBe(true);
+    for (let now = 0; now <= 1440 * 60000; now += 30000) reservePair(t, now);
+    expect(t.transferPairs).toBe(10);
+    expect(t.used.transfers).toBe(200 * 1048576 + 60000000);
+    expect(t.used.transfers).toBeLessThanOrEqual(260 * 1048576);
+  },
+);
+test('historical policy does not silently gain the new M-Lab allowance', () => {
+  const t = initial();
+  t.policy = {
+    ...t.policy,
+    version: 'flight-2026-11-01',
+    transferBytes: 60 * 1048576,
+  };
+  expect(reserve(t, 'transfers', 200 * 1048576)).toBe(false);
+});

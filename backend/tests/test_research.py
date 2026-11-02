@@ -310,3 +310,17 @@ def test_trip_csv_metadata_is_additive_and_dictionary_covered():
     assert row['session.segmentIndex'] == 0
     assert row['session.flight.expectedMinutes'] == 840
     assert not any(k.endswith('.gpsDetails') for k in row)
+
+def test_mlab_budget_requires_new_policy_and_policy_is_immutable(client):
+    path = '/api/v2/trips/' + 'e'*32
+    body = trip_body()
+    body['used']['transfers'] = 200*1048576
+    assert client.put(path, headers=auth(), json=body).status_code == 422
+    body['policyVersion'] = 'flight-mlab-2026-11-02'
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    body['revision'] += 1
+    body['policyVersion'] = 'future'
+    assert client.put(path, headers=auth(), json=body).status_code == 422
+    body['policyVersion'] = 'flight-mlab-2026-11-02'
+    body['used']['transfers'] = 260*1048576 + 1
+    assert client.put(path, headers=auth(), json=body).status_code == 422

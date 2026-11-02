@@ -27,7 +27,7 @@ def string(value, limit=100):
 
 
 router = APIRouter(prefix='/api/v2')
-CONSENT_VERSION = 'skymeasure-flight-2026-11-01'
+CONSENT_VERSION = 'skymeasure-flight-mlab-2026-11-02'
 
 
 class Strict(BaseModel):

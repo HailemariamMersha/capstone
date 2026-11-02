@@ -18,7 +18,7 @@ class Flight(BaseModel):
 
 class Budget(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    transfers: int = Field(ge=0, le=60*1048576)
+    transfers: int = Field(ge=0, le=260*1048576)
     diagnostics: int = Field(ge=0, le=20*1048576)
     uploads: int = Field(ge=0, le=20*1048576)
 
@@ -52,12 +52,17 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
         raise HTTPException(422, 'Inconsistent trip lifecycle')
     if body.endedAt is not None and body.endedAt < body.startedAt:
         raise HTTPException(422, 'Invalid trip interval')
+    transfer_cap = (260 if body.policyVersion == 'flight-mlab-2026-11-02' else 60) * 1048576
+    if body.used.transfers > transfer_cap:
+        raise HTTPException(422, 'Transfer reservation exceeds versioned policy')
     raw = body.model_dump()
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     if t:
         if t.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
         if body.revision < t.revision or (body.revision == t.revision and raw != t.raw):
             raise HTTPException(409, 'Trip revision conflict')
+        if body.policyVersion != t.raw['policyVersion']:
+            raise HTTPException(409, 'Trip policy cannot change')
         if body.startedAt != t.raw['startedAt'] or body.segmentCount < t.raw['segmentCount']:
             raise HTTPException(409, 'Trip history cannot move backwards')
         if any(raw['used'][k] < t.raw['used'][k] for k in raw['used']):

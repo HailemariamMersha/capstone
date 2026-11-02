@@ -14,7 +14,6 @@ import {
   Text,
   TextInput,
 } from 'react-native-paper';
-import { useIsFocused } from '@react-navigation/native';
 import {
   currentTrip,
   startTrip,
@@ -26,8 +25,6 @@ import {
 import { measurementStore } from '../storage/database';
 import type { FlightDetails, Trip } from '../trips/model';
 import { syncAccount } from '../sync/background';
-import ReferencePanel from '../components/ReferencePanel';
-import configuration from '../config/public.json';
 export default function FlightHome({
   owner,
   researcher,
@@ -40,10 +37,8 @@ export default function FlightHome({
   const [trip, setTrip] = useState(currentTrip());
   const [flight, setFlight] = useState<FlightDetails>({});
   const [busy, setBusy] = useState(false);
-  const [referenceBusy, setReferenceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shadow, setShadow] = useState(false);
-  const focused = useIsFocused();
   useEffect(() => subscribeTrip(() => setTrip(currentTrip())), []);
   const active = tripRunning();
   const progress = tripProgress();
@@ -177,7 +172,7 @@ export default function FlightHome({
               ? `${Math.floor(
                   (Date.now() - trip.startedAt) / 60000,
                 )} minutes since Start`
-              : '100 MiB per trip · battery safeguard'}
+              : '300 MiB per trip · battery safeguard'}
           </Text>
           <Text>{trip?.evidence?.provider ?? 'Provider unavailable'}</Text>
           <Text>
@@ -187,7 +182,10 @@ export default function FlightHome({
           {trip && (
             <Text>
               {(
-                100 -
+                (trip.policy.transferBytes +
+                  trip.policy.diagnosticBytes +
+                  trip.policy.liveUploadBytes) /
+                  1048576 -
                 (trip.used.transfers +
                   trip.used.diagnostics +
                   trip.used.uploads) /
@@ -220,12 +218,7 @@ export default function FlightHome({
               </Text>
             </>
           )}
-          <Button
-            mode="contained"
-            loading={busy}
-            disabled={busy || referenceBusy}
-            onPress={act}
-          >
+          <Button mode="contained" loading={busy} disabled={busy} onPress={act}>
             {active ? 'Stop trip' : 'Start trip'}
           </Button>
         </Card.Content>
@@ -246,17 +239,15 @@ export default function FlightHome({
           <Button onPress={manual}>Researcher manual collection</Button>
         </>
       )}
-      <ReferencePanel
-        participant={{
-          ownerId: owner,
-          collectorVersion: configuration.collectorVersion,
-        }}
-        idle={focused && !active && !busy}
-        onBusyChange={setReferenceBusy}
-        onSaved={() => {
-          syncAccount().catch(() => {});
-        }}
-      />
+      <Text>
+        Start trip also schedules one M-Lab speed test after suitable Wi-Fi is
+        detected. M-Lab publishes results and your public IP. Up to 200 MiB is
+        reserved for that test; a capped test is marked incomplete. No second
+        Start is needed.
+      </Text>
+      {trip?.mlab && (
+        <Text>M-Lab: {trip.mlab.status.replaceAll('_', ' ')}</Text>
+      )}
     </ScrollView>
   );
 }

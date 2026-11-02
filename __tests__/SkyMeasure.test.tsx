@@ -20,8 +20,8 @@ const mockSession = {
 const mockProfile = {
   participantId: 'p',
   role: 'participant',
-  consentVersion: 'skymeasure-flight-2026-11-01',
-  requiredConsentVersion: 'skymeasure-flight-2026-11-01',
+  consentVersion: 'skymeasure-flight-mlab-2026-11-02',
+  requiredConsentVersion: 'skymeasure-flight-mlab-2026-11-02',
   mobileUploads: false,
 };
 jest.mock('../src/auth/client', () => ({
@@ -217,4 +217,30 @@ test('missing consent cannot start collection', async () => {
       .findAllByType(Button)
       .some(b => b.props.title === 'Start session'),
   ).toBe(false);
+});
+test('existing participants review the combined M-Lab publication disclosure before Start', async () => {
+  const old = {
+    ...mockProfile,
+    consentVersion: 'skymeasure-flight-2026-11-01',
+  };
+  (loadProfile as jest.Mock).mockResolvedValue(old);
+  (secureStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(old));
+  await render();
+  expect(contains('M-Lab collects and publicly publishes')).toBe(true);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => b.props.title === 'M-Lab public data policy'),
+  ).toBe(true);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => b.props.title === 'Start trip'),
+  ).toBe(false);
+});
+test('accepted participant Home has one Start and no separate speed-test button', async () => {
+  await render();
+  const titles = renderer.root.findAllByType(Button).map(b => b.props.title);
+  expect(titles.filter(t => t === 'Start trip')).toHaveLength(1);
+  expect(titles).not.toContain('Start speed test');
 });

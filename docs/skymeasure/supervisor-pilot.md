@@ -1,5 +1,8 @@
 # SkyMeasure supervisor pilot — 1 November 2026
 
+**Superseded for new builds:** the [automatic M-Lab update](automatic-mlab.md) combines publication consent with onboarding, adds one speed-test pair to Start trip, and raises the trip allowance to 300 MiB. Deploy its new consent version before distributing the new APK. The dated artifacts and validation below describe the earlier build only.
+
+
 This is an Android evaluation build. It contains the current library-based
 packet collector and an optional M-Lab NDT7 speed test on Home. It uses the lab
 API at `https://api.hailemariam.com`, UDP at `23.235.205.53:9876`, Supabase

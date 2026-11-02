@@ -70,7 +70,7 @@ export interface Measurement {
     samples: TraceSample[];
   };
   reference?: {
-    library: '@m-lab/ndt7';
+    library: '@m-lab/ndt7' | 'ndt7-client-android';
     version: string;
     source: 'client' | 'server' | null;
     stopReason: string;

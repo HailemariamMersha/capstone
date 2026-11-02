@@ -1,5 +1,8 @@
 # Flight pilot deployment checklist
 
+**Superseded for new builds:** the [automatic M-Lab update](automatic-mlab.md) combines publication consent with onboarding, adds one speed-test pair to Start trip, and raises the trip allowance to 300 MiB. Deploy its new consent version before distributing the new APK. The dated artifacts and validation below describe the earlier build only.
+
+
 This build changes the consent version to `skymeasure-flight-2026-11-01`. Deploy the backend and dashboard before distributing its APK. Existing experiments and Google identities remain owned by their original users. New participants enroll without email/password; this is pseudonymous participation, not anonymous research evidence.
 
 1. Back up the research database using the existing operator procedure. Run `python -m backend.research.manage migrate` with the migration identity. This adds `sky_trips` and `sky_trip_segments`; no existing table/data is deleted. The command enables RLS and revokes all table privileges from `anon` and `authenticated`, including new tables. Recheck runtime grants for the server-only `skymeasure_api` database role on new tables. Never grant browser roles direct research-table access.
