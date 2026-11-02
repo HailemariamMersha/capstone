@@ -51,7 +51,11 @@ export async function runFileDownload(
     const task = fs.downloadFile({
       fromUrl: `${config.serverUrl}${PROBE_API_PATH}/download/${config.downloadBytes}?request=${attempt.id}`,
       toFile: path,
-      headers: { 'Cache-Control': 'no-cache', 'Accept-Encoding': 'identity' },
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Accept-Encoding': 'identity',
+        Connection: 'close',
+      },
       cacheable: false,
       connectionTimeout: Math.min(config.timeoutMs, 10000),
       readTimeout: Math.min(config.timeoutMs, 10000),

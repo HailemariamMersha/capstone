@@ -49,6 +49,7 @@ import {
   Profile,
   secureStorage,
   signIn,
+  enrollParticipant,
 } from '../auth/client';
 import { configureUploads, syncAccount } from '../sync/background';
 import { acquireActivity, currentActivity } from '../services/activityGate';
@@ -70,10 +71,13 @@ import { participantDefaults } from './defaults';
 import { theme } from './theme';
 import ReferencePanel from '../components/ReferencePanel';
 import publicConfig from '../config/public.json';
+import FlightHome, { TripHistory } from './FlightHome';
+import Enrollment from './Enrollment';
 
-const CONSENT = 'skymeasure-staging-2026-10-22';
+const CONSENT = 'skymeasure-flight-2026-11-01';
 const researchText =
-  'SkyMeasure studies how networks perform, including connectivity during travel. When you start a session, the app sends active ICMP, TCP, UDP and traceroute probes. Optional HTTP tests transfer the amounts you choose. This uses your network allowance and battery. We save timing, replies, failures, device battery, connection type, IP addresses and available Wi-Fi identifiers, together with any notes you enter. We collect responses from these tests; we do not record the contents of your other apps or browsing. Approved researchers can access these records under a participant identifier. Data stays on your phone until collection ends, then uploads over Wi-Fi by default. You can stop at any time or request deletion from Account. This is staging research information; the study team must approve the final participant information before recruitment.';
+  'SkyMeasure studies network connectivity using active ICMP, TCP, UDP, traceroute and small HTTP transfers. Start once per trip and stop whenever you wish. Tests use battery and data: 100 MiB of application-accounted payload per trip, including limited live record uploads. Network overhead and post-trip uploads are additional. Records save locally, with brief upload attempts every 15 minutes over Wi-Fi by default. We store timing, failures, IP addresses, available Wi-Fi identifiers, battery, derived speed/altitude/accuracy, detection decisions and optional flight details. We never save GPS coordinates or monitor other apps or browsing. Participation is pseudonymous, not unidentifiable: flight details, times and public IPs can identify a journey or person when combined with other information. Approved researchers can access these records. You can request deletion; reinstalling or resetting the app may lose access to your anonymous identity. This is staging research information requiring study-team approval before recruitment.';
+
 const Tabs = createBottomTabNavigator();
 type AccountContext = {
   session: Session;
@@ -140,6 +144,27 @@ function Toggle({
 }
 
 function Home() {
+  const { session, profile } = useAccount();
+  const [manual, setManual] = useState(false);
+  const researcher = profile.role !== 'participant';
+  if (manual && researcher)
+    return (
+      <>
+        <Button onPress={() => setManual(false)}>
+          Back to trip collection
+        </Button>
+        <ManualHome />
+      </>
+    );
+  return (
+    <FlightHome
+      owner={session.user.id}
+      researcher={researcher}
+      manual={() => setManual(true)}
+    />
+  );
+}
+function ManualHome() {
   const { session, status, refresh } = useAccount();
   const network = useNetInfo();
   const focused = useIsFocused();
@@ -179,7 +204,10 @@ function Home() {
     try {
       if (active) await stopSession();
       else {
-        const config = validateSessionConfig(settings);
+        const config = validateSessionConfig({
+          ...settings,
+          collectionMode: 'research_manual',
+        });
         if (Platform.OS === 'android' && Platform.Version >= 33) {
           const result = await PermissionsAndroid.request(
             PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
@@ -560,10 +588,14 @@ function Sessions() {
             </Card.Content>
           </Card>
         )}
+      <TripHistory owner={session.user.id} />
       {rows.map(s => (
         <Card key={s.id} mode="outlined" onPress={() => inspect(s.id)}>
           <Card.Content>
             <Text variant="titleMedium">
+              {s.config.tripId
+                ? `Trip segment ${(s.config.segmentIndex ?? 0) + 1} · `
+                : ''}
               {new Date(s.startedAt).toLocaleString()}
             </Text>
             <Text>
@@ -729,8 +761,8 @@ function Account() {
         Allow optional Wi-Fi details
       </Button>
       <Text>
-        Location permission helps Android expose Wi-Fi identifiers. The app does
-        not request a GPS location.
+        Location permission helps Android expose Wi-Fi identifiers. GPS is used
+        transiently for derived speed and altitude; coordinates are never saved.
       </Text>
       <Divider />
       <Text variant="titleLarge">Research participation</Text>
@@ -740,9 +772,24 @@ function Account() {
       <Button
         mode="outlined"
         disabled={busy || status?.state !== 'stopped'}
-        onPress={() => operation(signOut)}
+        onPress={() =>
+          session.user.is_anonymous
+            ? Alert.alert(
+                'Reset this installation’s identity?',
+                'Pending old records remain on this phone but cannot be uploaded by the new identity. Export them first. This cannot recover records removed by uninstalling.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset identity',
+                    style: 'destructive',
+                    onPress: () => operation(signOut),
+                  },
+                ],
+              )
+            : operation(signOut)
+        }
       >
-        Sign out
+        {session.user.is_anonymous ? 'Reset anonymous identity' : 'Sign out'}
       </Button>
       <Text>
         Pending sessions stay on this phone and remain private to your account.
@@ -750,9 +797,17 @@ function Account() {
       <Button
         mode="outlined"
         disabled={busy || status?.state !== 'stopped'}
-        onPress={() => operation(signIn)}
+        onPress={() =>
+          operation(async () => {
+            if (session.user.is_anonymous)
+              updateProfile(await loadProfile(session.user.id));
+            else await signIn();
+          })
+        }
       >
-        Confirm Google sign-in
+        {session.user.is_anonymous
+          ? 'Retry research access'
+          : 'Confirm Google sign-in'}
       </Button>
       <Text>
         If your login has expired, confirm it to resume uploads. Saved sessions
@@ -950,7 +1005,7 @@ function Root() {
         <Text variant="labelLarge">SKYMEASURE · NETWORK RESEARCH</Text>
         <Heading
           title="Better journeys start with a connection."
-          subtitle="Help researchers understand connectivity, one short session at a time."
+          subtitle="Help researchers understand connectivity throughout your journey."
         />
         <Card style={styles.hero}>
           <Card.Content>
@@ -965,23 +1020,21 @@ function Root() {
             </Text>
           </Card.Content>
         </Card>
-        <Button
-          mode="contained"
-          contentStyle={styles.control}
-          loading={busy}
-          disabled={busy || !configured}
-          onPress={() => perform(signIn)}
-        >
-          Continue with Google
+        <Enrollment
+          onEnroll={token => perform(() => enrollParticipant(token))}
+          busy={busy}
+        />
+        <Button onPress={() => perform(signIn)} disabled={busy}>
+          Researcher Google sign-in
         </Button>
         <Text>
-          New here? The same button creates your account. First sign-in needs an
-          internet connection.
+          No email or password. Initial enrollment needs internet. A private
+          installation identity protects your records.
         </Text>
         {!configured && (
           <Text>
-            Staging setup is pending. Configure the research service and Google
-            sign-in before participant testing.
+            Staging setup is pending. Configure the research service and
+            anonymous enrollment before participant testing.
           </Text>
         )}
         <Failure text={error} />
@@ -1014,7 +1067,7 @@ function Root() {
         </Button>
       </Page>
     );
-  if (profile.consentVersion !== profile.requiredConsentVersion)
+  if (profile.consentVersion !== CONSENT)
     return (
       <Page>
         <Heading

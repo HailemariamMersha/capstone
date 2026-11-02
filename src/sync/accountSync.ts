@@ -1,7 +1,16 @@
 import type { MeasurementStore, SyncRecord } from '../storage/types';
-import { acquireActivity, currentActivity } from '../services/activityGate';
+import {
+  acquireActivity,
+  currentActivity,
+  isTripArmed,
+} from '../services/activityGate';
 
 export interface SyncDependencies {
+  tripWindow?: boolean;
+  sessionFilter?: (
+    session: import('../sessions/types').SessionRecord,
+  ) => boolean;
+  beforeSessions?: (signal: AbortSignal) => Promise<void>;
   store: MeasurementStore;
   identity(): Promise<{ owner: string; mobileUploads: boolean } | null>;
   network(): Promise<{ connected: boolean; wifi: boolean }>;
@@ -24,7 +33,7 @@ export function createAccountSync(deps: SyncDependencies) {
   let running: Promise<void> | null = null;
   let cancellation: AbortController | null = null;
   async function run() {
-    if (currentActivity()) return;
+    if (currentActivity() || (isTripArmed() && !deps.tripWindow)) return;
     const release = acquireActivity('sync');
     cancellation = new AbortController();
     const signal = cancellation.signal;
@@ -36,9 +45,14 @@ export function createAccountSync(deps: SyncDependencies) {
       const identity = await deps.identity();
       if (!identity) return;
       const { owner, mobileUploads } = identity;
-      const sessions = (await deps.store.accountSessions(owner)).filter(
-        s => s.state !== 'active' && s.uploadStatus !== 'Uploaded',
-      );
+      const sessions = (await deps.store.accountSessions(owner))
+        .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
+        .filter(
+          s =>
+            s.state !== 'active' &&
+            s.uploadStatus !== 'Uploaded' &&
+            (deps.sessionFilter?.(s) ?? true),
+        );
       const network = await deps.network();
       if (!network.connected || (!network.wifi && !mobileUploads)) {
         for (const s of sessions)
@@ -50,6 +64,7 @@ export function createAccountSync(deps: SyncDependencies) {
         return;
       }
       const deadline = deps.now() + 20000;
+      await deps.beforeSessions?.(signal);
       for (const s of sessions) {
         if (deps.now() >= deadline || signal.aborted) break;
         if (!(await deps.store.uploadReady(owner, s.id))) continue;

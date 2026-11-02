@@ -1,3 +1,11 @@
+import {
+  tripRunning,
+  tripServiceStatus,
+  subscribeTrip,
+  stopTrip,
+  recoverTrips,
+} from '../trips/runtime';
+import { localSession } from '../auth/client';
 import { acquireActivity, currentActivity } from './activityGate';
 import type { MeasurementConfig } from '../sessions/types';
 import { runProbe } from '../measurements/runProbe';
@@ -36,7 +44,30 @@ const controller = createSessionController(
     return loop;
   },
 );
-export const { stopSession, getServiceStatus, subscribeToStatus } = controller;
+export const stopSession = () =>
+  tripRunning() ? stopTrip() : controller.stopSession();
+export async function getServiceStatus() {
+  const active = tripServiceStatus();
+  if (active) return active;
+  const status = await controller.getServiceStatus();
+  const session = await localSession();
+  if (session) await recoverTrips(session.user.id);
+  return status;
+}
+export function subscribeToStatus(
+  fn: (status: import('../sessions/types').ServiceStatus) => void,
+) {
+  const a = controller.subscribeToStatus(fn);
+  const b = subscribeTrip(() => {
+    getServiceStatus()
+      .then(fn)
+      .catch(() => {});
+  });
+  return () => {
+    a();
+    b();
+  };
+}
 
 let releaseMeasurement: (() => void) | undefined;
 controller.subscribeToStatus(status => {
@@ -50,6 +81,7 @@ export async function startSession(
   resumedFromId?: string,
   ownerId?: string,
 ): Promise<string> {
+  if (tripRunning()) throw new Error('Stop the trip before manual collection.');
   if (currentActivity() !== 'measurement') {
     releaseMeasurement = acquireActivity('measurement');
   }

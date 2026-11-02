@@ -42,6 +42,9 @@ if (
   config.udpHost.split('.').some(x => Number(x) > 255)
 )
   throw new Error('The UDP probe needs the controlled server IPv4 address');
+config.enrollmentUrl = process.env.SKYMEASURE_ENROLLMENT_URL || '';
+if (config.enrollmentUrl && new URL(config.enrollmentUrl).protocol !== 'https:')
+  throw new Error('Enrollment URL must use HTTPS');
 fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\n');
 console.log(
   'Public SkyMeasure configuration written. No private credentials were read.',

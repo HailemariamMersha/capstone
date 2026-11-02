@@ -135,6 +135,7 @@ export async function runProbe(
         method: type === 'upload' ? 'POST' : 'GET',
         signal: controller.signal,
         headers: {
+          Connection: 'close',
           'Cache-Control': 'no-cache',
           ...(type === 'upload'
             ? { 'Content-Type': 'application/octet-stream' }

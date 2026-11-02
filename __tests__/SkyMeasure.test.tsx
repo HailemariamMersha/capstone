@@ -1,3 +1,16 @@
+jest.mock('../src/trips/runtime', () => ({
+  currentTrip: () => null,
+  tripRunning: () => false,
+  tripProgress: () => ({
+    count: 0,
+    uploading: false,
+    latest: null,
+    error: null,
+  }),
+  subscribeTrip: () => () => {},
+  startTrip: jest.fn(),
+  stopTrip: jest.fn(),
+}));
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { Button, Text } from 'react-native';
@@ -7,8 +20,8 @@ const mockSession = {
 const mockProfile = {
   participantId: 'p',
   role: 'participant',
-  consentVersion: 'skymeasure-staging-2026-10-22',
-  requiredConsentVersion: 'skymeasure-staging-2026-10-22',
+  consentVersion: 'skymeasure-flight-2026-11-01',
+  requiredConsentVersion: 'skymeasure-flight-2026-11-01',
   mobileUploads: false,
 };
 jest.mock('../src/auth/client', () => ({
@@ -25,6 +38,7 @@ jest.mock('../src/auth/client', () => ({
   api: jest.fn().mockResolvedValue({ items: [] }),
   loadProfile: jest.fn(),
   signIn: jest.fn(),
+  enrollParticipant: jest.fn(),
   handleAuthCallback: jest.fn(),
   localSession: jest.fn(),
   subscribeParticipant: jest.fn(() => () => {}),
@@ -45,7 +59,10 @@ jest.mock('../src/services/measurement', () => ({
   stopSession: jest.fn(),
 }));
 jest.mock('../src/storage/database', () => ({
-  measurementStore: { accountSessions: jest.fn().mockResolvedValue([]) },
+  measurementStore: {
+    accountSessions: jest.fn().mockResolvedValue([]),
+    accountTrips: jest.fn().mockResolvedValue([]),
+  },
 }));
 jest.mock('../src/export/shareSession', () => ({ shareSession: jest.fn() }));
 jest.mock('@react-native-community/netinfo', () => ({
@@ -154,35 +171,38 @@ const contains = (text: string) =>
   renderer.root
     .findAllByType(Text)
     .some(n => String(n.props.children).includes(text));
-test('signed-out users see the common Google registration/sign-in control', async () => {
+test('signed-out users can enroll without an account and retain researcher sign-in', async () => {
   (localSession as jest.Mock).mockResolvedValue(null);
   await render();
-  await press('Continue with Google');
+  await press('Get started');
+  expect(require('../src/auth/client').enrollParticipant).toHaveBeenCalled();
+  await press('Researcher Google sign-in');
   expect(signIn).toHaveBeenCalled();
   expect(startSession).not.toHaveBeenCalled();
 });
-test('accepted participant can navigate and starts with owned ten-minute packet settings', async () => {
+test('accepted participants see optional trip details and no duration control', async () => {
   await render();
   await press('Sessions');
   expect(contains('Your contributions')).toBe(true);
   await press('Account');
   expect(contains('Your account')).toBe(true);
   await press('Home');
-  await press('Start session');
-  expect(startSession).toHaveBeenCalledWith(
-    expect.objectContaining({
-      maxDurationMs: 600000,
-      maxPayloadBytes: 104857600,
-      httpEnabled: false,
-    }),
-    undefined,
-    'account-a',
-  );
+  expect(contains('Your journey, understood.')).toBe(true);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => b.props.title === 'Start trip'),
+  ).toBe(true);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => b.props.title === 'Start session'),
+  ).toBe(false);
 });
 test('cached consent enables offline startup without a fresh profile response', async () => {
   (loadProfile as jest.Mock).mockRejectedValue(new Error('Offline'));
   await render();
-  expect(contains('Your network, understood.')).toBe(true);
+  expect(contains('Your journey, understood.')).toBe(true);
 });
 test('missing consent cannot start collection', async () => {
   (loadProfile as jest.Mock).mockResolvedValue({

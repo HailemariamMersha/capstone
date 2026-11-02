@@ -5,7 +5,7 @@ const HEARTBEAT_MS = 60_000;
 const START_TIMEOUT_MS = 10_000;
 
 /** Library-owned native execution; all application work runs in TypeScript. */
-export function createBackgroundExecutor(): BackgroundExecutor {
+export function createBackgroundExecutor(location = false): BackgroundExecutor {
   let cancel: (() => void) | undefined;
   let removeExpiration: (() => void) | undefined;
 
@@ -75,12 +75,14 @@ export function createBackgroundExecutor(): BackgroundExecutor {
             }),
           {
             taskName: 'CapstoneMeasurement',
-            taskTitle: 'Capstone session active',
+            taskTitle: location
+              ? 'SkyMeasure trip active'
+              : 'Capstone session active',
             taskDesc:
               'Measurements are saved on this device. Tap to open and stop.',
             taskIcon: { name: 'ic_measurement', type: 'drawable' },
             color: '#375976',
-            foregroundServiceType: ['specialUse'],
+            foregroundServiceType: location ? ['location'] : ['specialUse'],
           },
         );
         await readiness;

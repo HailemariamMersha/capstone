@@ -49,7 +49,11 @@ test('large download streams to a cache file and verifies exact native byte coun
     expect.objectContaining({
       toFile: '/cache/capstone-probe-download.bin',
       cacheable: false,
-      headers: { 'Cache-Control': 'no-cache', 'Accept-Encoding': 'identity' },
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Accept-Encoding': 'identity',
+        Connection: 'close',
+      },
     }),
   );
   expect(fs.unlink).toHaveBeenCalledWith('/cache/capstone-probe-download.bin');
