@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from sqlalchemy import select, delete, func, or_, case
 from sqlalchemy.orm import Session
-from .database import Account, ResearchSession, Record, Sample, database, now
+from .database import Account, ResearchSession, Record, Sample, ResearchTrip, TripSegment, database, now
 from .auth import account, researcher, administrator, identity
 from .exports import samples, combined_rows, csv_text
 from .presentation import readable, evidence_response
@@ -27,7 +27,7 @@ def string(value, limit=100):
 
 
 router = APIRouter(prefix='/api/v2')
-CONSENT_VERSION = 'skymeasure-staging-2026-10-22'
+CONSENT_VERSION = 'skymeasure-flight-2026-11-01'
 
 
 class Strict(BaseModel):
@@ -67,6 +67,8 @@ def delete_account(user_id=Depends(identity), db: Session = Depends(database)):
     if not a:
         raise HTTPException(404, 'Account not found')
     ids = select(ResearchSession.id).where(ResearchSession.owner_id == a.user_id)
+    db.execute(delete(TripSegment).where(TripSegment.trip_id.in_(select(ResearchTrip.id).where(ResearchTrip.owner_id == a.user_id))))
+    db.execute(delete(ResearchTrip).where(ResearchTrip.owner_id == a.user_id))
     db.execute(delete(Sample).where(Sample.session_id.in_(ids)))
     db.execute(delete(Record).where(Record.session_id.in_(ids)))
     db.execute(delete(ResearchSession).where(ResearchSession.owner_id == a.user_id))
@@ -131,6 +133,19 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
         raise HTTPException(403, 'Current research consent required')
     if body.session.get('id') != session_id or body.session.get('state') not in ('completed', 'interrupted'):
         raise HTTPException(422, 'Only a closed session can be uploaded')
+    config = body.session.get('config') or {}
+    if config.get('collectionMode') in ('research_manual', 'detector_shadow') and a.role not in ('researcher', 'administrator'):
+        raise HTTPException(403, 'Researcher access required')
+    trip_id, ordinal = config.get('tripId'), config.get('segmentIndex')
+    if trip_id is not None:
+        trip = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
+        if not trip or trip.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
+        if type(ordinal) is not int or ordinal < 0 or ordinal >= trip.raw['segmentCount']:
+            raise HTTPException(422, 'Segment outside registered trip')
+        link = db.get(TripSegment, (trip_id, ordinal))
+        if link and link.session_id != session_id: raise HTTPException(409, 'Segment already registered')
+    elif ordinal is not None:
+        raise HTTPException(422, 'Segment requires trip')
     expected = [r.model_dump() for r in body.expected]
     keys = {(r.type, r.id) for r in body.expected}
     if len(keys) != len(expected) or ('session', session_id) not in keys:
@@ -147,6 +162,9 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
         db.add(ResearchSession(id=session_id, owner_id=a.user_id, participant_id=a.participant_id,
                               collected_at=str(body.session.get('startedAt', '')),
                               collector_version=body.collectorVersion, manifest=raw, raw=body.session))
+        db.flush()
+        if trip_id is not None:
+            db.add(TripSegment(trip_id=trip_id, ordinal=ordinal, session_id=session_id))
         db.commit()
     return {'registered': True}
 
@@ -198,7 +216,7 @@ def complete(session_id: str, a=Depends(account), db: Session = Depends(database
     if not missing:
         s.completed_at = s.completed_at or now()
         db.commit()
-    return {'complete': not missing, 'missing': missing}
+    return {'complete': not missing, 'missing': missing[:50]}
 
 
 def summary(db, s):
@@ -258,7 +276,7 @@ def research_sessions(a=Depends(researcher), db: Session = Depends(database), of
 
 @router.get('/research/overview')
 def overview(a=Depends(researcher), db: Session = Depends(database)):
-    return {'participants': db.scalar(select(func.count(func.distinct(ResearchSession.participant_id)))),
+    return {'trips': db.scalar(select(func.count()).select_from(ResearchTrip)), 'participants': db.scalar(select(func.count(func.distinct(ResearchSession.participant_id)))),
             'sessions': db.scalar(select(func.count()).select_from(ResearchSession)),
             'partialSessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.completed_at.is_(None))),
             'measurements': db.scalar(select(func.count()).select_from(Record).where(Record.kind == 'measurement')),
@@ -306,3 +324,6 @@ def membership(participant_id: str, body: Membership, a=Depends(administrator), 
     member.role = body.role
     db.commit()
     return {'participantId': participant_id, 'role': member.role}
+
+from .trips import router as trip_router
+router.include_router(trip_router)

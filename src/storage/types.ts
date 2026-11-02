@@ -20,6 +20,8 @@ export interface SessionEvent {
   details: Record<string, unknown>;
 }
 export interface MeasurementStore {
+  saveTrip(trip: import('../trips/model').Trip): Promise<void>;
+  accountTrips(ownerId: string): Promise<import('../trips/model').Trip[]>;
   saveSnapshot(
     sessionId: string,
     snapshot: NetworkSnapshot,

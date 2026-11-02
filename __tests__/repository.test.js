@@ -69,7 +69,7 @@ test('diagnostic payload is reserved atomically and raw samples survive export a
 test('enables WAL, migrations and durable result/queue records', async () => {
   const id = await store.createSession(config);
   expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal');
-  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(3);
+  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(4);
   const attempt = await store.beginAttempt(
     id,
     'http_rtt',
@@ -224,7 +224,7 @@ test('version-one migration preserves existing records and recovers an open sess
   );
   await store.finishAttempt(success(attempt));
   db.exec(
-    'DROP INDEX sessions_owner; ALTER TABLE sessions DROP COLUMN owner_id; ALTER TABLE sessions DROP COLUMN upload_status; ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
+    'DROP TABLE trips; DROP INDEX sessions_owner; ALTER TABLE sessions DROP COLUMN owner_id; ALTER TABLE sessions DROP COLUMN upload_status; ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
   );
   db.close();
   open();
@@ -476,4 +476,34 @@ test('upload retry backoff survives process restarts and a server-reported missi
   );
   await store.deferUpload('a', id, true);
   expect(await store.uploadReady('a', id)).toBe(true);
+});
+
+test('trip revisions survive restart, remain account-owned, and live-sync initialization does not recover the current segment', async () => {
+  await store.initialize(true);
+  const trip = {
+    id: 'trip-a',
+    ownerId: 'a',
+    revision: 7,
+    state: 'active',
+    used: { transfers: 6000000, diagnostics: 1280, uploads: 0 },
+  };
+  await store.saveTrip(trip);
+  expect(await store.accountTrips('b')).toEqual([]);
+  await expect(store.saveTrip({ ...trip, ownerId: 'b' })).rejects.toThrow(
+    'ownership',
+  );
+  const id = await store.createSession(
+    { ...config, tripId: trip.id, segmentIndex: 0 },
+    undefined,
+    'a',
+  );
+  await store.initialize(false);
+  await store.initialize(true);
+  expect((await store.getSession(id)).state).toBe('active');
+  db.close();
+  open();
+  expect((await store.accountTrips('a'))[0].used.transfers).toBe(6000000);
+  expect((await store.getSession(id)).state).toBe('interrupted');
+  await store.deleteAccountRecords('a');
+  expect(await store.accountTrips('a')).toEqual([]);
 });

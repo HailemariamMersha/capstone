@@ -1,6 +1,11 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  flightPolicy?: typeof import('../trips/model').TRIP_POLICY;
+  tripId?: string;
+  segmentIndex?: number;
+  collectionMode?: 'flight_auto' | 'research_manual' | 'detector_shadow';
+  flight?: import('../trips/model').FlightDetails;
   notes?: string;
   collectorVersion?: string;
   probeRegion?: string;

@@ -30,6 +30,8 @@ def flatten(value, prefix=''):
     result = {}
     for key, item in value.items():
         name = prefix + key
+        if key == 'gpsDetails' and item is None:
+            continue
         if isinstance(item, dict):
             result.update(flatten(item, name + '.'))
         elif not isinstance(item, list):
@@ -55,6 +57,9 @@ def packet_fields(packet, prefix):
 def combined_rows(data):
     for measurement in data['measurements']:
         parent = flatten({k: v for k, v in measurement.items() if k not in ('raw', 'packet', 'details', 'route')}, 'measurement.')
+        config = data['session'].get('config') or {}
+        if config.get('tripId'):
+            parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight') if k in config}, 'session.'))
         parent.update(packet_fields(measurement.get('packet'), 'measurement.'))
         route = measurement.get('route') or {}
         parent.update(flatten({k: v for k, v in route.items() if k != 'samples'}, 'measurement.route.'))

@@ -193,11 +193,15 @@ export async function accessToken(expectedOwner?: string) {
     data: { session },
   } = await auth.auth.getSession();
   if (!session || (expectedOwner && session.user.id !== expectedOwner))
-    throw new Error('Sign in again to upload your saved sessions.');
+    throw new Error(
+      'Action needed: restore access to upload your saved records.',
+    );
   if ((session.expires_at ?? 0) < Date.now() / 1000 + 90) {
     const refreshed = await auth.auth.refreshSession();
     if (refreshed.error || !refreshed.data.session)
-      throw new Error('Sign in again to upload your saved sessions.');
+      throw new Error(
+        'Action needed: restore access to upload your saved records.',
+      );
     session = refreshed.data.session;
   }
   if (expectedOwner && session.user.id !== expectedOwner)
@@ -243,4 +247,49 @@ export async function loadProfile(owner: string): Promise<Profile> {
   const result = await api<Profile>('/profile', {}, owner);
   await secureStorage.setItem(`profile.${owner}`, JSON.stringify(result));
   return result;
+}
+
+// Only explicit first enrollment creates an identity. Refresh failures never do.
+let enrolling: Promise<void> | null = null;
+export async function enrollParticipant(captchaToken?: string): Promise<void> {
+  if (enrolling) return enrolling;
+  enrolling = (async () => {
+    if (
+      (await secureStorage.getItem('participant.identity')) ||
+      (await secureStorage.getItem('skymeasure.auth'))
+    )
+      throw new Error(
+        'An identity already exists. Restore its access or explicitly reset it.',
+      );
+    if (!configured) throw new Error('Research service setup is pending.');
+    const { data, error } = await auth.auth.signInAnonymously({
+      options: { captchaToken },
+    });
+    if (error || !data.session) {
+      if (
+        error?.code === 'anonymous_provider_disabled' ||
+        /anonymous.*disabled/i.test(error?.message ?? '')
+      )
+        throw new Error(
+          'Anonymous enrollment is not enabled for this study yet. Ask the study team to enable it, then retry.',
+        );
+      if (error?.code === 'captcha_failed')
+        throw new Error(
+          'Enrollment verification is required. Complete the verification check or ask the study team to configure it.',
+        );
+      if (error?.status === 429)
+        throw new Error(
+          'Too many enrollment attempts. Please wait before trying again.',
+        );
+      throw new Error(
+        'Could not enroll. Check connectivity and study enrollment availability.',
+      );
+    }
+    await rememberParticipant(data.session);
+  })();
+  try {
+    await enrolling;
+  } finally {
+    enrolling = null;
+  }
 }

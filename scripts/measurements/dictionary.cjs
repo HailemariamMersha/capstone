@@ -39,6 +39,20 @@ function dictionaryMarkdown() {
     }
     lines.push('');
   }
+  lines.push(
+    '## Trip and flight evidence in combined CSV',
+    '',
+    '| Column | Meaning | Datatype; units | Source | Blank |',
+    '| --- | --- | --- | --- | --- |',
+  );
+  for (const [key, f] of Object.entries(catalog.tripColumns ?? {})) {
+    lines.push(
+      `| \`${key}\` | ${escape(f.meaning)} | ${escape(f.datatype)}; ${escape(
+        f.units,
+      )} | ${escape(f.source)} | ${escape(f.blank)} |`,
+    );
+  }
+  lines.push('');
   return lines.join('\n');
 }
 module.exports = { catalog, dictionaryMarkdown };

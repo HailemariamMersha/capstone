@@ -1,5 +1,11 @@
 import { Buffer } from 'buffer';
-import { SCHEMA, SCHEMA_VERSION, MIGRATION_2, MIGRATION_3 } from './schema';
+import {
+  SCHEMA,
+  SCHEMA_VERSION,
+  MIGRATION_2,
+  MIGRATION_3,
+  MIGRATION_4,
+} from './schema';
 import { requestedPayload } from '../measurements/diagnosticConfig';
 import type { Measurement } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
@@ -63,7 +69,7 @@ export function createRepository(
       initialized = undefined;
       backgroundOnly = false;
     }
-    if (recoverActive === false) backgroundOnly = true;
+    if (recoverActive === false && !initialized) backgroundOnly = true;
     const recover = recoverActive ?? !backgroundOnly;
     if (!initialized) {
       initialized = serialize(async () => {
@@ -99,6 +105,7 @@ export function createRepository(
           if (version < 3) {
             for (const sql of MIGRATION_3) await db.execute(sql);
           }
+          if (version < 4) for (const sql of MIGRATION_4) await db.execute(sql);
           await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
           if (!recover) return;
           // Run once per JS process, before any new session can be started.
@@ -175,6 +182,26 @@ export function createRepository(
   const sessionSelect = `SELECT s.*, (SELECT COUNT(*) FROM measurements m WHERE m.session_id=s.id AND m.state='complete') AS measurement_count FROM sessions s`;
   return {
     initialize,
+    saveTrip: trip =>
+      write(async () => {
+        const existing = (
+          await db.execute('SELECT owner_id FROM trips WHERE id=?', [trip.id])
+        ).rows[0];
+        if (existing && existing.owner_id !== trip.ownerId)
+          throw new Error('Trip ownership mismatch');
+        await db.execute(
+          'INSERT INTO trips(id,owner_id,payload_json) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json',
+          [trip.id, trip.ownerId, JSON.stringify(trip)],
+        );
+      }),
+    accountTrips: owner =>
+      read(async () =>
+        (
+          await db.execute('SELECT payload_json FROM trips WHERE owner_id=?', [
+            owner,
+          ])
+        ).rows.map(r => JSON.parse(String(r.payload_json))),
+      ),
     hasActiveSession: () =>
       read(async () =>
         Boolean(
@@ -229,6 +256,7 @@ export function createRepository(
       }),
     deleteAccountRecords: ownerId =>
       write(async () => {
+        await db.execute('DELETE FROM trips WHERE owner_id=?', [ownerId]);
         if (
           (
             await db.execute(

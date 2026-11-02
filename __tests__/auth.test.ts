@@ -1,4 +1,10 @@
 jest.mock('react-native-url-polyfill/auto', () => {});
+jest.mock('../src/config/public.json', () => ({
+  supabaseUrl: 'https://test.supabase.co',
+  supabasePublishableKey: 'sb_publishable_test',
+  apiUrl: 'https://api.example.invalid',
+  redirectUrl: 'com.labpracticeapp://auth/callback',
+}));
 const mockValues = new Map<string, string>();
 jest.mock('react-native-get-random-values', () => {
   Object.defineProperty(globalThis, 'crypto', {
@@ -27,6 +33,7 @@ jest.mock('@supabase/supabase-js', () => ({
     auth: {
       exchangeCodeForSession: jest.fn().mockResolvedValue({ error: null }),
       getSession: jest.fn(),
+      signInAnonymously: jest.fn(),
       refreshSession: jest.fn(),
       signInWithOAuth: jest.fn(),
     },
@@ -91,7 +98,7 @@ test('uploads refresh expired tokens and refuse account switching', async () => 
     data: { session: null },
     error: new Error('revoked'),
   });
-  await expect(accessToken('a')).rejects.toThrow('Sign in again');
+  await expect(accessToken('a')).rejects.toThrow('Action needed');
 });
 
 test('cached identity survives missing or expired API credentials for offline collection', async () => {
@@ -108,5 +115,34 @@ test('cached identity survives missing or expired API credentials for offline co
     data: { session: null },
   });
   expect((await localSession()).user.id).toBe('a');
-  await expect(accessToken('a')).rejects.toThrow('Sign in again');
+  await expect(accessToken('a')).rejects.toThrow('Action needed');
+});
+
+test('anonymous enrollment preserves existing identities and explains disabled signup', async () => {
+  const { enrollParticipant } = require('../src/auth/client');
+  await secureStorage.setItem('participant.identity', '{corrupt');
+  await expect(enrollParticipant()).rejects.toThrow('identity');
+  expect(auth.auth.signInAnonymously).not.toHaveBeenCalled();
+  await secureStorage.removeItem('participant.identity');
+  (auth.auth.signInAnonymously as jest.Mock).mockResolvedValue({
+    data: { session: null },
+    error: { code: 'anonymous_provider_disabled' },
+  });
+  await expect(enrollParticipant()).rejects.toThrow('not enabled');
+  expect(await secureStorage.getItem('participant.identity')).toBeNull();
+  const saved = {
+    user: { id: 'new-anonymous-owner', is_anonymous: true },
+    access_token: 'test-token',
+  };
+  (auth.auth.signInAnonymously as jest.Mock).mockResolvedValue({
+    data: { session: saved },
+    error: null,
+  });
+  await enrollParticipant('test-captcha');
+  expect(auth.auth.signInAnonymously).toHaveBeenLastCalledWith({
+    options: { captchaToken: 'test-captcha' },
+  });
+  expect(
+    JSON.parse((await secureStorage.getItem('participant.identity'))!).user.id,
+  ).toBe('new-anonymous-owner');
 });

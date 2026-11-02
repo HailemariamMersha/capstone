@@ -257,3 +257,56 @@ def test_readable_session_retains_values_and_full_export_retains_raw_evidence(cl
     assert client.get(url, headers=auth('researcher')).json()['measurements'][0] == measurement
     probe = client.get('/api/v1/probe/download/1024', headers={'Accept-Encoding': 'gzip'})
     assert len(probe.content) == 1024 and 'content-encoding' not in probe.headers
+
+
+def trip_body(**updates):
+    return dict(revision=1, state='active', phase='watching', startedAt=1000, endedAt=None,
+                firstQualifiedAt=None, segmentCount=1, flight={'flightNumber': 'TEST123'},
+                used={'transfers': 0, 'diagnostics': 0, 'uploads': 0}, confidence='unconfirmed',
+                provider=None, reason=None, policyVersion='flight-2026-11-01', shadow=False, **updates)
+
+
+def test_trip_ownership_revision_and_segment_reconciliation(client):
+    path = '/api/v2/trips/' + 'c'*32
+    body = trip_body()
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    assert client.put(path, headers=auth('b'), json=body).status_code == 404
+    assert client.get('/api/v2/research/trips', headers=auth()).status_code == 403
+    changed = {**body, 'phase': 'collecting'}
+    assert client.put(path, headers=auth(), json=changed).status_code == 409
+    sid, manifest, records = experiment()
+    manifest['session']['config'].update(tripId='c'*32, segmentIndex=0, collectionMode='flight_auto')
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    closed = {**body, 'revision': 2, 'state': 'completed', 'phase': 'finished', 'endedAt': 2000}
+    assert client.put(path, headers=auth(), json=closed).json()['uploadComplete'] is False
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records': records}).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/complete', headers=auth()).json()['complete'] is True
+    result = client.get('/api/v2/trips', headers=auth()).json()['items'][0]
+    assert result['uploadComplete'] and result['missingSegments'] == []
+    assert client.put(path, headers=auth(), json={**body, 'revision': 3}).status_code == 409
+    assert client.delete('/api/v2/account', headers=auth()).status_code == 200
+
+
+def test_trip_rejects_coordinates_invalid_budgets_and_research_labels(client):
+    path = '/api/v2/trips/' + 'd'*32
+    body = trip_body()
+    assert client.put(path, headers=auth(), json={**body, 'flight': {'latitude': 0}}).status_code == 422
+    assert client.put(path, headers=auth(), json={**body, 'used': {'transfers': -1, 'diagnostics': 0, 'uploads': 0}}).status_code == 422
+    assert client.put(path, headers=auth(), json={**body, 'shadow': True}).status_code == 403
+    sid, manifest, _ = experiment()
+    manifest['session']['config']['collectionMode'] = 'research_manual'
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 403
+
+
+def test_trip_csv_metadata_is_additive_and_dictionary_covered():
+    data = {'session': {'id': 's', 'config': {}}, 'measurements': [{'id': 'm', 'type': 'tcp_connect'}]}
+    historical = list(combined_rows(data))[0]
+    assert not any(k.startswith('session.flight') or k == 'session.tripId' for k in historical)
+    data['session']['config'] = {'tripId': 't', 'segmentIndex': 0, 'collectionMode': 'flight_auto', 'flight': {'flightNumber': 'TEST', 'expectedMinutes': 840}}
+    data['measurements'][0]['networkSnapshot'] = {'flightEvidence': {'gpsDetails': None, 'confidence': 'network_only'}}
+    row = list(combined_rows(data))[0]
+    dictionary = json.loads(Path('scripts/measurements/columns.json').read_text())['tripColumns']
+    assert set(row) - set(historical) <= set(dictionary)
+    assert row['session.segmentIndex'] == 0
+    assert row['session.flight.expectedMinutes'] == 840
+    assert not any(k.endswith('.gpsDetails') for k in row)

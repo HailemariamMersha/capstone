@@ -90,3 +90,20 @@ def engine():
 def database():
     with sessionmaker(bind=engine(), expire_on_commit=False)() as db:
         yield db
+
+
+class ResearchTrip(Base):
+    __tablename__ = 'sky_trips'
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('sky_accounts.user_id'), index=True)
+    participant_id: Mapped[str] = mapped_column(String(32), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    raw: Mapped[dict] = mapped_column(json_type)
+    received_at: Mapped[str] = mapped_column(String(40), default=now, index=True)
+
+
+class TripSegment(Base):
+    __tablename__ = 'sky_trip_segments'
+    trip_id: Mapped[str] = mapped_column(ForeignKey('sky_trips.id'), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey('sky_sessions.id'), unique=True)
