@@ -9,6 +9,7 @@ import com.labpracticeapp.BuildConfig
 class DiagnosticsPackage : ReactPackage {
     override fun createNativeModules(context: ReactApplicationContext): List<NativeModule> =
         buildList {
+            add(FlightNetworkModule(context))
             add(TracerouteModule(context))
             add(LibraryIcmpModule(context))
             if (BuildConfig.SPEEDCHECKER_ENABLED) {

@@ -1,0 +1,19 @@
+[Unit]
+Description=Update SkyMeasure GeoLite ASN evidence database
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=skymeasure
+Group=skymeasure
+EnvironmentFile=/etc/skymeasure/maxmind.env
+ExecStart=/opt/skymeasure/venv/bin/python /opt/skymeasure/current/deploy/lab/update-asn.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/skymeasure/geoip
+UMask=0027
+TimeoutStartSec=120
+MemoryMax=192M

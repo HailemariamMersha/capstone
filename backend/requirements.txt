@@ -21,3 +21,4 @@ typing_extensions==4.16.0
 uvicorn==0.53.0
 SQLAlchemy==2.0.48
 psycopg[binary]==3.3.3
+geoip2==5.3.0

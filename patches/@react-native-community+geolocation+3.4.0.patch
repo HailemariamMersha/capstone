@@ -1,0 +1,46 @@
+diff --git a/node_modules/@react-native-community/geolocation/android/build.gradle b/node_modules/@react-native-community/geolocation/android/build.gradle
+index aab4a31..a219810 100644
+--- a/node_modules/@react-native-community/geolocation/android/build.gradle
++++ b/node_modules/@react-native-community/geolocation/android/build.gradle
+@@ -1,14 +1,3 @@
+-buildscript {
+-  repositories {
+-    google()
+-    mavenCentral()
+-  }
+-
+-  dependencies {
+-    classpath 'com.android.tools.build:gradle:3.5.3'
+-  }
+-}
+-
+ def getExtOrDefault(name) {
+   return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties['RNCGeolocation_' + name]
+ }
+@@ -28,6 +17,7 @@ if (isNewArchitectureEnabled()) {
+ }
+ 
+ android {
++  buildFeatures { buildConfig true }
+   def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
+   if (agpVersion.tokenize('.')[0].toInteger() >= 7) {
+     namespace = "com.reactnativecommunity.geolocation"
+diff --git a/node_modules/@react-native-community/geolocation/android/src/main/java/com/reactnativecommunity/geolocation/BaseLocationManager.java b/node_modules/@react-native-community/geolocation/android/src/main/java/com/reactnativecommunity/geolocation/BaseLocationManager.java
+index 02d2e85..bfe00c1 100644
+--- a/node_modules/@react-native-community/geolocation/android/src/main/java/com/reactnativecommunity/geolocation/BaseLocationManager.java
++++ b/node_modules/@react-native-community/geolocation/android/src/main/java/com/reactnativecommunity/geolocation/BaseLocationManager.java
+@@ -28,6 +28,14 @@ public abstract class BaseLocationManager {
+         coords.putDouble("accuracy", location.getAccuracy());
+         coords.putDouble("heading", location.getBearing());
+         coords.putDouble("speed", location.getSpeed());
++        coords.putBoolean("hasAltitude", location.hasAltitude());
++        coords.putBoolean("hasSpeed", location.hasSpeed());
++        coords.putBoolean("hasAccuracy", location.hasAccuracy());
++        if (Build.VERSION.SDK_INT >= 26) {
++            if (location.hasVerticalAccuracy()) coords.putDouble("verticalAccuracy", location.getVerticalAccuracyMeters());
++            if (location.hasSpeedAccuracy()) coords.putDouble("speedAccuracy", location.getSpeedAccuracyMetersPerSecond());
++        }
++        map.putDouble("fixAgeMs", Math.max(0, (android.os.SystemClock.elapsedRealtimeNanos() - location.getElapsedRealtimeNanos()) / 1000000.0));
+         map.putMap("coords", coords);
+         map.putDouble("timestamp", location.getTime());
+ 

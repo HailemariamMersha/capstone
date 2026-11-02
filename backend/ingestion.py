@@ -89,19 +89,7 @@ async def ingest(request: Request):
 
 @router.get('/api/v1/context')
 async def context(request: Request):
-    address = request.client.host if request.client else None
-    try:
-        public_ip = address if ipaddress.ip_address(address).is_global else None
-    except (ValueError, TypeError):
-        public_ip = None
-    asn = None
-    database = os.environ.get('CAPSTONE_ASN_DB')
-    if database and public_ip:
-        try:
-            import geoip2.database
-            with geoip2.database.Reader(database) as reader:
-                asn = reader.asn(public_ip).autonomous_system_number
-        except Exception:  # ASN enrichment must never block measurements.
-            asn = None
+    from .network_context import enrich
     from fastapi.responses import JSONResponse
-    return JSONResponse({'publicIp': public_ip, 'asn': asn}, headers={'X-Capstone-Probe': '1', 'Cache-Control': 'no-store'})
+    data = await enrich(request.client.host if request.client else None)
+    return JSONResponse(data, headers={'X-Capstone-Probe': '1', 'Cache-Control': 'no-store'})

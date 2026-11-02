@@ -87,6 +87,8 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+def flightPilotBuild = project.hasProperty("flightPilot")
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -96,7 +98,8 @@ android {
     defaultConfig {
         buildConfigField "boolean", "SPEEDCHECKER_ENABLED", speedCheckerEnabled.toString()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        applicationId "com.labpracticeapp"
+        applicationId (flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp")
+        manifestPlaceholders["skymeasureAppLabel"] = flightPilotBuild ? "SkyMeasure Flight Pilot" : "SkyMeasure"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

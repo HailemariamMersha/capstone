@@ -10,7 +10,7 @@ Group=skymeasure
 WorkingDirectory=/opt/skymeasure/current
 EnvironmentFile=/etc/skymeasure/api.env
 Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-ExecStart=/opt/skymeasure/venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 18000 --workers 1 --no-access-log --no-proxy-headers --limit-concurrency 16
+ExecStart=/opt/skymeasure/venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 18000 --workers 1 --no-access-log --proxy-headers --forwarded-allow-ips 127.0.0.1 --limit-concurrency 16
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

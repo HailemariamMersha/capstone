@@ -41,7 +41,9 @@ def test_local_context_does_not_claim_public_ip_or_asn():
     with TestClient(app) as client:
         response = client.get('/api/v1/context')
         assert response.status_code == 200
-        assert response.json() == {'publicIp':None,'asn':None}
+        assert response.json()['publicIp'] is None
+        assert response.json()['asn'] is None
+        assert response.json()['asnUnavailable'] == 'public_address_unavailable'
 
 
 def test_large_packet_record_is_preserved(tmp_path, monkeypatch):
