@@ -47,6 +47,7 @@ import {
   signOutParticipant,
   loadProfile,
   Profile,
+  ResearchAccessError,
   secureStorage,
   signIn,
   enrollParticipant,
@@ -919,8 +920,17 @@ function Root() {
             const p = await loadProfile(next.user.id);
             if (alive && token === revision.current) setProfile(p);
           } catch (e) {
-            if (!cached && alive && token === revision.current)
-              setError(message(e));
+            if (alive && token === revision.current) {
+              // Offline cache remains useful, but an explicit deletion response
+              // must not keep presenting a deleted account as ready to collect.
+              if (
+                e instanceof ResearchAccessError &&
+                e.reason === 'account_deleted'
+              )
+                setProfile(null);
+              if (!cached || e instanceof ResearchAccessError)
+                setError(message(e));
+            }
           }
         }
       } finally {
@@ -1066,25 +1076,40 @@ function Root() {
     return (
       <Page>
         <Heading
-          title="Connect to the study"
-          subtitle="Connect to the internet to finish getting started."
+          title="Reconnect to SkyMeasure"
+          subtitle="Retry your connection or choose your Google account again."
         />
         <Failure text={error} />
         <Button
+          mode="contained"
+          disabled={busy}
           loading={busy}
+          onPress={() =>
+            perform(async () => {
+              const release = acquireActivity('account');
+              try {
+                await signIn();
+              } finally {
+                release();
+              }
+            })
+          }
+        >
+          Sign in with Google
+        </Button>
+        <Button
+          disabled={busy}
           onPress={() =>
             perform(async () => setProfile(await loadProfile(session.user.id)))
           }
         >
-          Try again
+          Retry connection
         </Button>
-        <Button
-          onPress={() =>
-            perform(async () => {
-              await signOutParticipant();
-            })
-          }
-        >
+        <Text>
+          Choosing a different account keeps existing recordings with their
+          original identity.
+        </Text>
+        <Button disabled={busy} onPress={() => perform(signOutParticipant)}>
           Sign out
         </Button>
       </Page>

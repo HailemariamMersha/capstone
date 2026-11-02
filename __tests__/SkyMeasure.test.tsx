@@ -32,6 +32,13 @@ const mockProfile = {
 };
 jest.mock('../src/auth/client', () => ({
   configured: true,
+  ResearchAccessError: class extends Error {
+    reason: string;
+    constructor(_status: number, reason: string, message: string) {
+      super(message);
+      this.reason = reason;
+    }
+  },
   auth: {
     auth: {
       getSession: jest.fn(),
@@ -335,4 +342,37 @@ test('full study details are accessible while the publication disclosure stays v
   expect(contains('300 MiB')).toBe(true);
   await press('Hide study details');
   expect(contains('300 MiB')).toBe(false);
+});
+
+test('missing profile offers real Google sign-in independently of connection retry', async () => {
+  (loadProfile as jest.Mock).mockRejectedValue(
+    new Error('Sign-in needs to be restored'),
+  );
+  (secureStorage.getItem as jest.Mock).mockResolvedValue(null);
+  await render();
+  expect(contains('Reconnect to SkyMeasure')).toBe(true);
+  await press('Sign in with Google');
+  expect(signIn).toHaveBeenCalledTimes(1);
+  const profileCalls = (loadProfile as jest.Mock).mock.calls.length;
+  await press('Retry connection');
+  expect(loadProfile).toHaveBeenCalledTimes(profileCalls + 1);
+  expect(signIn).toHaveBeenCalledTimes(1);
+});
+test('a deleted account response replaces cached Home with explicit recovery', async () => {
+  const { ResearchAccessError } = require('../src/auth/client');
+  (loadProfile as jest.Mock).mockRejectedValue(
+    new ResearchAccessError(
+      403,
+      'account_deleted',
+      'This account has been deleted',
+    ),
+  );
+  await render();
+  expect(contains('Reconnect to SkyMeasure')).toBe(true);
+  expect(contains('This account has been deleted')).toBe(true);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => b.props.title === 'Start trip'),
+  ).toBe(false);
 });

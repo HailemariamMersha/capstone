@@ -155,7 +155,7 @@ export async function handleAuthCallback(url: string) {
 export async function signIn() {
   if (!configured)
     throw new Error(
-      'This staging build needs its research service configuration. See the SkyMeasure setup guide.',
+      'This app build is missing its connection settings. Please install the latest SkyMeasure pilot.',
     );
   await secureStorage.setItem('oauth-started', String(Date.now()));
   const { data, error } = await auth.auth.signInWithOAuth({
@@ -163,6 +163,7 @@ export async function signIn() {
     options: {
       redirectTo: configuration.redirectUrl,
       skipBrowserRedirect: true,
+      queryParams: { prompt: 'select_account' },
     },
   });
   if (error || !data.url)
@@ -176,7 +177,11 @@ export async function signIn() {
   const result = await InAppBrowser.openAuth(
     data.url,
     configuration.redirectUrl,
-    { ephemeralWebSession: true, showTitle: false },
+    {
+      ephemeralWebSession: true,
+      showTitle: false,
+      forceCloseOnRedirection: true,
+    },
   );
   if (result.type === 'success') await handleAuthCallback(result.url);
   else await secureStorage.removeItem('oauth-started');
@@ -188,39 +193,58 @@ export interface Profile {
   requiredConsentVersion: string;
   mobileUploads: boolean;
 }
-export async function accessToken(expectedOwner?: string) {
+export class ResearchAccessError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly reason:
+      | 'sign_in_required'
+      | 'account_deleted'
+      | 'consent_required'
+      | 'researcher_required'
+      | 'forbidden',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ResearchAccessError';
+  }
+}
+const signInRequired = () =>
+  new ResearchAccessError(
+    401,
+    'sign_in_required',
+    'Your sign-in needs to be restored. Sign in again to reconnect; saved recordings stay on this phone.',
+  );
+async function validSession(expectedOwner?: string, forceRefresh = false) {
   let {
     data: { session },
   } = await auth.auth.getSession();
   if (!session || (expectedOwner && session.user.id !== expectedOwner))
-    throw new Error(
-      'Action needed: restore access to upload your saved records.',
-    );
-  if ((session.expires_at ?? 0) < Date.now() / 1000 + 90) {
+    throw signInRequired();
+  const owner = expectedOwner ?? session.user.id;
+  if (forceRefresh || (session.expires_at ?? 0) < Date.now() / 1000 + 90) {
     const refreshed = await auth.auth.refreshSession();
-    if (refreshed.error || !refreshed.data.session)
-      throw new Error(
-        'Action needed: restore access to upload your saved records.',
-      );
+    if (refreshed.error || !refreshed.data.session) throw signInRequired();
     session = refreshed.data.session;
   }
-  if (expectedOwner && session.user.id !== expectedOwner)
-    throw new Error('Account changed');
-  return session.access_token;
+  if (session.user.id !== owner) throw new Error('Account changed');
+  return session;
+}
+export async function accessToken(expectedOwner?: string) {
+  return (await validSession(expectedOwner)).access_token;
 }
 export async function api<T>(
   path: string,
   options: RequestInit = {},
   owner?: string,
 ): Promise<T> {
-  const token = await accessToken(owner);
+  const initial = await validSession(owner);
   if (options.signal?.aborted)
     throw new Error('Upload opportunity ended; retry pending');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   let response: Response;
-  try {
-    response = await fetch(`${configuration.apiUrl}/api/v2${path}`, {
+  const request = (token: string) =>
+    fetch(`${configuration.apiUrl}/api/v2${path}`, {
       ...options,
       signal: options.signal ?? controller.signal,
       headers: {
@@ -229,20 +253,70 @@ export async function api<T>(
         ...options.headers,
       },
     });
+  try {
+    response = await request(initial.access_token);
+    // A server may reject a revoked/expired token before the phone's expiry check.
+    // Retry a bodyless read once, preserving the initiating owner. Uploads are
+    // retried by the durable queue so each request is charged to its budget.
+    if (
+      response.status === 401 &&
+      (options.method ?? 'GET').toUpperCase() === 'GET' &&
+      options.body == null &&
+      !controller.signal.aborted &&
+      !options.signal?.aborted
+    ) {
+      const refreshed = await validSession(initial.user.id, true);
+      if (controller.signal.aborted || options.signal?.aborted)
+        throw new Error('Upload opportunity ended; retry pending');
+      response = await request(refreshed.access_token);
+    }
   } finally {
     clearTimeout(timeout);
   }
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403)
-      throw new Error(
-        'Action needed: sign in again or review your research access.',
+    if (response.status === 401) throw signInRequired();
+    if (response.status === 403) {
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = typeof body.detail === 'string' ? body.detail : '';
+      } catch {
+        /* Use a safe generic authorization message. */
+      }
+      if (detail === 'Account deletion requested; uploads are disabled')
+        throw new ResearchAccessError(
+          403,
+          'account_deleted',
+          'This account has been deleted and cannot upload recordings. Choose another account or contact the study team.',
+        );
+      if (detail === 'Current research consent required')
+        throw new ResearchAccessError(
+          403,
+          'consent_required',
+          'Please review the current research information before uploading.',
+        );
+      if (
+        detail.startsWith('Researcher access required') ||
+        detail === 'Administrator access required'
+      )
+        throw new ResearchAccessError(
+          403,
+          'researcher_required',
+          'This account needs approval from a study administrator to use researcher tools.',
+        );
+      throw new ResearchAccessError(
+        403,
+        'forbidden',
+        'This account does not have access to that action. Your saved recordings are retained.',
       );
+    }
     throw new Error(
       `Research service could not complete this request (${response.status}). Your saved data is safe.`,
     );
   }
   return response.json();
 }
+
 export async function loadProfile(owner: string): Promise<Profile> {
   const result = await api<Profile>('/profile', {}, owner);
   await secureStorage.setItem(`profile.${owner}`, JSON.stringify(result));

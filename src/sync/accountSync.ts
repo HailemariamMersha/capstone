@@ -150,7 +150,9 @@ export function createAccountSync(deps: SyncDependencies) {
           await deps.store.setUploadStatus(
             owner,
             s.id,
-            String(error).includes('Action needed') ||
+            (error as { status?: number } | null)?.status === 401 ||
+              (error as { status?: number } | null)?.status === 403 ||
+              String(error).includes('Action needed') ||
               String(error).includes('Sign in')
               ? 'Action needed'
               : 'Saved locally',

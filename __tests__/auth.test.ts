@@ -47,6 +47,8 @@ import {
   handleAuthCallback,
   secureStorage,
   accessToken,
+  signIn,
+  api,
 } from '../src/auth/client';
 beforeEach(() => {
   mockValues.clear();
@@ -98,7 +100,9 @@ test('uploads refresh expired tokens and refuse account switching', async () => 
     data: { session: null },
     error: new Error('revoked'),
   });
-  await expect(accessToken('a')).rejects.toThrow('Action needed');
+  await expect(accessToken('a')).rejects.toThrow(
+    'sign-in needs to be restored',
+  );
 });
 
 test('cached identity survives missing or expired API credentials for offline collection', async () => {
@@ -115,7 +119,9 @@ test('cached identity survives missing or expired API credentials for offline co
     data: { session: null },
   });
   expect((await localSession()).user.id).toBe('a');
-  await expect(accessToken('a')).rejects.toThrow('Action needed');
+  await expect(accessToken('a')).rejects.toThrow(
+    'sign-in needs to be restored',
+  );
 });
 
 test('anonymous enrollment preserves existing identities and explains disabled signup', async () => {
@@ -145,4 +151,130 @@ test('anonymous enrollment preserves existing identities and explains disabled s
   expect(
     JSON.parse((await secureStorage.getItem('participant.identity'))!).user.id,
   ).toBe('new-anonymous-owner');
+});
+
+test('Google sign-in requests an account chooser and retains S256 PKCE', async () => {
+  const { InAppBrowser } = require('react-native-inappbrowser-reborn');
+  (auth.auth.signInWithOAuth as jest.Mock).mockResolvedValue({
+    data: {
+      url: 'https://test.supabase.co/auth/v1/authorize?code_challenge_method=s256',
+    },
+    error: null,
+  });
+  InAppBrowser.openAuth.mockResolvedValue({ type: 'cancel' });
+  await signIn();
+  expect(auth.auth.signInWithOAuth).toHaveBeenCalledWith({
+    provider: 'google',
+    options: {
+      redirectTo: 'com.labpracticeapp://auth/callback',
+      skipBrowserRedirect: true,
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  expect(InAppBrowser.openAuth).toHaveBeenCalledWith(
+    expect.any(String),
+    'com.labpracticeapp://auth/callback',
+    expect.objectContaining({ forceCloseOnRedirection: true }),
+  );
+  expect(await secureStorage.getItem('oauth-started')).toBeNull();
+});
+test('one server 401 refreshes credentials and retries for the same owner', async () => {
+  const session = {
+    user: { id: 'a' },
+    access_token: 'old',
+    expires_at: Date.now() / 1000 + 3600,
+  };
+  (auth.auth.getSession as jest.Mock).mockResolvedValue({ data: { session } });
+  (auth.auth.refreshSession as jest.Mock).mockResolvedValue({
+    data: { session: { ...session, access_token: 'fresh' } },
+    error: null,
+  });
+  globalThis.fetch = jest
+    .fn()
+    .mockResolvedValueOnce({ status: 401, ok: false })
+    .mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => ({ role: 'participant' }),
+    });
+  expect(await api('/profile', {}, 'a')).toEqual({ role: 'participant' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(
+    (fetch as jest.Mock).mock.calls.map(c => c[1].headers.Authorization),
+  ).toEqual(['Bearer old', 'Bearer fresh']);
+});
+test('401 recovery never retries a record with a different account', async () => {
+  const session = {
+    user: { id: 'a' },
+    access_token: 'old',
+    expires_at: Date.now() / 1000 + 3600,
+  };
+  (auth.auth.getSession as jest.Mock).mockResolvedValue({ data: { session } });
+  (auth.auth.refreshSession as jest.Mock).mockResolvedValue({
+    data: { session: { ...session, user: { id: 'b' }, access_token: 'wrong' } },
+    error: null,
+  });
+  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  await expect(api('/profile', {}, 'a')).rejects.toThrow('Account changed');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+test.each([
+  ['Account deletion requested; uploads are disabled', 'account_deleted'],
+  ['Researcher access required', 'researcher_required'],
+  ['Current research consent required', 'consent_required'],
+])(
+  '403 %s is explained without opening a reauthentication loop',
+  async (detail, reason) => {
+    (auth.auth.getSession as jest.Mock).mockResolvedValue({
+      data: {
+        session: {
+          user: { id: 'a' },
+          access_token: 'token',
+          expires_at: Date.now() / 1000 + 3600,
+        },
+      },
+    });
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      status: 403,
+      ok: false,
+      json: async () => ({ detail }),
+    });
+    await expect(api('/profile', {}, 'a')).rejects.toMatchObject({
+      status: 403,
+      reason,
+    });
+    expect(auth.auth.refreshSession).not.toHaveBeenCalled();
+  },
+);
+test('a repeated server 401 stops after one refresh attempt', async () => {
+  const session = {
+    user: { id: 'a' },
+    access_token: 'token',
+    expires_at: Date.now() / 1000 + 3600,
+  };
+  (auth.auth.getSession as jest.Mock).mockResolvedValue({ data: { session } });
+  (auth.auth.refreshSession as jest.Mock).mockResolvedValue({
+    data: { session },
+    error: null,
+  });
+  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  await expect(api('/profile', {}, 'a')).rejects.toMatchObject({
+    status: 401,
+    reason: 'sign_in_required',
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+test('ingestion is not silently replayed outside durable retry/budget accounting', async () => {
+  const session = {
+    user: { id: 'a' },
+    access_token: 'token',
+    expires_at: Date.now() / 1000 + 3600,
+  };
+  (auth.auth.getSession as jest.Mock).mockResolvedValue({ data: { session } });
+  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  await expect(
+    api('/sessions/s/records', { method: 'POST', body: '{"records":[]}' }, 'a'),
+  ).rejects.toMatchObject({ status: 401 });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(auth.auth.refreshSession).not.toHaveBeenCalled();
 });
