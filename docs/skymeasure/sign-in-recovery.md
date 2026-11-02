@@ -53,9 +53,12 @@ and test-companion builds pass. A negative Gradle check confirms placeholder
 configuration is rejected. APK inspection confirms expected service settings
 and pilot callback. Android resolves that URI only to Flight Pilot. The configured
 v1.1.3 build was installed without clearing participant records, and its Google
-sign-in action opened the phone's browser. Full account selection and callback
-completion must be confirmed by the participant; browser launch alone is not
-end-to-end login validation.
+sign-in action opened the phone's browser. The participant completed Google
+account selection and reached Home. The subsequent read-only phone check
+verified Google provider, Supabase HTTP 200, study profile HTTP 200, matching
+saved/current owners and administrator role. Researcher shadow/manual controls
+were visible. No measurements or public speed tests were started during this
+validation.
 
 Artifact: `build/pilot/2026-11-02-signin-fixed/SkyMeasure-pilot-arm64.apk`.
 Source: `f55b5352612b5efe19d872893f0185fb7720dd44`.
