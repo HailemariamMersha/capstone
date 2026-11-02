@@ -73,10 +73,9 @@ import ReferencePanel from '../components/ReferencePanel';
 import publicConfig from '../config/public.json';
 import FlightHome, { TripHistory } from './FlightHome';
 import Enrollment from './Enrollment';
+import ParticipationInfo from './ParticipationInfo';
 
 const CONSENT = 'skymeasure-flight-mlab-2026-11-02';
-const researchText =
-  'SkyMeasure studies network connectivity using active ICMP, TCP, UDP, traceroute and small HTTP transfers. Start once per trip and stop whenever you wish. Tests use battery and data: 300 MiB of application-accounted payload per trip, including limited live record uploads. Network overhead and post-trip uploads are additional. Records save locally, with brief upload attempts every 15 minutes over Wi-Fi by default. We store timing, failures, IP addresses, available Wi-Fi identifiers, battery, derived speed/altitude/accuracy, detection decisions and optional flight details. We never save GPS coordinates or monitor other apps or browsing. Participation is pseudonymous, not unidentifiable: flight details, times and public IPs can identify a journey or person when combined with other information. Approved researchers can access these records. Starting a trip also authorizes one automatic M-Lab NDT7 download/upload speed test after suitable connectivity is detected. Up to 200 MiB is reserved for M-Lab within the trip allowance. M-Lab collects and publicly publishes your public IP address, test time and network performance data under its platform privacy policy (https://www.measurementlab.net/privacy/). This publication is separate from our private research database; deleting SkyMeasure data does not remove M-Lab publications. We do not send M-Lab your flight form or GPS observations. Stop trip cancels further testing, but cannot retract data already sent. You can request deletion; reinstalling or resetting the app may lose access to your anonymous identity. This is staging research information requiring study-team approval before recruitment.';
 
 const Tabs = createBottomTabNavigator();
 type AccountContext = {
@@ -454,6 +453,7 @@ function Sessions() {
     items: { label: string; value: string }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showRecordings, setShowRecordings] = useState(false);
   const refresh = useCallback(async () => {
     try {
       setRows(await measurementStore.accountSessions(session.user.id));
@@ -548,7 +548,7 @@ function Sessions() {
     <Page>
       <Heading
         title="Your contributions"
-        subtitle="Saved here first. Shared with the study after collection."
+        subtitle="Every journey makes a difference."
       />
       <Button
         mode="outlined"
@@ -589,34 +589,42 @@ function Sessions() {
           </Card>
         )}
       <TripHistory owner={session.user.id} />
-      {rows.map(s => (
-        <Card key={s.id} mode="outlined" onPress={() => inspect(s.id)}>
-          <Card.Content>
-            <Text variant="titleMedium">
-              {s.config.tripId
-                ? `Trip segment ${(s.config.segmentIndex ?? 0) + 1} · `
-                : ''}
-              {new Date(s.startedAt).toLocaleString()}
-            </Text>
-            <Text>
-              {s.measurementCount} measurements ·{' '}
-              {s.endedAt
-                ? `${Math.max(
-                    0,
-                    Math.round(
-                      (Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 60000,
-                    ),
-                  )} minutes`
-                : 'In progress'}
-            </Text>
-            <Chip style={styles.chip}>
-              {s.state === 'active'
-                ? 'Recording'
-                : s.uploadStatus ?? 'Saved locally'}
-            </Chip>
-          </Card.Content>
-        </Card>
-      ))}
+      {rows.some(s => s.config.tripId) && (
+        <Button onPress={() => setShowRecordings(v => !v)}>
+          {showRecordings ? 'Hide saved recordings' : 'View saved recordings'}
+        </Button>
+      )}
+      {rows
+        .filter(s => !s.config.tripId || showRecordings)
+        .map(s => (
+          <Card key={s.id} mode="outlined" onPress={() => inspect(s.id)}>
+            <Card.Content>
+              <Text variant="titleMedium">
+                {s.config.tripId
+                  ? `Recording ${(s.config.segmentIndex ?? 0) + 1} · `
+                  : ''}
+                {new Date(s.startedAt).toLocaleString()}
+              </Text>
+              <Text>
+                {s.measurementCount} measurements ·{' '}
+                {s.endedAt
+                  ? `${Math.max(
+                      0,
+                      Math.round(
+                        (Date.parse(s.endedAt) - Date.parse(s.startedAt)) /
+                          60000,
+                      ),
+                    )} minutes`
+                  : 'In progress'}
+              </Text>
+              <Chip style={styles.chip}>
+                {s.state === 'active'
+                  ? 'Recording'
+                  : s.uploadStatus ?? 'Saved locally'}
+              </Chip>
+            </Card.Content>
+          </Card>
+        ))}
       {remote
         .filter(r => !rows.some(s => s.id === r.id))
         .map(s => (
@@ -682,7 +690,7 @@ function Account() {
   const [legacy, setLegacy] = useState<SessionRecord[]>([]);
   useEffect(() => {
     measurementStore
-      .accountSessions(session.user.id)
+      .accountTrips(session.user.id)
       .then(rows => setTotals(rows.length))
       .catch(() => {});
   }, [session.user.id, status]);
@@ -718,9 +726,7 @@ function Account() {
             {session.user.user_metadata.full_name ?? 'Research participant'}
           </Text>
           <Text>{session.user.email}</Text>
-          <Text style={styles.space}>
-            {totals} sessions saved on this phone
-          </Text>
+          <Text style={styles.space}>{totals} trips saved on this phone</Text>
         </Card.Content>
       </Card>
       <Toggle
@@ -743,8 +749,7 @@ function Account() {
         }
       />
       <Text>
-        Wi-Fi uploads are the default. Android retries when the system gives the
-        app a background opportunity. Reopen the app after force-stopping it.
+        Your contributions upload over Wi-Fi unless you allow mobile data.
       </Text>
       <Button
         mode="outlined"
@@ -758,16 +763,16 @@ function Account() {
           })
         }
       >
-        Allow optional Wi-Fi details
+        Location permission
       </Button>
       <Text>
-        Location permission helps Android expose Wi-Fi identifiers. GPS is used
-        transiently for derived speed and altitude; coordinates are never saved.
+        Location helps identify flight Wi-Fi and movement. GPS coordinates are
+        never saved.
       </Text>
       <Divider />
       <Text variant="titleLarge">Research participation</Text>
-      <Text>{researchText}</Text>
-      <Text variant="bodySmall">Consent version: {profile.consentVersion}</Text>
+      <ParticipationInfo />
+
       <Failure text={error} />
       <Button
         mode="outlined"
@@ -1002,40 +1007,57 @@ function Root() {
   if (!session)
     return (
       <Page>
-        <Text variant="labelLarge">SKYMEASURE · NETWORK RESEARCH</Text>
+        <View style={styles.brand}>
+          <MaterialDesignIcons
+            name="airplane"
+            size={24}
+            color={theme.colors.primary}
+          />
+          <Text variant="titleMedium" style={styles.brandName}>
+            SkyMeasure
+          </Text>
+        </View>
+        <View
+          style={styles.welcomeArtwork}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+        >
+          <View style={styles.artIcon}>
+            <MaterialDesignIcons
+              name="airplane-takeoff"
+              size={42}
+              color={theme.colors.primary}
+            />
+          </View>
+          <View style={styles.flightPath} />
+          <View style={styles.artIcon}>
+            <MaterialDesignIcons
+              name="wifi"
+              size={36}
+              color={theme.colors.primary}
+            />
+          </View>
+        </View>
         <Heading
-          title="Better journeys start with a connection."
-          subtitle="Help researchers understand connectivity throughout your journey."
+          title="Better Wi-Fi. Better journeys."
+          subtitle="Help us understand internet in the sky."
         />
-        <Card style={styles.hero}>
-          <Card.Content>
-            <Text variant="headlineSmall">Your journey. Your choice.</Text>
-            <Text style={styles.space}>
-              Run active network tests, see your contribution, and help us learn
-              where connections work—and where they need to improve.
-            </Text>
-            <Text>
-              Start and stop on your terms. Upload over Wi-Fi. Access and delete
-              your data.
-            </Text>
-          </Card.Content>
-        </Card>
         <Enrollment
           onEnroll={token => perform(() => enrollParticipant(token))}
           busy={busy}
         />
-        <Button onPress={() => perform(signIn)} disabled={busy}>
+        <Text style={styles.welcomeNote}>
+          No account needed. Just bring your phone.
+        </Text>
+        <Button
+          onPress={() => perform(signIn)}
+          disabled={busy}
+          textColor={theme.colors.onSurfaceVariant}
+        >
           Researcher Google sign-in
         </Button>
-        <Text>
-          No email or password. Initial enrollment needs internet. A private
-          installation identity protects your records.
-        </Text>
         {!configured && (
-          <Text>
-            Staging setup is pending. Configure the research service and
-            anonymous enrollment before participant testing.
-          </Text>
+          <Text>The app can’t connect yet. Please contact the study team.</Text>
         )}
         <Failure text={error} />
       </Page>
@@ -1045,7 +1067,7 @@ function Root() {
       <Page>
         <Heading
           title="Connect to the study"
-          subtitle="We need a connection to finish your first sign-in."
+          subtitle="Connect to the internet to finish getting started."
         />
         <Failure text={error} />
         <Button
@@ -1071,23 +1093,14 @@ function Root() {
     return (
       <Page>
         <Heading
-          title="Take part, informed."
-          subtitle="Please read how your contribution will be used."
+          title="Before you begin"
+          subtitle="How SkyMeasure uses your data."
         />
-        <Text>{researchText}</Text>
-        <Button
-          accessibilityLabel="Read M-Lab public data policy"
-          onPress={() =>
-            Linking.openURL('https://www.measurementlab.net/privacy/').catch(
-              () => {},
-            )
-          }
-        >
-          M-Lab public data policy
-        </Button>
-        <Text>Version {CONSENT}</Text>
+        <ParticipationInfo />
         <Button
           mode="contained"
+          style={styles.primaryButton}
+          contentStyle={styles.primaryButtonContent}
           loading={busy}
           disabled={busy}
           onPress={() =>
@@ -1139,19 +1152,27 @@ function Root() {
             tabBarActiveTintColor: theme.colors.primary,
             tabBarStyle: styles.tabBar,
             tabBarLabelStyle: styles.tabLabel,
-            tabBarIcon: ({ color }) => (
-              <Text style={{ color }}>
-                {route.name === 'Home'
-                  ? '◉'
-                  : route.name === 'Sessions'
-                  ? '▤'
-                  : '○'}
-              </Text>
+            tabBarIcon: ({ color, size }) => (
+              <MaterialDesignIcons
+                name={
+                  route.name === 'Home'
+                    ? 'home-outline'
+                    : route.name === 'Sessions'
+                    ? 'airplane'
+                    : 'account-circle-outline'
+                }
+                color={color}
+                size={size}
+              />
             ),
           })}
         >
           <Tabs.Screen name="Home" component={Home} />
-          <Tabs.Screen name="Sessions" component={Sessions} />
+          <Tabs.Screen
+            name="Sessions"
+            component={Sessions}
+            options={{ tabBarLabel: 'Trips' }}
+          />
           <Tabs.Screen name="Account" component={Account} />
         </Tabs.Navigator>
       </NavigationContainer>
@@ -1186,8 +1207,47 @@ export default function SkyMeasure() {
 }
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F5F8FA' },
-  page: { padding: 24, gap: 20, paddingBottom: 40, flexGrow: 1 },
+  page: {
+    padding: 24,
+    gap: 20,
+    paddingBottom: 40,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+  },
   heading: { gap: 12, marginVertical: 12 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  brandName: { fontWeight: '700', letterSpacing: 0.2 },
+  welcomeArtwork: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F5F1',
+    borderRadius: 28,
+    padding: 28,
+    marginTop: 16,
+    minHeight: 150,
+  },
+  artIcon: {
+    backgroundColor: '#FFFFFF',
+    width: 76,
+    height: 76,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flightPath: {
+    flex: 1,
+    maxWidth: 80,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#8DBEB4',
+    marginHorizontal: 12,
+  },
+  welcomeNote: { color: theme.colors.onSurfaceVariant, textAlign: 'center' },
+  primaryButton: { borderRadius: 18 },
+  primaryButtonContent: { minHeight: 56 },
   hero: { backgroundColor: '#D9F2EE', paddingVertical: 12 },
   chip: { alignSelf: 'flex-start', marginTop: 8 },
   control: { minHeight: 56 },

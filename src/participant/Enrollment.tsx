@@ -17,6 +17,9 @@ export default function Enrollment({
     <View>
       <Button
         mode="contained"
+        style={styles.button}
+        contentStyle={styles.buttonContent}
+        labelStyle={styles.buttonLabel}
         disabled={busy || !configured}
         loading={busy}
         onPress={() => (url ? setChallenge(true) : onEnroll())}
@@ -61,4 +64,9 @@ export default function Enrollment({
   );
 }
 
-const styles = StyleSheet.create({ challenge: { height: 220 } });
+const styles = StyleSheet.create({
+  challenge: { height: 220 },
+  button: { borderRadius: 18 },
+  buttonContent: { minHeight: 58 },
+  buttonLabel: { fontSize: 17, fontWeight: '600' },
+});

@@ -13,7 +13,13 @@ jest.mock('../src/trips/runtime', () => ({
 }));
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { Button, Text } from 'react-native';
+import {
+  Button,
+  Text,
+  TextInput,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
 const mockSession = {
   user: { id: 'account-a', email: 'a@example.invalid', user_metadata: {} },
 };
@@ -187,7 +193,7 @@ test('accepted participants see optional trip details and no duration control', 
   await press('Account');
   expect(contains('Your account')).toBe(true);
   await press('Home');
-  expect(contains('Your journey, understood.')).toBe(true);
+  expect(contains('Where are you flying?')).toBe(true);
   expect(
     renderer.root
       .findAllByType(Button)
@@ -202,7 +208,7 @@ test('accepted participants see optional trip details and no duration control', 
 test('cached consent enables offline startup without a fresh profile response', async () => {
   (loadProfile as jest.Mock).mockRejectedValue(new Error('Offline'));
   await render();
-  expect(contains('Your journey, understood.')).toBe(true);
+  expect(contains('Where are you flying?')).toBe(true);
 });
 test('missing consent cannot start collection', async () => {
   (loadProfile as jest.Mock).mockResolvedValue({
@@ -211,7 +217,7 @@ test('missing consent cannot start collection', async () => {
   });
   (secureStorage.getItem as jest.Mock).mockResolvedValue(null);
   await render();
-  expect(contains('Take part, informed.')).toBe(true);
+  expect(contains('Before you begin')).toBe(true);
   expect(
     renderer.root
       .findAllByType(Button)
@@ -243,4 +249,90 @@ test('accepted participant Home has one Start and no separate speed-test button'
   const titles = renderer.root.findAllByType(Button).map(b => b.props.title);
   expect(titles.filter(t => t === 'Start trip')).toHaveLength(1);
   expect(titles).not.toContain('Start speed test');
+});
+
+test('Start sends entered flight details after both phone permissions are granted', async () => {
+  jest.replaceProperty(Platform, 'OS', 'android');
+  jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
+  const permissions = jest
+    .spyOn(PermissionsAndroid, 'requestMultiple')
+    .mockResolvedValue({
+      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'granted',
+      [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS]: 'granted',
+    } as any);
+  try {
+    await render();
+    await act(async () => {
+      for (const [label, value] of [
+        ['Flight number', 'QR123'],
+        ['From', 'Doha'],
+        ['To', 'London'],
+      ])
+        renderer.root
+          .findAllByType(TextInput)
+          .find(input => input.props.label === label)!
+          .props.onChangeText(value);
+    });
+    await press('Start trip');
+    expect(permissions).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      ]),
+    );
+    expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
+      'account-a',
+      { flightNumber: 'QR123', departure: 'Doha', arrival: 'London' },
+      false,
+    );
+  } finally {
+    jest.restoreAllMocks();
+  }
+});
+test('Skip and start discards entered fields and still honors permission denial', async () => {
+  jest.replaceProperty(Platform, 'OS', 'android');
+  jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
+  const permission = jest
+    .spyOn(PermissionsAndroid, 'requestMultiple')
+    .mockResolvedValue({
+      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'denied',
+    } as any);
+  try {
+    await render();
+    await act(async () =>
+      renderer.root
+        .findAllByType(TextInput)
+        .find(input => input.props.label === 'Flight number')!
+        .props.onChangeText('DO NOT SEND'),
+    );
+    await press('Skip and start');
+    expect(require('../src/trips/runtime').startTrip).not.toHaveBeenCalled();
+    expect(contains('Allow precise location and notifications')).toBe(true);
+    permission.mockResolvedValue({
+      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'granted',
+      [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS]: 'granted',
+    } as any);
+    await press('Skip and start');
+    expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
+      'account-a',
+      {},
+      false,
+    );
+  } finally {
+    jest.restoreAllMocks();
+  }
+});
+test('full study details are accessible while the publication disclosure stays visible', async () => {
+  (loadProfile as jest.Mock).mockResolvedValue({
+    ...mockProfile,
+    consentVersion: null,
+  });
+  (secureStorage.getItem as jest.Mock).mockResolvedValue(null);
+  await render();
+  expect(contains('300 MiB')).toBe(false);
+  expect(contains('M-Lab collects and publicly publishes')).toBe(true);
+  await press('Read full study details');
+  expect(contains('300 MiB')).toBe(true);
+  await press('Hide study details');
+  expect(contains('300 MiB')).toBe(false);
 });

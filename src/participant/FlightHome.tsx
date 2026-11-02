@@ -14,6 +14,7 @@ import {
   Text,
   TextInput,
 } from 'react-native-paper';
+import { MaterialDesignIcons } from '@react-native-vector-icons/material-design-icons';
 import {
   currentTrip,
   startTrip,
@@ -25,6 +26,13 @@ import {
 import { measurementStore } from '../storage/database';
 import type { FlightDetails, Trip } from '../trips/model';
 import { syncAccount } from '../sync/background';
+import { theme } from './theme';
+
+function routeLabel(flight: FlightDetails) {
+  if (flight.departure && flight.arrival)
+    return `${flight.departure} → ${flight.arrival}`;
+  return flight.departure || flight.arrival || 'Your journey';
+}
 export default function FlightHome({
   owner,
   researcher,
@@ -34,40 +42,26 @@ export default function FlightHome({
   researcher: boolean;
   manual(): void;
 }) {
-  const [trip, setTrip] = useState(currentTrip());
+  const ownedTrip = () => {
+    const saved = currentTrip();
+    return saved?.ownerId === owner ? saved : null;
+  };
+  const [trip, setTrip] = useState(ownedTrip);
   const [flight, setFlight] = useState<FlightDetails>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shadow, setShadow] = useState(false);
-  useEffect(() => subscribeTrip(() => setTrip(currentTrip())), []);
-  const active = tripRunning();
-  const progress = tripProgress();
-  const [pending, setPending] = useState<number | null>(null);
   useEffect(() => {
-    let alive = true;
-    const update = () =>
-      measurementStore
-        .accountSessions(owner)
-        .then(rows => {
-          if (alive)
-            setPending(
-              rows.filter(
-                s =>
-                  s.config.tripId === trip?.id &&
-                  s.state !== 'active' &&
-                  s.uploadStatus !== 'Uploaded',
-              ).length,
-            );
-        })
-        .catch(() => {});
-    update();
-    const timer = setInterval(update, 5000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
+    const update = () => {
+      const saved = currentTrip();
+      setTrip(saved?.ownerId === owner ? saved : null);
     };
-  }, [owner, trip?.id]);
-  async function act() {
+    update();
+    return subscribeTrip(update);
+  }, [owner]);
+  const active = tripRunning() && trip?.ownerId === owner;
+  const progress = tripProgress();
+  async function act(details: FlightDetails = flight) {
     setBusy(true);
     setError(null);
     try {
@@ -76,9 +70,7 @@ export default function FlightHome({
         await syncAccount();
       } else {
         if (Platform.OS !== 'android')
-          throw new Error(
-            'Automatic flight collection is currently available on Android.',
-          );
+          throw new Error('Trip collection is currently available on Android.');
         const permissions = [
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
@@ -92,161 +84,171 @@ export default function FlightHome({
           (Platform.Version >= 33 &&
             granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
               'granted')
-        )
+        ) {
           throw new Error(
-            'Allow precise location and notifications to monitor this trip in the background.',
+            'Allow precise location and notifications to start your trip.',
           );
-        await startTrip(owner, flight, shadow);
+        }
+        await startTrip(owner, details, shadow);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not update trip.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not update your trip. Please try again.',
+      );
     } finally {
       setBusy(false);
-      setTrip(currentTrip());
+      setTrip(ownedTrip());
     }
   }
+  const title = active
+    ? trip.phase === 'watching'
+      ? 'You’re all set.'
+      : trip.phase === 'paused'
+      ? 'Waiting for Wi-Fi'
+      : 'Your trip is underway.'
+    : 'Where are you flying?';
   return (
     <ScrollView
       contentContainerStyle={styles.page}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
-      <Text variant="headlineLarge">Your journey, understood.</Text>
-      <Text>
-        Add flight details if you know them. Start once; SkyMeasure watches for
-        suitable in-flight Wi-Fi.
-      </Text>
-      {!active && (
-        <>
-          {(['flightNumber', 'departure', 'arrival'] as const).map((key, i) => (
-            <TextInput
-              key={key}
-              mode="outlined"
-              maxLength={120}
-              label={
-                [
-                  'Flight number (optional)',
-                  'Departure airport or city (optional)',
-                  'Arrival airport or city (optional)',
-                ][i]
-              }
-              value={flight[key] ?? ''}
-              onChangeText={value => setFlight(f => ({ ...f, [key]: value }))}
+      <View style={styles.intro}>
+        {active && (
+          <View style={styles.symbol} accessible={false}>
+            <MaterialDesignIcons
+              name="wifi"
+              size={32}
+              color={theme.colors.primary}
             />
-          ))}
-          <TextInput
-            mode="outlined"
-            label="Expected flight length in minutes (optional)"
-            keyboardType="numeric"
-            value={
-              flight.expectedMinutes == null
-                ? ''
-                : String(flight.expectedMinutes)
-            }
-            onChangeText={value =>
-              setFlight(f => ({
-                ...f,
-                expectedMinutes: value.trim() ? Number(value) : undefined,
-              }))
-            }
-          />
-          <Text>
-            This estimate spreads speed samples across the journey. It does not
-            set a stop time.
-          </Text>
-          <Button onPress={() => setFlight({})}>Skip flight details</Button>
-        </>
-      )}
-      <Card>
-        <Card.Content>
-          <Text variant="titleLarge">
-            {active
-              ? trip?.phase === 'watching'
-                ? 'Watching for flight Wi-Fi'
-                : trip?.phase === 'paused'
-                ? 'Waiting for flight Wi-Fi'
-                : 'Collecting observations'
-              : 'Ready when you are'}
-          </Text>
-          <Text>
-            {active && trip
-              ? `${Math.floor(
-                  (Date.now() - trip.startedAt) / 60000,
-                )} minutes since Start`
-              : '300 MiB per trip · battery safeguard'}
-          </Text>
-          <Text>{trip?.evidence?.provider ?? 'Provider unavailable'}</Text>
-          <Text>
-            {trip?.evidence?.confidence?.replaceAll('_', ' ') ?? 'Unconfirmed'}{' '}
-            · an inference, not a verified flight
-          </Text>
-          {trip && (
-            <Text>
-              {(
-                (trip.policy.transferBytes +
-                  trip.policy.diagnosticBytes +
-                  trip.policy.liveUploadBytes) /
-                  1048576 -
-                (trip.used.transfers +
-                  trip.used.diagnostics +
-                  trip.used.uploads) /
-                  1048576
-              ).toFixed(1)}{' '}
-              MiB application allowance remaining
+          </View>
+        )}
+        <Text
+          variant="headlineLarge"
+          style={styles.title}
+          accessibilityRole="header"
+        >
+          {title}
+        </Text>
+        <Text variant="bodyLarge" style={styles.subtitle}>
+          {active
+            ? trip.phase === 'watching'
+              ? 'Connect to your flight’s Wi-Fi. We’ll take it from there.'
+              : trip.phase === 'paused'
+              ? 'Your trip will continue when your flight’s Wi-Fi returns.'
+              : 'SkyMeasure is taking care of the rest.'
+            : 'Add your flight, or skip straight to your trip.'}
+        </Text>
+      </View>
+      {active ? (
+        <Card style={styles.card} mode="contained">
+          <Card.Content style={styles.form}>
+            <Text variant="titleLarge" style={styles.flightTitle}>
+              {trip.flight.flightNumber || 'Your flight'}
             </Text>
-          )}
-          {trip && (
-            <>
-              <Text>{progress.count} saved measurements in this trip</Text>
-              {progress.latest && (
-                <Text>
-                  Latest {progress.latest.type.replaceAll('_', ' ')}:{' '}
-                  {progress.latest.success && progress.latest.value != null
-                    ? `${progress.latest.value.toFixed(2)} ${
-                        progress.latest.unit
-                      }`
-                    : 'unavailable (attempt saved)'}
-                </Text>
-              )}
-              <Text>
-                {progress.uploading
-                  ? 'Pausing probes for an upload attempt'
-                  : pending == null
-                  ? 'Checking upload status'
-                  : pending > 0
-                  ? `${pending} closed segments waiting to upload`
-                  : 'No closed segments waiting to upload'}
+            {(trip.flight.departure || trip.flight.arrival) && (
+              <Text variant="bodyLarge">{routeLabel(trip.flight)}</Text>
+            )}
+            <Chip style={styles.badge} accessibilityLiveRegion="polite">
+              {progress.uploading
+                ? 'Saving your progress'
+                : trip.phase === 'watching'
+                ? 'Waiting for flight Wi-Fi'
+                : trip.phase === 'paused'
+                ? 'Paused'
+                : 'Trip in progress'}
+            </Chip>
+            <Text style={styles.subtitle}>
+              {Math.max(0, Math.floor((Date.now() - trip.startedAt) / 60000))}{' '}
+              min since you started
+            </Text>
+          </Card.Content>
+        </Card>
+      ) : (
+        <Card style={styles.card} mode="contained">
+          <Card.Content style={styles.form}>
+            <View style={styles.formHeading}>
+              <Text variant="titleMedium" style={styles.flightTitle}>
+                Flight details
               </Text>
-            </>
-          )}
-          <Button mode="contained" loading={busy} disabled={busy} onPress={act}>
-            {active ? 'Stop trip' : 'Start trip'}
+              <Text variant="bodySmall" style={styles.subtitle}>
+                Optional
+              </Text>
+            </View>
+            <TextInput
+              mode="outlined"
+              label="Flight number"
+              placeholder="e.g. QR123"
+              maxLength={120}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={flight.flightNumber ?? ''}
+              onChangeText={value =>
+                setFlight(f => ({ ...f, flightNumber: value }))
+              }
+              style={styles.input}
+            />
+            <TextInput
+              mode="outlined"
+              label="From"
+              placeholder="Departure airport or city"
+              maxLength={120}
+              autoCapitalize="words"
+              value={flight.departure ?? ''}
+              onChangeText={value =>
+                setFlight(f => ({ ...f, departure: value }))
+              }
+              style={styles.input}
+            />
+            <TextInput
+              mode="outlined"
+              label="To"
+              placeholder="Arrival airport or city"
+              maxLength={120}
+              autoCapitalize="words"
+              value={flight.arrival ?? ''}
+              onChangeText={value => setFlight(f => ({ ...f, arrival: value }))}
+              style={styles.input}
+            />
+          </Card.Content>
+        </Card>
+      )}
+      <View style={styles.actions}>
+        <Button
+          mode={active ? 'outlined' : 'contained'}
+          loading={busy}
+          disabled={busy}
+          contentStyle={styles.buttonContent}
+          style={styles.button}
+          labelStyle={styles.buttonLabel}
+          onPress={() => act()}
+        >
+          {active ? 'Stop trip' : 'Start trip'}
+        </Button>
+        {!active && (
+          <Button
+            disabled={busy}
+            contentStyle={styles.secondaryButton}
+            onPress={() => act({})}
+          >
+            Skip and start
           </Button>
-        </Card.Content>
-      </Card>
-      <Text>
-        Records save on this phone. Every 15 minutes, probes briefly pause for
-        an upload attempt. Unsent records stay queued. Post-trip uploads and
-        network overhead use additional data.
-      </Text>
-      <HelperText type="error" visible={!!(error || progress.error)}>
-        {error || progress.error}
-      </HelperText>
+        )}
+      </View>
+      {(error || (active && progress.error)) && (
+        <HelperText type="error" accessibilityLiveRegion="polite">
+          {error || progress.error}
+        </HelperText>
+      )}
       {researcher && !active && (
-        <>
+        <View style={styles.researchTools}>
           <Button onPress={() => setShadow(v => !v)}>
             Detector shadow mode: {shadow ? 'on' : 'off'}
           </Button>
           <Button onPress={manual}>Researcher manual collection</Button>
-        </>
-      )}
-      <Text>
-        Start trip also schedules one M-Lab speed test after suitable Wi-Fi is
-        detected. M-Lab publishes results and your public IP. Up to 200 MiB is
-        reserved for that test; a capped test is marked incomplete. No second
-        Start is needed.
-      </Text>
-      {trip?.mlab && (
-        <Text>M-Lab: {trip.mlab.status.replaceAll('_', ' ')}</Text>
+        </View>
       )}
     </ScrollView>
   );
@@ -255,6 +257,7 @@ export function TripHistory({ owner }: { owner: string }) {
   const [trips, setTrips] = useState<Trip[]>([]);
   useEffect(() => {
     let alive = true;
+    setTrips([]);
     const update = () =>
       measurementStore
         .accountTrips(owner)
@@ -272,32 +275,71 @@ export function TripHistory({ owner }: { owner: string }) {
   return (
     <View style={styles.history}>
       {trips.map(t => (
-        <Card key={t.id}>
-          <Card.Content>
-            <Text variant="titleLarge">
+        <Card key={t.id} style={styles.card} mode="contained">
+          <Card.Content style={styles.historyContent}>
+            <Text variant="titleLarge" style={styles.flightTitle}>
               {t.flight.flightNumber || 'Your trip'}
             </Text>
-            <Text>
-              {t.flight.departure || 'Departure not entered'} →{' '}
-              {t.flight.arrival || 'Arrival not entered'}
+            {(t.flight.departure || t.flight.arrival) && (
+              <Text>{routeLabel(t.flight)}</Text>
+            )}
+            <Text style={styles.subtitle}>
+              {new Date(t.startedAt).toLocaleString()}
             </Text>
-            <Text>
-              {new Date(t.startedAt).toLocaleString()} · {t.segmentCount} saved
-              segments
-            </Text>
-            <Chip>{t.state === 'active' ? t.phase : t.state}</Chip>
-            <Text>
-              {t.evidence?.confidence.replaceAll('_', ' ') ?? 'Unconfirmed'} ·
-              upload status is shown on each segment below.
-            </Text>
+            <Chip style={styles.badge}>
+              {t.state === 'active'
+                ? 'In progress'
+                : t.state === 'interrupted'
+                ? 'Progress saved'
+                : 'Finished'}
+            </Chip>
           </Card.Content>
         </Card>
       ))}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  page: { padding: 24, gap: 18 },
+  page: {
+    padding: 24,
+    paddingTop: 20,
+    paddingBottom: 36,
+    gap: 24,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    flexGrow: 1,
+  },
+  intro: { gap: 12, paddingVertical: 8 },
+  symbol: {
+    backgroundColor: '#D9F2EE',
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  title: { fontWeight: '700', letterSpacing: -0.8 },
+  subtitle: { color: theme.colors.onSurfaceVariant, lineHeight: 24 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 24 },
+  form: { gap: 16, paddingVertical: 24, paddingHorizontal: 20 },
+  formHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  flightTitle: { fontWeight: '600' },
+  input: { backgroundColor: '#FFFFFF' },
+  badge: { alignSelf: 'flex-start', backgroundColor: '#EAF5F2' },
+  actions: { gap: 4 },
+  button: { borderRadius: 18 },
+  buttonContent: { minHeight: 58 },
+  buttonLabel: { fontSize: 17, fontWeight: '600' },
+  secondaryButton: { minHeight: 48 },
+  researchTools: { marginTop: 12 },
   history: { gap: 12 },
+  historyContent: { gap: 8, padding: 20 },
 });
