@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-02",
+  "scenario": "Ground monitoring; not flight validation",
+  "device": "Samsung Galaxy A34 / Android, ARM64 pilot",
+  "codeCommit": "fe8eb6a",
+  "groundRun": {
+    "allManifestRecordsPresent": true,
+    "completedSegments": 2,
+    "coordinatesFound": false,
+    "detectionCount": 41,
+    "detectionPhases": {
+      "watching": 41
+    },
+    "missingSegments": [],
+    "observedSpanMs": 1057354,
+    "ownerRole": "participant",
+    "phase": "finished",
+    "receivedGroundTrips": 1,
+    "receivedSegments": 2,
+    "recordKinds": {
+      "event": 48,
+      "session": 2
+    },
+    "segmentCount": 2,
+    "state": "completed",
+    "uploadComplete": true,
+    "used": {
+      "diagnostics": 18432,
+      "transfers": 0,
+      "uploads": 293952
+    }
+  },
+  "authorization": {
+    "exposedResearchTables": 0
+  },
+  "externalProbeChecks": {
+    "https": "verified",
+    "region": "lab-location-unconfirmed",
+    "downloadBytes": 1048576,
+    "uploadBytes": 262144,
+    "udpReplies": 20,
+    "udpSent": 20,
+    "unauthorizedAccess": "denied",
+    "legacyIngestion": "disabled",
+    "cors": "passed",
+    "invalidUdp": "ignored",
+    "authenticatedPhoneUpload": "not tested by this command"
+  },
+  "automatedChecks": {
+    "jestPassed": 220,
+    "pythonPassed": 39,
+    "pythonSkipped": 1,
+    "browserPassed": 13,
+    "mobileTypecheck": "passed",
+    "dashboardTypecheck": "passed",
+    "androidReleaseBuild": "passed"
+  },
+  "observedLifecycle": [
+    "Anonymous enrollment without email or Google",
+    "Participant reviewed consent and reached Home",
+    "APK update retained identity",
+    "Watching continued beyond ten minutes",
+    "Foreground service survived screen lock and brief Wi-Fi interruption",
+    "Fifteen-minute rotation continued the same trip",
+    "Stop closed and uploaded final segment",
+    "Force-stop ended the pilot service",
+    "Reopening recovered and uploaded interrupted evidence without rearming collection"
+  ],
+  "pending": [
+    "CAPTCHA on a physical device",
+    "Captive Wi-Fi plus cellular routing for each protocol",
+    "Recents removal and reboot",
+    "Real-flight detection accuracy",
+    "MaxMind database setup",
+    "Identity-deletion worker configuration"
+  ],
+  "interruptionRun": {
+    "allManifestRecordsPresent": true,
+    "completedSegments": 1,
+    "coordinatesFound": false,
+    "detectionCount": 2,
+    "detectionPhases": {
+      "watching": 2
+    },
+    "missingSegments": [],
+    "observedSpanMs": 29093,
+    "ownerRole": "participant",
+    "phase": "finished",
+    "receivedGroundTrips": 1,
+    "receivedSegments": 1,
+    "recordKinds": {
+      "event": 4,
+      "session": 1
+    },
+    "segmentCount": 1,
+    "state": "interrupted",
+    "uploadComplete": true,
+    "used": {
+      "diagnostics": 2048,
+      "transfers": 0,
+      "uploads": 0
+    }
+  }
+}
