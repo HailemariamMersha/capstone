@@ -39,6 +39,13 @@ class Ndt7OptInTest {
             assertNull("Native invocation failed", error)
             val data = JSONObject(result!!)
             File(context.filesDir, "ndt7-opt-in-device-check.json").writeText(data.toString())
+            val summary = JSONObject(data.toString())
+            for (i in 0 until summary.getJSONArray("results").length()) {
+                summary.getJSONArray("results").getJSONObject(i).remove("callbacks")
+            }
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply {
+                putString("mlabSummary", summary.toString())
+            })
             assertEquals("finished", data.getString("type"))
             assertEquals("Both directions must report", 2, data.getJSONArray("results").length())
             // A capped run is valid evidence but not a successful complete speed benchmark.

@@ -36,7 +36,9 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
         val prefs = context.getSharedPreferences("skymeasure.ndt7.frequency", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val history = try { JSONArray(prefs.getString("starts", "[]")) } catch (_: Exception) { promise.reject("QUOTA", "Frequency history unavailable"); return }
-        val starts = (0 until history.length()).map { history.getLong(it) }.filter { it > now - 86400000 }
+        val starts = try {
+            (0 until history.length()).map { history.getLong(it) }.also { values -> require(values.all { it >= 0 }) }.filter { it > now - 86400000 }
+        } catch (_: Exception) { promise.reject("QUOTA", "Frequency history unavailable"); return }
         if (starts.size >= 4) { promise.reject("QUOTA", "Four M-Lab attempts already reserved in the last 24 hours"); return }
         // Commit before network traffic. Clock rollback retains future reservations.
         if (!prefs.edit().putString("starts", JSONArray(starts + now).toString()).commit()) { promise.reject("STORAGE", "Cannot reserve test"); return }
