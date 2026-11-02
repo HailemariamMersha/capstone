@@ -9,6 +9,7 @@ import {
 import { type ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table';
 import { SessionEvidence } from '@/components/session-evidence';
+import { Trips } from '@/components/trips';
 import { MeasurementGuide } from '@/components/measurement-guide';
 import { sampleRows } from '@/lib/evidence';
 import {
@@ -148,6 +149,60 @@ function SessionDetail({
         </div>
         <Badge complete={Boolean(d.receipt.completedAt)} />
       </div>
+      {d.session.config?.tripId && (
+        <section className="panel p-5 space-y-3">
+          <h2 className="font-semibold">
+            Flight detection and collection gaps
+          </h2>
+          <p>
+            Segment {(d.session.config.segmentIndex ?? 0) + 1} ·{' '}
+            {d.session.config.collectionMode} · participant-reported{' '}
+            {d.session.config.flight?.flightNumber || 'flight not entered'}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="text-sm w-full">
+              <thead>
+                <tr>
+                  <th>Observed</th>
+                  <th>Phase / event</th>
+                  <th>Confidence</th>
+                  <th>ASN / SSID / GPS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(d.events ?? [])
+                  .filter((e: Raw) =>
+                    [
+                      'flight_detection',
+                      'upload_pause',
+                      'probe_skipped',
+                    ].includes(e.kind),
+                  )
+                  .map((e: Raw) => (
+                    <tr key={e.id}>
+                      <td>{date(e.timestamp)}</td>
+                      <td>{e.details?.phase ?? e.kind}</td>
+                      <td>{e.details?.confidence ?? 'Not applicable'}</td>
+                      <td>
+                        {e.kind === 'flight_detection'
+                          ? [
+                              e.details?.asn?.state,
+                              e.details?.ssid?.state,
+                              e.details?.gps?.state,
+                            ].join(' / ')
+                          : e.details?.reason ??
+                            `${e.details?.durationMs ?? 0} ms`}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <a href="/measurements/flight-collection.md">
+            Definitions, freshness rules and limitations
+          </a>
+        </section>
+      )}
       <div className="flex flex-wrap gap-3">
         <Button
           variant="outline"
@@ -359,35 +414,41 @@ function Workspace({ profile }: { profile: Profile }) {
           className="flex flex-wrap lg:flex-col gap-2"
           aria-label="Research workspace"
         >
-          {[LayoutDashboard, Rows3, Users, ArrowDownToLine, BookOpen].map(
-            (Icon, i) => {
-              const title = [
-                'Overview',
-                'Sessions',
-                'Participants',
-                'Downloads',
-                'Measurement guide',
-              ][i];
-              return (
-                <button
-                  key={title}
-                  onClick={() => {
-                    setSection(title);
-                    setSelected(null);
-                  }}
-                  className={`flex gap-3 items-center text-sm rounded-xl p-3 text-left ${
-                    section === title
-                      ? 'bg-teal-50 text-teal-900 font-semibold'
-                      : 'muted hover:bg-slate-50'
-                  }`}
-                  aria-current={section === title ? 'page' : undefined}
-                >
-                  <Icon size={18} />
-                  {title}
-                </button>
-              );
-            },
-          )}
+          {[
+            LayoutDashboard,
+            RadioTower,
+            Rows3,
+            Users,
+            ArrowDownToLine,
+            BookOpen,
+          ].map((Icon, i) => {
+            const title = [
+              'Overview',
+              'Trips',
+              'Sessions',
+              'Participants',
+              'Downloads',
+              'Measurement guide',
+            ][i];
+            return (
+              <button
+                key={title}
+                onClick={() => {
+                  setSection(title);
+                  setSelected(null);
+                }}
+                className={`flex gap-3 items-center text-sm rounded-xl p-3 text-left ${
+                  section === title
+                    ? 'bg-teal-50 text-teal-900 font-semibold'
+                    : 'muted hover:bg-slate-50'
+                }`}
+                aria-current={section === title ? 'page' : undefined}
+              >
+                <Icon size={18} />
+                {title}
+              </button>
+            );
+          })}
         </nav>
         <div className="mt-auto pt-10">
           <p className="text-xs muted mb-4">
@@ -447,10 +508,11 @@ function Workspace({ profile }: { profile: Profile }) {
             <div className="rounded-xl bg-teal-50 border border-teal-100 p-4 text-sm flex gap-3">
               <Activity size={20} className="shrink-0" />
               <p>
-                Uploads arrive after collection ends. This workspace cannot see
-                active phones or sessions that have not been sent. Active list
-                views and partial sessions refresh every 15 seconds. Completed
-                session evidence loads once; use Refresh data to reload it.
+                Trip segments arrive during brief upload windows; older sessions
+                upload after collection ends. This workspace cannot see active
+                phones or sessions that have not been sent. Active list views
+                and partial sessions refresh every 15 seconds. Completed session
+                evidence loads once; use Refresh data to reload it.
               </p>
             </div>
             {section !== 'Measurement guide' &&
@@ -459,12 +521,14 @@ function Workspace({ profile }: { profile: Profile }) {
                   {error || sessions.error?.message || overview.error?.message}
                 </Notice>
               )}
+            {section === 'Trips' && <Trips openSession={setSelected} />}
             {section === 'Measurement guide' && <MeasurementGuide />}
             {section === 'Overview' && (
               <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
                 {[
                   ['participants', 'Contributors'],
-                  ['sessions', 'Received sessions'],
+                  ['trips', 'Received trips'],
+                  ['sessions', 'Sessions / segments'],
                   ['measurements', 'Measurements'],
                   ['partialSessions', 'Partial uploads'],
                   ['failures', 'Unsuccessful tests'],
@@ -473,7 +537,7 @@ function Workspace({ profile }: { profile: Profile }) {
                     <p className="text-sm muted">{label}</p>
                     <p className="text-4xl font-semibold tracking-tight mt-5">
                       {overview.data
-                        ? overview.data[key].toLocaleString()
+                        ? overview.data[key]?.toLocaleString() ?? '—'
                         : '—'}
                     </p>
                     <p className="text-xs muted mt-3">Received evidence only</p>

@@ -1,0 +1,41 @@
+# Flight pilot deployment checklist
+
+This build changes the consent version to `skymeasure-flight-2026-11-01`. Deploy the backend and dashboard before distributing its APK. Existing experiments and Google identities remain owned by their original users. New participants enroll without email/password; this is pseudonymous participation, not anonymous research evidence.
+
+1. Back up the research database using the existing operator procedure. Run `python -m backend.research.manage migrate` with the migration identity. This adds `sky_trips` and `sky_trip_segments`; no existing table/data is deleted. The command enables RLS and revokes all table privileges from `anon` and `authenticated`, including new tables. Recheck runtime grants for the server-only `skymeasure_api` database role on new tables. Never grant browser roles direct research-table access.
+2. Supabase Authentication → Sign In / Providers: enable Anonymous Sign-Ins. Retain Google for researchers; public enrollment cannot assign roles. Review Authentication rate limits, accounting for many passengers sharing one aircraft public IP. Keep the existing provider's per-IP signup limit for the pilot and enroll before boarding; do not weaken it globally to work around an aircraft NAT.
+3. Create a Cloudflare Turnstile widget for the dashboard's exact production/staging hostname. Put its **secret** only in Supabase Authentication CAPTCHA protection, selecting Turnstile; enable protection. Set the public `NEXT_PUBLIC_TURNSTILE_SITE_KEY` in Vercel. Set `SKYMEASURE_ENROLLMENT_URL=https://DASHBOARD_HOST/enroll` before configuring the mobile build. No secret belongs in the APK or dashboard bundle. Without this URL, the app supports private staging enrollment only; public recruitment is blocked until protection is configured and tested.
+4. Install backend dependencies including `geoip2==5.3.0`. Configure a MaxMind GeoLite2-ASN account/license in root-protected `/etc/skymeasure/maxmind.env`. Run the scoped updater from `deploy/lab/update-asn.py`, then enable its timer. Set `CAPSTONE_ASN_DB=/var/lib/skymeasure/geoip/GeoLite2-ASN.mmdb`. Missing/stale (>35 days) databases yield unknown ASN evidence. No location database or public per-probe WHOIS service is required.
+5. Review the scoped Apache forwarding-header change and loopback-only Uvicorn trust setting. Run Apache configtest before a graceful reload; do not modify other virtual hosts. Verify `/api/v1/context` reports the actual external caller even if the caller supplies forged `Forwarded`/`X-Forwarded-For` values. Keep access logs disabled for participant identifiers/addresses.
+6. Approve participant text and retention/deletion operations before recruitment. Anonymous reset/reinstall cannot restore old identity access. Pending surviving records are never reassigned. The existing deletion worker still needs its server-only credential to delete Supabase identities; research-data deletion and identity deletion remain distinct states.
+
+## Validation record
+
+Automated fixtures cover detector semantics, budgets, privacy projection, storage migration and account-owned trip reconciliation. They do not establish airborne detection accuracy or native routing behavior.
+
+Before recruiting, verify on a physical Android phone: anonymous enrollment/CAPTCHA, offline restart after consent, Start/Stop, optional details, shadow mode restricted to researchers, Wi-Fi plus cellular/captive portal routing for each protocol, 15-minute upload pause/resume, counters across segments, expired credentials, locked screen, Recents removal, interruption/reboot recovery, force-stop/reopen, TalkBack and large text. Simulations must be labelled. Then validate on an actual flight.
+
+Do not retire the DigitalOcean rollback host or change unrelated lab applications as part of this rollout. The lab location remains `lab-location-unconfirmed`.
+
+
+## MaxMind setup (operator)
+
+1. Create a GeoLite account using [MaxMind’s GeoLite page](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/). Complete its account verification and license agreement. Only **GeoLite2-ASN** is needed for this collector.
+2. In the account portal, note your Account ID and open **Manage License Keys → Generate new license key**. Name the key `SkyMeasure ASN updater` and save it in your password manager. Do not put it in chat, Git, Vercel or the mobile configuration. See [MaxMind’s license-key instructions](https://support.maxmind.com/knowledge-base/articles/generate-a-maxmind-license-key).
+3. On the lab server, create `/etc/skymeasure/maxmind.env`, owned by root with mode `0600`, using an editor. Its two lines are `MAXMIND_ACCOUNT_ID=YOUR_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY=YOUR_LICENSE_KEY`. Systemd reads this protected file for the unprivileged updater. Do not type the actual key into a shell command or paste it into logs.
+4. Create `/var/lib/skymeasure/geoip` owned by `skymeasure:skymeasure`, mode `0750`. Install the repository’s `skymeasure-asn-update.service` and `.timer` in `/etc/systemd/system/`. These units touch only SkyMeasure’s directory and use its existing Python environment. Run `systemctl daemon-reload`, then `systemctl start skymeasure-asn-update.service`. Inspect its status; it must succeed before enabling the timer with `systemctl enable --now skymeasure-asn-update.timer`.
+5. Add `CAPSTONE_ASN_DB=/var/lib/skymeasure/geoip/GeoLite2-ASN.mmdb` to the existing protected `/etc/skymeasure/api.env`, preserving every other setting. Restart only `skymeasure-api.service`. Check `/api/v1/context` from an external connection: `asnUnavailable` should be null for a covered public address. A home-network ASN is expected to be outside the flight-provider registry.
+6. Check the timer after the first scheduled update. The updater retains the previous database if download/validation fails. The API marks a database older than 35 days unavailable using its **build date**, not the file-copy date.
+
+Downloads use HTTPS with Account ID/license authentication and follow the vendor’s HTTPS download redirect without forwarding credentials to a different host. [MaxMind documents the download and update requirements](https://dev.maxmind.com/geoip/updating-databases/). ASN data alone cannot establish an airborne aircraft or the server’s physical location.
+
+
+## Private pilot build — 2026-11-02
+
+The ARM64 APK is generated at `build/pilot/2026-11-02-flight/SkyMeasure-flight-pilot-arm64.apk` (32,671,150 bytes), SHA-256 `82d147cf417b3d53d381b68ab6464a978c01e254a23358087b85c66a977c487a`. It uses package `com.labpracticeapp.flightpilot`, a separate installation from the existing research app, and the development signing key. Share only as a supervisor/private pilot; a public release needs its own signing and recruitment configuration. The file and deployment inputs stay outside Git.
+
+Verified on the connected Samsung Galaxy A34: release installation, anonymous enrollment without Google/email, participant-reviewed consent, Home, and updating the APK while retaining the same identity. The original app and its records were left intact. The planned ground-monitoring run is not flight validation.
+
+Automated checks: 217 Jest tests; 39 Python tests (one optional PostgreSQL integration test skipped); 13 browser tests; mobile/dashboard TypeScript checks; Android ARM64 release build. The saved ten-minute export regression still agrees with 41 measurements, 232 samples and 246 combined rows. Lint has no errors; two existing nested-component warnings remain in the app shell.
+
+On 2026-11-01 the isolated API deployment and additive trip tables were applied. Database grants/RLS inspection found no research-table access for Supabase `anon`/`authenticated` roles. External HTTPS checks rejected unauthenticated trip access and ignored forged forwarding headers. ASN lookup remains explicitly unavailable until the operator configures MaxMind. Locked-screen/Recents/reboot, captive-Wi-Fi protocol routing, CAPTCHA, real-flight detection and identity deletion are not certified by these automated results.

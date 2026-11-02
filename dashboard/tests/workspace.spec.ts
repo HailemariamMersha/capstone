@@ -67,6 +67,40 @@ async function signedIn(page: Page, role: string, measurements?: Evidence[]) {
         contentType: 'text/csv',
         body: 'measurement.id,sample.rttMs\r\na,0\r\n',
       });
+    if (path.endsWith('/trips'))
+      return route.fulfill({
+        json: {
+          total: 1,
+          items: [
+            {
+              id: 'c'.repeat(32),
+              participantId: 'b'.repeat(32),
+              state: 'interrupted',
+              phase: 'finished',
+              confidence: 'network_only',
+              provider: 'Starlink',
+              receivedAt: '2026-11-01T12:30:00Z',
+              startedAt: 1793534400000,
+              endedAt: 1793536200000,
+              firstQualifiedAt: 1793534430000,
+              reason: 'process_interrupted_exact_end_unknown',
+              shadow: true,
+              flight: {
+                flightNumber: 'TEST123',
+                departure: 'TEST A',
+                arrival: 'TEST B',
+              },
+              used: { transfers: 0, diagnostics: 1280, uploads: 4000 },
+              uploadComplete: false,
+              missingSegments: [1],
+              segmentCount: 2,
+              segments: [
+                { index: 0, sessionId: 'a'.repeat(32), uploaded: true },
+              ],
+            },
+          ],
+        },
+      });
     if (path.endsWith('/sessions'))
       return route.fulfill({ json: { items: [summary], total: 1 } });
     if (path.includes('/sessions/'))
@@ -605,4 +639,30 @@ test('a failed refresh retains loaded session evidence and filters', async ({
       .getByRole('region', { name: 'Individual samples', exact: true })
       .locator('tbody tr'),
   ).toHaveCount(50);
+});
+
+test('trip filters and partial segments preserve the distinction from active phones', async ({
+  page,
+}) => {
+  await signedIn(page, 'researcher');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
+  await expect(
+    page.getByText('Researcher shadow test', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('1 incomplete or missing of 2 reported segments', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.getByLabel('Latest confidence').selectOption('network_only');
+  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
+  await page
+    .getByText('Open segment evidence, detection timeline and downloads')
+    .click();
+  await page.getByRole('button', { name: 'Segment 1 · uploaded' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Session evidence' }),
+  ).toBeVisible();
 });

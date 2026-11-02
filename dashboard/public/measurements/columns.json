@@ -2157,5 +2157,255 @@
     "icmpIdentifier": ["response.icmpIdentifier"],
     "icmpSequence": ["response.icmpSequence"],
     "icmpChecksum": ["response.icmpChecksum"]
+  },
+  "tripColumns": {
+  "session.tripId": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Trip join key shared by its segments.",
+    "source": "session.config.tripId",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.segmentIndex": {
+    "datatype": "integer",
+    "units": "none",
+    "meaning": "Zero-based segment order within the trip.",
+    "source": "session.config.segmentIndex",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.collectionMode": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "flight_auto, detector_shadow or research_manual.",
+    "source": "session.config.collectionMode",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.flight.flightNumber": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Optional participant-reported flightNumber; not independently verified.",
+    "source": "session.config.flight.flightNumber",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.flight.departure": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Optional participant-reported departure; not independently verified.",
+    "source": "session.config.flight.departure",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.flight.arrival": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Optional participant-reported arrival; not independently verified.",
+    "source": "session.config.flight.arrival",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "session.flight.expectedMinutes": {
+    "datatype": "number",
+    "units": "minutes",
+    "meaning": "Scheduling estimate, not a stop duration; absent uses 1440 minutes.",
+    "source": "session.config.flight.expectedMinutes",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.at": {
+    "datatype": "integer",
+    "units": "ms since Unix epoch",
+    "meaning": "Detector evaluation time.",
+    "source": "measurement.networkSnapshot.flightEvidence.at",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.networkKey": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Observed Wi-Fi continuity identifier; not proof of a flight.",
+    "source": "measurement.networkSnapshot.flightEvidence.networkKey",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.provider": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Versioned ASN registry match.",
+    "source": "measurement.networkSnapshot.flightEvidence.provider",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.confidence": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "unconfirmed, network_only or gps_supported at this observation.",
+    "source": "measurement.networkSnapshot.flightEvidence.confidence",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.asn.state": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "positive, negative or unknown; unknown is not a negative observation.",
+    "source": "measurement.networkSnapshot.flightEvidence.asn.state",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.asn.observedAt": {
+    "datatype": "integer",
+    "units": "ms since Unix epoch",
+    "meaning": "Source observation time; not refreshed per packet.",
+    "source": "measurement.networkSnapshot.flightEvidence.asn.observedAt",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.asn.reason": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Rule or unavailability reason recorded by the detector.",
+    "source": "measurement.networkSnapshot.flightEvidence.asn.reason",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.ssid.state": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "positive, negative or unknown; unknown is not a negative observation.",
+    "source": "measurement.networkSnapshot.flightEvidence.ssid.state",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.ssid.observedAt": {
+    "datatype": "integer",
+    "units": "ms since Unix epoch",
+    "meaning": "Source observation time; not refreshed per packet.",
+    "source": "measurement.networkSnapshot.flightEvidence.ssid.observedAt",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.ssid.reason": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Rule or unavailability reason recorded by the detector.",
+    "source": "measurement.networkSnapshot.flightEvidence.ssid.reason",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gps.state": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "positive, negative or unknown; unknown is not a negative observation.",
+    "source": "measurement.networkSnapshot.flightEvidence.gps.state",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gps.observedAt": {
+    "datatype": "integer",
+    "units": "ms since Unix epoch",
+    "meaning": "Source observation time; not refreshed per packet.",
+    "source": "measurement.networkSnapshot.flightEvidence.gps.observedAt",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gps.reason": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Rule or unavailability reason recorded by the detector.",
+    "source": "measurement.networkSnapshot.flightEvidence.gps.reason",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.observedAt": {
+    "datatype": "integer",
+    "units": "ms since Unix epoch",
+    "meaning": "Time the app received derived GPS evidence.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.observedAt",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeM": {
+    "datatype": "number",
+    "units": "m",
+    "meaning": "WGS84 ellipsoid altitude; not mean sea level.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeM",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.speedMps": {
+    "datatype": "number",
+    "units": "m/s",
+    "meaning": "Ground speed reported by Android with native validity flag.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.speedMps",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.horizontalAccuracyM": {
+    "datatype": "number",
+    "units": "m",
+    "meaning": "Android horizontal accuracy estimate.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.horizontalAccuracyM",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.verticalAccuracyM": {
+    "datatype": "number",
+    "units": "m",
+    "meaning": "Android vertical accuracy estimate, if available.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.verticalAccuracyM",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.speedAccuracyMps": {
+    "datatype": "number",
+    "units": "m/s",
+    "meaning": "Android speed accuracy estimate, if available.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.speedAccuracyMps",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.mocked": {
+    "datatype": "boolean",
+    "units": "none",
+    "meaning": "Native mocked-location flag; mocked fixes cannot qualify.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.mocked",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.ageMs": {
+    "datatype": "number",
+    "units": "ms",
+    "meaning": "Native monotonic age at callback, before subsequent observation ageing.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.ageMs",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeReference": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "WGS84 reference, explicitly not sea-level altitude.",
+    "source": "measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeReference",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.popCode": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Parsed Starlink egress PTR code, not a verified gateway location.",
+    "source": "measurement.networkSnapshot.popCode",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
+  },
+  "measurement.networkSnapshot.reverseDns": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Observed public-IP PTR hostname; changes do not prove satellite handover.",
+    "source": "measurement.networkSnapshot.reverseDns",
+    "calculation": "Copied from recorded evidence unless described otherwise.",
+    "blank": "Unavailable, not applicable, or historical; never substitute zero."
   }
+}
 }
