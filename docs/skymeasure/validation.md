@@ -1,5 +1,15 @@
 # SkyMeasure implementation and validation — 2026-10-22
 
+## 2 November: one-Start M-Lab integration
+
+See [automatic M-Lab validation and APK](automatic-mlab.md). New trip policy is
+300 MiB, with one automatic Android-library NDT7 pair and combined onboarding
+consent. 235 app tests, 40 backend tests and six native client tests pass. A real
+phone run reached its download cap and captured a clean upload; a saved-data
+replay validates 61.425357 Mbps server TCP throughput. This ground check is not
+a real-flight or full automatic background-to-dashboard validation.
+
+
 ## Participant speed tests and supervisor APK — 2026-11-01
 
 - Exposed the existing official `@m-lab/ndt7` 0.1.5 integration on participant Home. Fresh M-Lab publication/data-use consent is required before each run. Account-owned sessions retain the collector version, appear in Sessions, and trigger normal upload after the reference activity releases its gate.

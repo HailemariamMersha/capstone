@@ -119,3 +119,25 @@ One-Start scheduling across segment boundaries is covered by integration tests.
 A real qualified flight, full automatic phone-to-dashboard M-Lab delivery, and
 locked-screen M-Lab execution remain physical validation tasks. A successful
 native instrumented connection alone does not establish those behaviors.
+
+## Delivery
+
+Final Android source: `b24c261`. The private ARM64 pilot is
+`build/pilot/2026-11-02-mlab/SkyMeasure-automatic-mlab-arm64.apk`, package
+`com.labpracticeapp.flightpilot`, version 1.1.0 (code 2), 32,763,770 bytes.
+SHA-256: `e6644e4be15e032313065629f9cd7cd0bed595761aae2cd8484a2e9aa1030c6a`.
+The adjacent manifest records source and public-config hashes. Android v2
+signature verified; this uses the development signing key for private pilots.
+Installed over the earlier pilot without removing its identity or records.
+
+Validation: 235 Jest tests, 40 backend tests (one optional PostgreSQL check
+skipped), six Android JVM tests, TypeScript, and release/instrumentation builds
+passed. Lint has no errors and retains two pre-existing React component warnings.
+The physical public test opened both sockets. A separate **offline replay on
+that phone** confirms the fixed receiver calculation: 61.425357 Mbps. That replay
+read only previously captured counters and did not contact M-Lab.
+
+The live API uses the new consent version and versioned 300 MiB trip budget;
+unauthenticated trip requests still receive 401. Deployment changes are confined
+to SkyMeasure releases and its API service on the lab server. No unrelated lab
+service or DigitalOcean rollback host was changed.
