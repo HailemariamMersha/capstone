@@ -42,6 +42,17 @@ if (
   config.udpHost.split('.').some(x => Number(x) > 255)
 )
   throw new Error('The UDP probe needs the controlled server IPv4 address');
+config.redirectUrl =
+  process.env.SKYMEASURE_REDIRECT_URL || 'com.labpracticeapp://auth/callback';
+if (
+  ![
+    'com.labpracticeapp://auth/callback',
+    'com.labpracticeapp.flightpilot://auth/callback',
+  ].includes(config.redirectUrl)
+)
+  throw new Error(
+    'Use the registered callback for the selected Android package',
+  );
 config.enrollmentUrl = process.env.SKYMEASURE_ENROLLMENT_URL || '';
 if (config.enrollmentUrl && new URL(config.enrollmentUrl).protocol !== 'https:')
   throw new Error('Enrollment URL must use HTTPS');

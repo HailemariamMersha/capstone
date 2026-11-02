@@ -100,10 +100,11 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         applicationId (flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp")
         manifestPlaceholders["skymeasureAppLabel"] = flightPilotBuild ? "SkyMeasure Flight Pilot" : "SkyMeasure"
+        manifestPlaceholders["skymeasureAuthScheme"] = flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.1.1"
+        versionCode 5
+        versionName "1.1.3"
     }
     testBuildType "release"
     if (speedCheckerEnabled) {
@@ -154,4 +155,24 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+}
+
+// React Native's default bundle inputs omit JSON. Track our public runtime
+// configuration explicitly so a configured pilot cannot reuse a placeholder bundle.
+def skymeasurePublicConfig = rootProject.file("../src/config/public.json")
+def verifySkyMeasureConfig = tasks.register("verifySkyMeasurePublicConfig") {
+    inputs.file(skymeasurePublicConfig)
+    doLast {
+        def config = new groovy.json.JsonSlurper().parse(skymeasurePublicConfig)
+        def required = ["supabaseUrl", "supabasePublishableKey", "apiUrl", "probeUrl", "udpHost", "probeRegion"]
+        def missing = required.findAll { !(config[it] instanceof String) || !config[it].trim() }
+        if (missing) throw new GradleException("Configure SkyMeasure before building a pilot. Missing public fields: " + missing.join(", "))
+        def expectedCallback = flightPilotBuild ? "com.labpracticeapp.flightpilot://auth/callback" : "com.labpracticeapp://auth/callback"
+        if (config.redirectUrl != expectedCallback) throw new GradleException("SkyMeasure callback does not match the selected Android package")
+        if (!config.supabasePublishableKey.startsWith("sb_publishable_")) throw new GradleException("SkyMeasure requires a public publishable key")
+    }
+}
+tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
+    inputs.file(skymeasurePublicConfig).withPropertyName("skymeasurePublicConfig")
+    dependsOn(verifySkyMeasureConfig)
 }
