@@ -969,7 +969,8 @@ async function loop(signal: AbortSignal) {
         publish();
         let outcome = 'deferred_connectivity';
         try {
-          if (wifi?.bound && wifi.validated) {
+          const uploadRoute = await native!.bindWifi().catch(() => null);
+          if (uploadRoute?.bound && uploadRoute.validated) {
             await uploadTrip(trip!, true, true, persist, details =>
               record('collector_upload_request', details),
             );

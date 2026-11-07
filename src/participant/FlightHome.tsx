@@ -119,7 +119,9 @@ export default function FlightHome({
     }
   }
   const title = active
-    ? trip.phase === 'watching'
+    ? trip.shadow
+      ? 'Researcher test in progress'
+      : trip.phase === 'watching'
       ? 'You’re all set.'
       : trip.phase === 'paused'
       ? 'Waiting for Wi-Fi'
@@ -150,7 +152,9 @@ export default function FlightHome({
         </Text>
         <Text variant="bodyLarge" style={styles.subtitle}>
           {active
-            ? trip.phase === 'watching'
+            ? trip.shadow
+              ? 'Ground test. Flight detection is recorded without controlling the probes.'
+              : trip.phase === 'watching'
               ? 'Connect to your flight’s Wi-Fi. We’ll take it from there.'
               : trip.phase === 'paused'
               ? 'Your trip will continue when your flight’s Wi-Fi returns.'
@@ -170,12 +174,17 @@ export default function FlightHome({
             <Chip style={styles.badge} accessibilityLiveRegion="polite">
               {progress.uploading
                 ? 'Saving your progress'
+                : trip.shadow
+                ? 'Researcher shadow test'
                 : trip.phase === 'watching'
                 ? 'Waiting for flight Wi-Fi'
                 : trip.phase === 'paused'
                 ? 'Paused'
                 : 'Trip in progress'}
             </Chip>
+            <Text style={styles.subtitle}>
+              {progress.count} measurement records saved
+            </Text>
             <Text style={styles.subtitle}>
               {Math.max(0, Math.floor((Date.now() - trip.startedAt) / 60000))}{' '}
               min since you started
