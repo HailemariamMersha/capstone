@@ -248,6 +248,19 @@ test('identity failures retry promptly and remain unknown without replacing fres
   ).toBe(true);
 });
 
+test('an old identity response is not made fresh when its callback finally arrives', async () => {
+  globalThis.fetch = jest.fn(async () => ({
+    ok: true,
+    headers: { get: () => '1' },
+    text: async () =>
+      JSON.stringify({ asn: 14593, observedAt: (Date.now() - 180000) / 1000 }),
+  })) as any;
+  await startTrip('owner', {});
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(currentTrip()!.evidence!.asn.state).toBe('unknown');
+  expect(currentTrip()!.evidence!.provider).toBeNull();
+});
+
 test('a boundary cancels a long transfer, keeps control evidence and closes before uploading', async () => {
   const { runProbe } = require('../src/measurements/runProbe');
   runProbe.mockImplementation(

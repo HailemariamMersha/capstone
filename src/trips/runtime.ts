@@ -510,8 +510,8 @@ async function loop(signal: AbortSignal) {
     let nextTick = Date.now();
     while (!ended()) {
       controlWake = new AbortController();
-      const now = Date.now();
       power = (await native!.runtimeState?.().catch(() => null)) ?? null;
+      const now = Date.now();
       const elapsed =
         typeof power?.elapsedRealtimeMs === 'number'
           ? power.elapsedRealtimeMs
@@ -622,6 +622,7 @@ async function loop(signal: AbortSignal) {
             const text = await response.text();
             if (
               text.length <= 2048 &&
+              Date.now() - requestedAt <= COLLECTOR_POLICY.identityTimeoutMs &&
               !identityAbort.signal.aborted &&
               (await native!.bindWifi())?.handle === handle
             ) {
@@ -629,7 +630,10 @@ async function loop(signal: AbortSignal) {
               if (
                 value &&
                 typeof value === 'object' &&
-                (value.asn == null || Number.isSafeInteger(value.asn))
+                (value.asn == null || Number.isSafeInteger(value.asn)) &&
+                (typeof value.observedAt !== 'number' ||
+                  Math.abs(Date.now() - value.observedAt * 1000) <=
+                    COLLECTOR_POLICY.identityFreshMs)
               ) {
                 identity = {
                   publicIp:
