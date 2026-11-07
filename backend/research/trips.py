@@ -78,8 +78,9 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
     db.commit()
     return describe(db, t)
 
-def describe(db, t):
-    segments = list(db.execute(select(TripSegment.ordinal, ResearchSession.id, ResearchSession.completed_at).join(ResearchSession, ResearchSession.id == TripSegment.session_id).where(TripSegment.trip_id == t.id).order_by(TripSegment.ordinal)))
+def describe(db, t, segments=None):
+    if segments is None:
+        segments = list(db.execute(select(TripSegment.ordinal, ResearchSession.id, ResearchSession.completed_at).join(ResearchSession, ResearchSession.id == TripSegment.session_id).where(TripSegment.trip_id == t.id).order_by(TripSegment.ordinal)))
     complete = {r.ordinal for r in segments if r.completed_at}
     missing = [i for i in range(t.raw['segmentCount']) if i not in complete]
     return {'id': t.id, 'participantId': t.participant_id, **t.raw, 'receivedAt': t.received_at,
@@ -87,13 +88,27 @@ def describe(db, t):
             'missingSegments': missing,
             'segments': [{'index': r.ordinal, 'sessionId': r.id, 'uploaded': bool(r.completed_at)} for r in segments]}
 
-def listing(db, owner, offset, limit, confidence=None, provider=None):
+def listing(db, owner, offset, limit, confidence=None, provider=None, include_summary=False):
     query = select(ResearchTrip)
     if owner: query = query.where(ResearchTrip.owner_id == owner)
     if confidence: query = query.where(ResearchTrip.raw['confidence'].as_string() == confidence)
     if provider: query = query.where(ResearchTrip.raw['provider'].as_string() == provider)
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    return {'total': total, 'items': [describe(db, t) for t in db.scalars(query.order_by(ResearchTrip.received_at.desc()).offset(offset).limit(limit))]}
+    trips = list(db.scalars(query.order_by(ResearchTrip.received_at.desc()).offset(offset).limit(limit)))
+    # Fetch links for the page together, rather than one database round trip per card.
+    segments = {t.id: [] for t in trips}
+    if trips:
+        for row in db.execute(select(TripSegment.trip_id, TripSegment.ordinal, ResearchSession.id, ResearchSession.completed_at)
+            .join(ResearchSession, ResearchSession.id == TripSegment.session_id)
+            .where(TripSegment.trip_id.in_(segments)).order_by(TripSegment.ordinal)):
+            segments[row.trip_id].append(row)
+    items = [describe(db, t, segments[t.id]) for t in trips]
+    if include_summary:
+        from .trip_summary import summaries
+        values = summaries(db, [t.id for t in trips])
+        for item in items:
+            item['summary'] = values[item['id']]
+    return {'total': total, 'items': items}
 
 @router.get('/trips')
 def own_trips(a=Depends(account), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100)):
@@ -101,4 +116,4 @@ def own_trips(a=Depends(account), db: Session=Depends(database), offset: int=Que
 
 @router.get('/research/trips')
 def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None):
-    return listing(db, None, offset, limit, confidence, provider)
+    return listing(db, None, offset, limit, confidence, provider, include_summary=True)

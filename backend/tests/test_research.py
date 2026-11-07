@@ -298,6 +298,86 @@ def test_trip_rejects_coordinates_invalid_budgets_and_research_labels(client):
     assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 403
 
 
+def test_trip_summary_pools_samples_without_duplicate_parents_and_preserves_partial_uploads(client):
+    trip_id = 'c' * 32
+    assert client.put('/api/v2/trips/' + trip_id, headers=auth(),
+                      json={**trip_body(), 'segmentCount': 2}).status_code == 200
+
+    def upload_segment(index, measurements, omit_last=False):
+        sid = f'{100 + index:032x}'
+        session = {'id': sid, 'state': 'completed', 'startedAt': '2026-11-01T12:00:00Z',
+                   'config': {'tripId': trip_id, 'segmentIndex': index}}
+        records = [{'id': sid, 'type': 'session', 'version': 1, 'payload': session}]
+        for i, payload in enumerate(measurements):
+            mid = f'{1000 + index * 100 + i:032x}'
+            records.append({'id': mid, 'type': 'measurement', 'version': 1,
+                            'payload': {**payload, 'id': mid, 'sessionId': sid}})
+        manifest = {'collectorVersion': 'summary-test', 'schemaVersion': 3, 'session': session,
+                    'expected': [{k: r[k] for k in ['id', 'type', 'version']} for r in records]}
+        assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+        assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(),
+                           json={'records': records[:-1] if omit_last else records}).status_code == 200
+        return sid, records
+
+    first, _ = upload_segment(0, [
+        {'type': 'icmp_burst', 'success': True, 'details': {'samples': [{'rttMs': 0}, {'rttMs': 100}]}},
+        {'type': 'tcp_connect', 'success': True, 'details': {'samples': [{'rttMs': 0}], 'baselineSamples': [{'rttMs': 999}]}},
+        {'type': 'traceroute', 'success': True, 'route': {'reached': True, 'samples': [{'rttMs': 7}, {'rttMs': None}]}},
+        {'type': 'download', 'success': True, 'value': 2},
+        {'type': 'ndt7_download', 'success': False, 'errorType': 'cancelled',
+         'reference': {'stopReason': 'data_threshold'}, 'raw': {'callbacks': [{'rttMs': 88}]}}
+    ])
+    second, records = upload_segment(1, [
+        {'type': 'icmp_burst', 'success': True, 'details': {'samples': [{'rttMs': n} for n in [1, 2, 3, 4, None]]}},
+        {'type': 'udp_echo', 'success': False, 'errorType': 'timeout', 'details': {'complete': False, 'samples': [{'rttMs': 10}, {'rttMs': None}]}},
+        {'type': 'download', 'success': False, 'errorType': 'timeout'},
+        {'type': 'ndt7_upload', 'success': False, 'errorType': 'network', 'reference': {'stopReason': 'network'}}
+    ], omit_last=True)
+    assert client.post(f'/api/v2/sessions/{first}/complete', headers=auth()).json()['complete']
+    assert client.put('/api/v2/trips/' + trip_id, headers=auth(), json={
+        **trip_body(), 'revision': 2, 'segmentCount': 2, 'state': 'completed', 'phase': 'finished', 'endedAt': 2000
+    }).status_code == 200
+    # Another participant's trip/samples must not enter these statistics.
+    other = 'd' * 32
+    assert client.put('/api/v2/trips/' + other, headers=auth('b'), json=trip_body()).status_code == 200
+    other_sid, other_manifest, other_records = experiment()
+    other_manifest['session']['config'].update(tripId=other, segmentIndex=0)
+    other_records[1]['payload']['type'] = 'icmp_burst'
+    other_records[1]['payload']['details']['samples'][0]['rttMs'] = 5000
+    assert client.put(f'/api/v2/sessions/{other_sid}/manifest', headers=auth('b'), json=other_manifest).status_code == 200
+    assert client.post(f'/api/v2/sessions/{other_sid}/records', headers=auth('b'), json={'records': other_records}).status_code == 200
+    partial = client.get('/api/v2/research/trips', headers=auth('researcher')).json()['items']
+    item = next(t for t in partial if t['id'] == trip_id)
+    assert not item['uploadComplete'] and item['missingSegments'] == [1]
+    assert item['summary']['receivedRecords'] == 10 and item['summary']['expectedRecords'] == 11
+    assert item['summary']['measurements'] == 8
+    assert next(t for t in partial if t['id'] == other)['summary']['measurements'] == 1
+    for _ in range(2):
+        assert client.post(f'/api/v2/sessions/{second}/records', headers=auth(), json={'records': records}).status_code == 200
+    assert client.post(f'/api/v2/sessions/{second}/complete', headers=auth()).json()['complete']
+    item = next(t for t in client.get('/api/v2/research/trips', headers=auth('researcher')).json()['items'] if t['id'] == trip_id)
+    assert item['uploadComplete']
+    summary = item['summary']
+    assert summary['receivedSegments'] == 2
+    assert summary['measurements'] == 9 and summary['failures'] == 4
+    assert summary['receivedRecords'] == summary['expectedRecords'] == 11
+    metrics = {m['type']: m for m in summary['protocols']}
+    assert metrics['icmp_burst']['attempts'] == 2
+    assert metrics['icmp_burst']['sampleCount'] == 7 and metrics['icmp_burst']['replies'] == 6
+    assert metrics['icmp_burst']['medianMs'] == 2.5  # pooled, not mean of burst medians
+    assert metrics['tcp_connect']['sampleCount'] == 1 and metrics['tcp_connect']['medianMs'] == 0
+    assert metrics['traceroute']['reached'] == 1 and metrics['traceroute']['replies'] == 1
+    assert metrics['traceroute']['medianMs'] is None
+    assert metrics['udp_echo']['incompleteBursts'] == 1 and metrics['udp_echo']['timeouts'] == 1
+    assert metrics['download']['attempts'] == 2 and metrics['download']['successful'] == 1
+    assert metrics['ndt7_download']['capped'] == 1 and metrics['ndt7_download']['sampleCount'] == 0
+    assert metrics['ndt7_upload']['failed'] == 1 and metrics['ndt7_upload']['medianMs'] is None
+    assert 'raw' not in json.dumps(summary) and 'callbacks' not in json.dumps(summary)
+    assert client.get('/api/v2/research/trips', headers=auth()).status_code == 403
+    own = client.get('/api/v2/trips', headers=auth('b')).json()['items']
+    assert len(own) == 1 and own[0]['id'] == other and 'summary' not in own[0]
+
+
 def test_trip_csv_metadata_is_additive_and_dictionary_covered():
     data = {'session': {'id': 's', 'config': {}}, 'measurements': [{'id': 'm', 'type': 'tcp_connect'}]}
     historical = list(combined_rows(data))[0]
