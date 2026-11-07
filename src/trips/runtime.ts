@@ -533,6 +533,15 @@ async function loop(signal: AbortSignal) {
           }
         }
         trip!.due = resetProbes(now);
+        const skippedTransferDirections =
+          trip!.pendingTransferPair?.directions.slice() ?? [];
+        for (const type of skippedTransferDirections) {
+          increment(health().expected, type);
+          increment(health().skips, `late_wakeup:${type}`);
+        }
+        // A reserved pair may straddle a suspension. Preserve its charge but do
+        // not replay its remaining direction as soon as the device wakes.
+        trip!.pendingTransferPair = undefined;
         if (trip!.nextTransferAt != null && trip!.nextTransferAt <= now)
           trip!.nextTransferAt = advance(
             trip!.nextTransferAt,
@@ -556,6 +565,7 @@ async function loop(signal: AbortSignal) {
           durationMs: unobserved,
           reason: 'late_control_wakeup',
           skipped,
+          skippedTransferDirections,
           clock: 'wall_and_android_elapsed_realtime',
           power,
         });

@@ -344,6 +344,35 @@ test('resume after the safety ceiling cannot start an overdue probe', async () =
   expect(mockEvents.some((r: any) => r[1] === 'collector_deadline')).toBe(true);
 });
 
+test('a gap discards the remaining reserved transfer direction without refunding it', async () => {
+  const { runProbe } = require('../src/measurements/runProbe');
+  runProbe.mockImplementation(
+    (_: unknown, __: unknown, ___: unknown, signal: AbortSignal) =>
+      new Promise(resolve => {
+        signal.addEventListener(
+          'abort',
+          () => resolve({ success: false, errorType: 'cancelled' }),
+          { once: true },
+        );
+      }),
+  );
+  await startTrip('researcher', {}, true, { includeMlab: false });
+  await jest.advanceTimersByTimeAsync(301000);
+  expect(runProbe).toHaveBeenCalledTimes(1);
+  jest.setSystemTime(Date.now() + 35 * 60000);
+  await jest.advanceTimersByTimeAsync(30000);
+  expect(runProbe).toHaveBeenCalledTimes(1);
+  expect(currentTrip()!.pendingTransferPair).toBeUndefined();
+  expect(currentTrip()!.used.transfers).toBe(6000000);
+  expect(
+    mockEvents.some(
+      (r: any) =>
+        r[1] === 'collector_gap' &&
+        r[2].skippedTransferDirections.includes('upload'),
+    ),
+  ).toBe(true);
+});
+
 test('a discontinuous callback clock invalidates the headline value while retaining reported evidence', async () => {
   const { runDiagnostic } = require('../src/measurements/diagnostics');
   runDiagnostic.mockImplementationOnce(
