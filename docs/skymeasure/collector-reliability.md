@@ -19,7 +19,11 @@ lanes on React Native's JavaScript runtime, not independent operating-system
 processes: suspending that runtime can still pause both lanes.
 
 Minute probes advance from their previous scheduled deadline, with a one-second
-dispatch tolerance. Missed slots are counted and skipped; they are not replayed.
+dispatch tolerance. This controls eligibility, not a guarantee of invocation within
+one second: an already running serialized probe can delay another job. Its
+actual lateness remains visible. Both directions of a transfer pair reference
+the pair's planned slot; upload lateness includes the preceding download.
+Missed slots are counted and skipped; they are not replayed.
 After a control wake-up over 90 seconds late, a `collector_gap` records the
 unobserved interval and skipped slots. Packet deadlines restart with different
 offsets. Overdue transfer opportunities advance to a future slot; an unstarted
@@ -54,7 +58,9 @@ link validation.
 M-Lab retains its native sixty-second watchdog and randomized one-to-three-minute
 initial spacing. Controlled transfers stay at least sixty seconds away from the
 actual completion of a heavy job. A pair retains its reservation and remaining
-direction across segment boundaries. Two consecutive endpoint failures disable
+direction across ordinary segment boundaries. After a collector gap, remaining
+reserved directions are explicitly skipped and their existing charge is retained;
+they are not replayed on wake-up. Two consecutive endpoint failures disable
 that direction for the trip. Boundary cancellations and timing interruptions do
 not count as endpoint failures. No reservation is refunded or silently moved
 between budget categories.
@@ -106,7 +112,11 @@ not multiply the duration by the number of packets.
 Timing-invalid attempts become interrupted with a null headline value. Their
 original samples, callbacks and reported headline value remain available for
 audit. Trip-card timing medians exclude explicitly flagged attempts, while reply
-observations and unsuccessful-parent counts remain visible. Historical attempts
+observations and unsuccessful-parent counts remain visible. The session table
+labels timing evidence and omits flagged headline values, median, p95 and
+successive-difference statistics. Its individual samples and original downloads
+retain the recorded values. Scheduling uses the new scheduler invocation time
+when present and falls back to the historical method timestamp. Historical attempts
 without the new flag retain their prior interpretation. Do not combine clock
 domains or compare boot-relative values across reboots. Android `uptimeMs`
 excludes deep sleep, while `elapsedRealtimeMs` includes it; wall time can change.
@@ -138,8 +148,10 @@ does not replace the per-request deadline. Download tests retain known partial
 progress without inventing throughput. Backend tests verify median exclusions
 without deleting original sample values.
 
-Physical idle/recovery and fifteen-minute boundary checks are being performed
-on the private pilot. A one-hour unplugged endurance test, a dedicated 600 ms
+The [dated physical checks](collector-validation-2026-11-08.md) cover forced
+idle and a screen-locked fifteen-minute boundary, including complete
+post-trip reconciliation. They did not reproduce actual deep sleep while USB
+was connected. A one-hour unplugged endurance test, a dedicated 600 ms
 delay/loss gateway, OEM diversity and actual flights remain separate validation
 requirements. Do not apply traffic shaping to the shared lab host.
 
@@ -147,4 +159,6 @@ requirements. Do not apply traffic shaping to the shared lab host.
 sessions. Stop the trip before invoking instrumentation: Android restarts the
 target application when instrumentation starts. Exported private data stays in
 the app's external-files directory and ignored local `build/` artifacts; it must
-not be committed.
+not be committed. The optional diagnostic companion also exports local queue
+counts and retry deadlines for the stopped session; it never exports
+authentication settings.

@@ -2,7 +2,7 @@
 
 # SkyMeasure
 
-SkyMeasure now includes a participant app and a private researcher workspace around the existing library collector. See the [staging setup guide](docs/skymeasure/setup.md), [delivery and validation record](docs/skymeasure/validation.md), and [combined CSV guide](docs/skymeasure/combined-csv.md).
+SkyMeasure now includes a participant app and a private researcher workspace around the existing library collector. See the [staging setup guide](docs/skymeasure/setup.md), [delivery and validation record](docs/skymeasure/validation.md), and [combined CSV guide](docs/skymeasure/combined-csv.md). The [collector reliability guide](docs/skymeasure/collector-reliability.md) explains planned versus actual timing, collection gaps, transfer progress and segment health.
 
 Participants now tap **Get started**, review research consent, optionally enter flight details, and tap **Start trip**. Supabase anonymous authentication supplies an installation identity in the background; participants provide no email/password. Existing Google accounts retain their records, and researchers keep Google sign-in. Paper/React Navigation, encrypted Keychain credentials and account-owned OP-SQLite storage remain in use.
 

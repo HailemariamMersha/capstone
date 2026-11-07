@@ -1,5 +1,12 @@
 # SkyMeasure implementation and validation — 2026-10-22
 
+## 8 November: collector reliability pilot
+
+See [scheduler policy and record meanings](collector-reliability.md) and the
+[dated physical-phone validation](collector-validation-2026-11-08.md). These
+checks distinguish automated scheduling tests, forced device idle and actual
+unplugged endurance. Older entries below describe their dated builds.
+
 ## 2 November: one-Start M-Lab integration
 
 See [automatic M-Lab validation and APK](automatic-mlab.md). New trip policy is
