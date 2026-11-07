@@ -226,8 +226,8 @@ def complete(session_id: str, a=Depends(account), db: Session = Depends(database
     return {'complete': not missing, 'missing': missing[:50]}
 
 
-def summary(db, s):
-    received, measurements, failures = db.execute(select(
+def summary(db, s, counts=None):
+    received, measurements, failures = counts if counts is not None else db.execute(select(
         func.count(), func.sum(case((Record.kind == 'measurement', 1), else_=0)),
         func.sum(case(((Record.kind == 'measurement') & Record.success.is_(False), 1), else_=0))
     ).where(Record.session_id == s.id)).one()
@@ -239,10 +239,23 @@ def summary(db, s):
             'uploadStatus': 'Uploaded' if s.completed_at else 'Uploading'}
 
 
+def session_summaries(db, sessions):
+    if not sessions:
+        return []
+    counts = {sid: (received, measurements, failures) for sid, received, measurements, failures in db.execute(select(
+        Record.session_id, func.count(),
+        func.sum(case((Record.kind == 'measurement', 1), else_=0)),
+        func.sum(case(((Record.kind == 'measurement') & Record.success.is_(False), 1), else_=0)),
+    ).where(Record.session_id.in_([s.id for s in sessions])).group_by(Record.session_id))}
+    return [summary(db, s, counts.get(s.id, (0, 0, 0))) for s in sessions]
+
+
 @router.get('/sessions')
 def own_sessions(a=Depends(account), db: Session = Depends(database), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
-    values = db.scalars(select(ResearchSession).where(ResearchSession.owner_id == a.user_id).order_by(ResearchSession.collected_at.desc()).offset(offset).limit(limit))
-    return {'items': [summary(db, s) for s in values]}
+    query = select(ResearchSession).where(ResearchSession.owner_id == a.user_id)
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    values = list(db.scalars(query.order_by(ResearchSession.collected_at.desc(), ResearchSession.id).offset(offset).limit(limit)))
+    return {'total': total, 'items': session_summaries(db, values)}
 
 
 def query_sessions(participant=None, protocol=None, outcome=None, q=None, since=None, until=None, collector=None, context=None):
@@ -276,9 +289,9 @@ def research_sessions(a=Depends(researcher), db: Session = Depends(database), of
     if format == 'csv':
         if count > 10000:
             raise HTTPException(422, 'Narrow filters to at most 10000 sessions')
-        rows = [summary(db, s) for s in db.scalars(query)]
+        rows = session_summaries(db, list(db.scalars(query)))
         return Response(csv_text({k: v for k, v in row.items() if k != 'configuration'} for row in rows), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="sessions.csv"'})
-    return {'total': count, 'items': [summary(db, s) for s in db.scalars(query.offset(offset).limit(limit))]}
+    return {'total': count, 'items': session_summaries(db, list(db.scalars(query.offset(offset).limit(limit))))}
 
 
 @router.get('/research/overview')

@@ -136,6 +136,38 @@ def test_ingestion_batches_database_work_and_keeps_retries_idempotent(client):
     assert len(detail['measurements']) == 49
 
 
+def test_session_pages_batch_totals_and_preserve_account_scope(client):
+    with Session(engine()) as db:
+        participant = db.get(Account, 'a').participant_id
+        for i in range(60):
+            sid = f'{i + 512:032x}'
+            db.add(ResearchSession(id=sid, owner_id='a', participant_id=participant,
+                collected_at=f'2026-10-12T12:00:{i:02d}Z', collector_version='batch-test',
+                manifest={'expected': []}, raw={'config': {}}))
+        db.commit()
+        db.add(Record(session_id=f'{561:032x}', kind='measurement', id='e'*32,
+                      version=1, protocol='tcp_connect', success=False, raw={}))
+        db.commit()
+    statements = []
+    def observed(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lower())
+    event.listen(engine(), 'before_cursor_execute', observed)
+    try:
+        for path, who in [('/sessions', 'a'), ('/research/sessions', 'researcher')]:
+            statements.clear()
+            response = client.get(f'/api/v2{path}?offset=10&limit=5', headers=auth(who))
+            assert response.status_code == 200
+            rows = response.json()['items']
+            assert response.json()['total'] == 60
+            assert [row['id'] for row in rows] == [f'{i + 512:032x}' for i in range(49, 44, -1)]
+            assert rows[0]['receivedRecords'] == rows[0]['measurements'] == rows[0]['failures'] == 1
+            assert rows[1]['receivedRecords'] == rows[1]['measurements'] == rows[1]['failures'] == 0
+            assert len([s for s in statements if s.lstrip().startswith('select') and 'from sky_records' in s]) == 1
+        assert client.get('/api/v2/sessions?offset=10&limit=5', headers=auth('b')).json() == {'total': 0, 'items': []}
+    finally:
+        event.remove(engine(), 'before_cursor_execute', observed)
+
+
 def test_deletion_blocks_replay_and_keeps_other_account(client):
     sid, manifest, records = register(client)
     client.post(f'/api/v2/sessions/{sid}/records', json={'records': records}, headers=auth())
