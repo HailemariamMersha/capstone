@@ -47,8 +47,25 @@ class CollectorEvidenceTest {
                         while (rows.moveToNext()) snapshots.put(JSONObject(rows.getString(0)))
                     }
                     session.put("measurementCount", measurements.length())
+                    // Local retry metadata only; never export auth/app settings wholesale.
+                    val upload = JSONObject().put("status", field("upload_status") ?: JSONObject.NULL)
+                    db.rawQuery("SELECT value_json FROM app_settings WHERE key LIKE ?", arrayOf("upload-retry:%:$id")).use { rows ->
+                        if (rows.moveToFirst()) upload.put("sessionRetry", JSONObject(rows.getString(0)))
+                    }
+                    val queue = JSONArray()
+                    db.rawQuery("""SELECT state,COUNT(*),MIN(next_attempt_at),MAX(attempts) FROM sync_queue WHERE
+                        (entity_type='session' AND entity_id=?) OR
+                        (entity_type='measurement' AND entity_id IN (SELECT id FROM measurements WHERE session_id=?)) OR
+                        (entity_type='event' AND entity_id IN (SELECT id FROM connectivity_events WHERE session_id=?)) OR
+                        (entity_type='snapshot' AND entity_id IN (SELECT id FROM network_snapshots WHERE session_id=?)) GROUP BY state""",
+                        arrayOf(id,id,id,id)).use { rows ->
+                        while (rows.moveToNext()) queue.put(JSONObject().put("state",rows.getString(0))
+                            .put("count",rows.getInt(1)).put("nextAttemptAtMs",rows.getLong(2)).put("maxAttempts",rows.getInt(3)))
+                    }
+                    upload.put("queue",queue)
                     File(directory, "$id.json").writeText(JSONObject().put("schemaVersion", 4).put("session", session)
-                        .put("measurements", measurements).put("events", events).put("snapshots", snapshots).toString())
+                        .put("measurements", measurements).put("events", events).put("snapshots", snapshots)
+                        .put("localUploadDiagnostics",upload).toString())
                 }
             }
         }
