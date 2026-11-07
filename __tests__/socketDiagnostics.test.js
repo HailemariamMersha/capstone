@@ -129,6 +129,35 @@ test('UDP cancellation never labels unsent packets as network loss', async () =>
   expect(socket.send).toHaveBeenCalledTimes(1);
 });
 
+test('UDP pipelines probes at 600 ms simulated RTT instead of waiting for each echo', async () => {
+  socket.bind.mockImplementation((_port, _address, done) => done());
+  const sends = [];
+  const started = Date.now();
+  socket.send.mockImplementation((packet, _offset, _length, port, address, done) => {
+    sends.push(Date.now() - started);
+    done();
+    setTimeout(() => socket.emit('message', packet, { port, address }), 600);
+  });
+  const pending = runUdpEcho(
+    attempt,
+    '192.0.2.1',
+    9876,
+    10000,
+    new AbortController().signal,
+  );
+  await jest.advanceTimersByTimeAsync(500);
+  // Three packets are in flight before the first reply can arrive.
+  expect(sends).toEqual([0, 250, 500]);
+  await jest.runAllTimersAsync();
+  expect(await pending).toMatchObject({
+    success: true,
+    value: 600,
+    durationMs: 5350,
+    details: { sentCount: 20, complete: true, lossPercent: 0 },
+  });
+  expect(sends).toHaveLength(20);
+});
+
 test('UDP bind silence cannot hang the scheduler', async () => {
   const pending = runUdpEcho(
     attempt,
