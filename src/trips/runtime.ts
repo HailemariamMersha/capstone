@@ -970,7 +970,9 @@ async function loop(signal: AbortSignal) {
         let outcome = 'deferred_connectivity';
         try {
           if (wifi?.bound && wifi.validated) {
-            await uploadTrip(trip!, true, true, persist);
+            await uploadTrip(trip!, true, true, persist, details =>
+              record('collector_upload_request', details),
+            );
             outcome = 'opportunity_finished';
           }
         } catch {

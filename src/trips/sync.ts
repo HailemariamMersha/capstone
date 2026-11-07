@@ -30,6 +30,7 @@ export async function uploadTrip(
   live: boolean,
   wifi: boolean,
   persist: () => Promise<void>,
+  observe?: (details: Record<string, unknown>) => Promise<void>,
 ) {
   const session = await localSession();
   if (session?.user.id !== t.ownerId) return;
@@ -48,12 +49,53 @@ export async function uploadTrip(
   ): Promise<T> => {
     const text = JSON.stringify(body);
     const reservation = Buffer.byteLength(text, 'utf8') + 65536;
-    if (live && !reserve(t, 'uploads', reservation))
+    const stage = path.startsWith('/trips/')
+      ? 'trip_manifest'
+      : path.split('/').pop();
+    const started = Date.now();
+    if (live && !reserve(t, 'uploads', reservation)) {
+      await observe?.({
+        stage,
+        outcome: 'deferred',
+        reason: 'live_upload_allowance',
+        observedAt: new Date().toISOString(),
+      });
       throw new Error(
         'Live upload allowance exhausted; saved for post-trip Wi-Fi.',
       );
+    }
     if (live) await persist();
-    return api<T>(path, { method, body: text, signal }, owner);
+    try {
+      const result = await api<T>(path, { method, body: text, signal }, owner);
+      await observe?.({
+        stage,
+        outcome: 'received_response',
+        startedAt: new Date(started).toISOString(),
+        endedAt: new Date().toISOString(),
+        durationMs: Date.now() - started,
+        requestBytes: Buffer.byteLength(text, 'utf8'),
+      });
+      return result;
+    } catch (error) {
+      const status = (error as { status?: number })?.status ?? null;
+      await observe?.({
+        stage,
+        outcome: 'pending_retry',
+        startedAt: new Date(started).toISOString(),
+        endedAt: new Date().toISOString(),
+        durationMs: Date.now() - started,
+        status,
+        reason:
+          (error as { code?: string })?.code === 'REQUEST_TIMEOUT'
+            ? 'request_timeout'
+            : signal?.aborted
+            ? 'opportunity_cancelled'
+            : status === 401 || status === 403
+            ? 'authentication_or_access'
+            : 'request_failed',
+      });
+      throw error;
+    }
   };
   const upload = createAccountSync({
     store,

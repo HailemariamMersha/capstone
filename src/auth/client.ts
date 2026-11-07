@@ -307,11 +307,21 @@ export async function api<T>(
           'This account does not have access to that action. Your saved recordings are retained.',
         );
       }
-      throw new Error(
-        `Research service could not complete this request (${response.status}). Your saved data is safe.`,
+      throw Object.assign(
+        new Error(
+          `Research service could not complete this request (${response.status}). Your saved data is safe.`,
+        ),
+        { status: response.status },
       );
     }
     return await response.json();
+  } catch (error) {
+    if (requestDeadline.timedOut())
+      throw Object.assign(
+        new Error('Research request timeout; retry pending.'),
+        { code: 'REQUEST_TIMEOUT' },
+      );
+    throw error;
   } finally {
     requestDeadline.dispose();
   }
