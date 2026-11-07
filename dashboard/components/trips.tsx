@@ -3,6 +3,10 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/client';
 import { Button } from '@/components/ui/button';
+import {
+  TripMeasurementSummary,
+  type TripSummary,
+} from './trip-measurement-summary';
 type Trip = {
   id: string;
   participantId: string;
@@ -27,6 +31,7 @@ type Trip = {
   missingSegments: number[];
   segmentCount: number;
   segments: { index: number; sessionId: string; uploaded: boolean }[];
+  summary?: TripSummary;
 };
 export function Trips({ openSession }: { openSession(id: string): void }) {
   const [confidence, setConfidence] = useState('');
@@ -137,6 +142,11 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
             {(t.used.diagnostics / 1048576).toFixed(2)} MiB; live uploads{' '}
             {(t.used.uploads / 1048576).toFixed(2)} MiB
           </p>
+          <TripMeasurementSummary
+            summary={t.summary}
+            startedAt={t.startedAt}
+            endedAt={t.endedAt}
+          />
           <details>
             <summary>
               Open segment evidence, detection timeline and downloads

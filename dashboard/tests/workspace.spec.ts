@@ -12,7 +12,12 @@ import {
   sampleRows,
   type Evidence,
 } from '../lib/evidence';
-async function signedIn(page: Page, role: string, measurements?: Evidence[]) {
+async function signedIn(
+  page: Page,
+  role: string,
+  measurements?: Evidence[],
+  tripChanges?: Record<string, unknown>,
+) {
   await page.addInitScript(() =>
     localStorage.setItem(
       'sb-skymeasure-test-auth-token',
@@ -97,6 +102,29 @@ async function signedIn(page: Page, role: string, measurements?: Evidence[]) {
               segments: [
                 { index: 0, sessionId: 'a'.repeat(32), uploaded: true },
               ],
+              summary: {
+                receivedSegments: 1,
+                receivedRecords: 2,
+                expectedRecords: 2,
+                measurements: 1,
+                failures: 0,
+                protocols: [
+                  {
+                    type: 'udp_echo',
+                    attempts: 1,
+                    successful: 1,
+                    failed: 0,
+                    timeouts: 0,
+                    capped: 0,
+                    incompleteBursts: 0,
+                    reached: 0,
+                    sampleCount: 2,
+                    replies: 1,
+                    medianMs: 0,
+                  },
+                ],
+              },
+              ...tripChanges,
             },
           ],
         },
@@ -656,6 +684,16 @@ test('trip filters and partial segments preserve the distinction from active pho
       exact: false,
     }),
   ).toBeVisible();
+  const summary = page.getByRole('region', {
+    name: 'Trip measurement summary',
+    exact: true,
+  });
+  await expect(summary.getByRole('row', { name: /^UDP/ })).toContainText(
+    '0 ms RTT',
+  );
+  await expect(
+    summary.getByRole('row', { name: /^M-Lab download/ }),
+  ).toContainText('Not collected in received segments');
   await page.getByLabel('Latest confidence').selectOption('network_only');
   await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
   await page
@@ -665,4 +703,233 @@ test('trip filters and partial segments preserve the distinction from active pho
   await expect(
     page.getByRole('heading', { name: 'Session evidence' }),
   ).toBeVisible();
+});
+
+test('trip cards show pooled results and remain scrollable on a phone', async ({
+  page,
+}) => {
+  const metric = (type: string, values: Record<string, number | null>) => ({
+    type,
+    attempts: 1,
+    successful: 0,
+    failed: 1,
+    timeouts: 0,
+    capped: 0,
+    incompleteBursts: 0,
+    reached: 0,
+    sampleCount: 0,
+    replies: 0,
+    medianMs: null,
+    ...values,
+  });
+  await signedIn(page, 'researcher', undefined, {
+    state: 'completed',
+    phase: 'finished',
+    startedAt: 0,
+    endedAt: 91000168,
+    uploadComplete: true,
+    missingSegments: [],
+    segmentCount: 21,
+    segments: Array.from({ length: 21 }, (_, index) => ({
+      index,
+      sessionId: index.toString(16).padStart(32, '0'),
+      uploaded: true,
+    })),
+    summary: {
+      receivedSegments: 21,
+      receivedRecords: 390,
+      expectedRecords: 390,
+      measurements: 135,
+      failures: 15,
+      protocols: [
+        metric('icmp_burst', {
+          attempts: 32,
+          successful: 31,
+          failed: 1,
+          sampleCount: 320,
+          replies: 311,
+          medianMs: 25.324,
+        }),
+        metric('udp_echo', {
+          attempts: 31,
+          successful: 27,
+          failed: 4,
+          timeouts: 4,
+          incompleteBursts: 4,
+          sampleCount: 595,
+          replies: 576,
+          medianMs: 282.971,
+        }),
+        metric('tcp_connect', {
+          attempts: 31,
+          successful: 31,
+          failed: 0,
+          sampleCount: 31,
+          replies: 31,
+          medianMs: 37.272,
+        }),
+        metric('traceroute', {
+          attempts: 19,
+          successful: 19,
+          failed: 0,
+          reached: 19,
+          sampleCount: 603,
+          replies: 541,
+        }),
+        metric('download', {
+          attempts: 10,
+          successful: 5,
+          failed: 5,
+          timeouts: 5,
+        }),
+        metric('upload', {
+          attempts: 10,
+          successful: 7,
+          failed: 3,
+          timeouts: 3,
+        }),
+        metric('ndt7_download', {}),
+        metric('ndt7_upload', {}),
+      ],
+    },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  const card = page.getByRole('region', {
+    name: 'Trip measurement summary',
+    exact: true,
+  });
+  await expect(card).toContainText('25h 16m');
+  await expect(card).toContainText('135');
+  await expect(card).toContainText('390/390 expected records received');
+  await expect(card.getByRole('row', { name: /^ICMP/ })).toContainText(
+    '311/320 recorded probes replied',
+  );
+  await expect(card.getByRole('row', { name: /^ICMP/ })).toContainText(
+    '25.3 ms RTT',
+  );
+  await expect(card.getByRole('row', { name: /^UDP/ })).toContainText(
+    '4 incomplete bursts',
+  );
+  await expect(card.getByRole('row', { name: /^TCP/ })).toContainText(
+    '31/31 connections succeeded',
+  );
+  await expect(card.getByRole('row', { name: /^TCP/ })).toContainText(
+    '37.3 ms connect',
+  );
+  await expect(card.getByRole('row', { name: /^Traceroute/ })).toContainText(
+    '19/19 traces reported reaching',
+  );
+  await expect(
+    card.getByRole('row', { name: /^Controlled download/ }),
+  ).toContainText('5/10 tests completed; 5 timed out');
+  await expect(
+    card.getByRole('row', { name: /^Controlled upload/ }),
+  ).toContainText('7/10 tests completed; 3 timed out');
+  await expect(
+    card.getByRole('row', { name: /^M-Lab download/ }),
+  ).toContainText('0/1 tests completed; 1 other error');
+  await expect(card.getByRole('row', { name: /^M-Lab upload/ })).toContainText(
+    'Unavailable',
+  );
+  await expect(card).toContainText(
+    'a complete upload does not mean continuous collection',
+  );
+  await page.screenshot({
+    path: '../build/trip-summary-desktop.png',
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const scroll = page.getByRole('region', {
+    name: 'Trip measurement results',
+    exact: true,
+  });
+  await expect(scroll).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  expect(await scroll.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(
+    true,
+  );
+  await scroll.evaluate(el => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  expect(await scroll.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+  await page.screenshot({
+    path: '../build/trip-summary-mobile.png',
+    fullPage: true,
+  });
+});
+
+test('trip summary distinguishes capped speed tests and unavailable summaries', async ({
+  page,
+}) => {
+  await signedIn(page, 'researcher', undefined, {
+    summary: {
+      receivedSegments: 1,
+      receivedRecords: 3,
+      expectedRecords: 4,
+      measurements: 1,
+      failures: 1,
+      protocols: [
+        {
+          type: 'ndt7_download',
+          attempts: 1,
+          successful: 0,
+          failed: 1,
+          timeouts: 0,
+          capped: 1,
+          incompleteBursts: 0,
+          reached: 0,
+          sampleCount: 0,
+          replies: 0,
+          medianMs: null,
+        },
+      ],
+    },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  const row = page.getByRole('row', { name: /^M-Lab download/ });
+  await expect(row).toContainText('1 capped / partial');
+  await expect(row).not.toContainText('other errors');
+  await expect(row).not.toContainText('0 ms');
+  await page.route('**/api/v2/research/trips?**', route =>
+    route.fulfill({
+      json: {
+        total: 1,
+        items: [
+          {
+            id: 'c'.repeat(32),
+            participantId: 'b',
+            state: 'active',
+            phase: 'watching',
+            confidence: 'unconfirmed',
+            provider: null,
+            receivedAt: '2026-11-01T12:30:00Z',
+            startedAt: 0,
+            endedAt: null,
+            firstQualifiedAt: null,
+            reason: null,
+            shadow: true,
+            flight: {},
+            used: { transfers: 0, diagnostics: 0, uploads: 0 },
+            uploadComplete: false,
+            missingSegments: [],
+            segmentCount: 0,
+            segments: [],
+          },
+        ],
+      },
+    }),
+  );
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(
+    page.getByText('Measurement summary unavailable.', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Trip measurement summary', exact: true }),
+  ).toHaveCount(0);
 });
