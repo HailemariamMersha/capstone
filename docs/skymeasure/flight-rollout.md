@@ -32,6 +32,43 @@ Do not retire the DigitalOcean rollback host or change unrelated lab application
 
 Downloads use HTTPS with Account ID/license authentication and follow the vendor’s HTTPS download redirect without forwarding credentials to a different host. [MaxMind documents the download and update requirements](https://dev.maxmind.com/geoip/updating-databases/). ASN data alone cannot establish an airborne aircraft or the server’s physical location.
 
+### Live ASN activation — 8 November 2026
+
+ASN lookup is enabled on the lab server. Preparation on 6 November installed
+the repository's checksum-verified updater units and validated them with
+`systemd-analyze verify`. After the operator saved credentials, the updater
+successfully downloaded GeoLite2-ASN. Its build timestamp is
+`2026-11-07T08:15:31Z` (epoch `1794039331`); the validated database is 9,063,808
+bytes. Lookups as the `skymeasure` service user returned AS15169 for `8.8.8.8`
+and AS13335 for `1.1.1.1`.
+
+`geoip2==5.3.0` remains in SkyMeasure's isolated Python environment. The data
+directory is owned by `skymeasure` with mode `0750`, the database is `0640`,
+and `/etc/skymeasure/maxmind.env` remains root-owned with mode `0600`.
+Account/license values are not stored in Git, the API environment, mobile
+builds or this validation record.
+
+The API environment now includes
+`CAPSTONE_ASN_DB=/var/lib/skymeasure/geoip/GeoLite2-ASN.mmdb`. Its previous
+configuration was backed up under root-only `/etc/skymeasure/backups` before
+restarting only `skymeasure-api.service`. UDP's main PID and active timestamp
+were unchanged. The daily update timer is enabled and active; the first
+scheduled refresh remains to be observed. Failed updates retain the previous
+database, and the existing API freshness check returns unknown for stale data.
+
+Public HTTPS health and context requests returned HTTP 200. The test
+connection resolved to AS12 (New York University), with `asnUnavailable=null`
+and the expected probe-protocol header. A request supplying forged
+`Forwarded`, `X-Forwarded-For` and `X-Real-IP` values retained the same observed
+address and ASN. The backend context test passed. These checks exercise the
+server endpoint, not a new physical-phone collection or a real flight.
+
+No APK update is required. Existing app builds obtain ASN on their next
+network-context refresh; historical null values remain unchanged. A ground
+network's ASN is useful context without being positive flight-provider
+evidence. Starlink PTR/PoP enrichment remains conditional on AS14593 and has
+not been validated on a live Starlink connection by this activation.
+
 
 ## Private pilot build — 2026-11-02
 
@@ -41,7 +78,7 @@ Verified on the connected Samsung Galaxy A34: release installation, anonymous en
 
 Automated checks: 220 Jest tests; 39 Python tests (one optional PostgreSQL integration test skipped); 13 browser tests; mobile/dashboard TypeScript checks; Android ARM64 release build. The saved ten-minute export regression still agrees with 41 measurements, 232 samples and 246 combined rows. Lint has no errors; two existing nested-component warnings remain in the app shell.
 
-On 2026-11-01 the isolated API deployment and additive trip tables were applied. Database grants/RLS inspection found no research-table access for Supabase `anon`/`authenticated` roles. External HTTPS checks rejected unauthenticated trip access and ignored forged forwarding headers. ASN lookup remains explicitly unavailable until the operator configures MaxMind. Recents removal, reboot, captive-Wi-Fi protocol routing, CAPTCHA, real-flight detection and identity deletion remain unvalidated. A successful locked-screen ground run does not establish behavior across all Android vendors.
+On 2026-11-01 the isolated API deployment and additive trip tables were applied. Database grants/RLS inspection found no research-table access for Supabase `anon`/`authenticated` roles. External HTTPS checks rejected unauthenticated trip access and ignored forged forwarding headers. ASN lookup was unavailable at that deployment; it was activated on 8 November as recorded above. Recents removal, reboot, captive-Wi-Fi protocol routing, CAPTCHA, real-flight detection and identity deletion remain unvalidated. A successful locked-screen ground run does not establish behavior across all Android vendors.
 
 The final API release `flight-20261102-fe8eb6a` passed loopback health/auth checks before promotion. External validation passed HTTPS, 1 MiB download, 256 KiB upload, 20/20 bounded UDP echoes, invalid-token rejection, disabled legacy ingestion, dashboard CORS and forwarded-header spoof rejection. The Vercel deployment serves the new enrollment page and flight guide. The original SkyMeasure release and DigitalOcean host remain available for rollback.
 
