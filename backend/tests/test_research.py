@@ -7,7 +7,7 @@ import pytest
 from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, event
 from backend.app import app
 from backend.research.auth import identity
 from backend.research.api import CONSENT_VERSION
@@ -103,6 +103,37 @@ def test_atomic_rejection_and_parent_validation(client):
         assert list(db.scalars(select(Record))) == []
     manifest['expected'].append(manifest['expected'][0])
     assert client.put(f'/api/v2/sessions/{sid}/manifest', json=manifest, headers=auth()).status_code == 422
+
+
+def test_ingestion_batches_database_work_and_keeps_retries_idempotent(client):
+    sid, manifest, records = experiment()
+    for index in range(48):
+        mid = f'{index + 256:032x}'
+        records.append({'id': mid, 'type': 'measurement', 'version': 1,
+                        'payload': {'id': mid, 'sessionId': sid, 'type': 'tcp_connect',
+                                    'success': True, 'details': {'samples': [{'rttMs': 0}]}}})
+    manifest['expected'] = [{k: r[k] for k in ('id', 'type', 'version')} for r in records]
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', json=manifest, headers=auth()).status_code == 200
+    statements = []
+    def observed(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lower())
+    event.listen(engine(), 'before_cursor_execute', observed)
+    try:
+        for _ in range(2):
+            statements.clear()
+            response = client.post(f'/api/v2/sessions/{sid}/records', json={'records': records}, headers=auth())
+            assert response.status_code == 200
+            assert len(response.json()['acknowledged']) == 50
+            # A 50-record window must not require 50 separate remote lookups
+            # or flushes; this protects the short foreground upload opportunity.
+            assert len([s for s in statements if s.lstrip().startswith('select') and 'from sky_records' in s]) == 1
+            assert len([s for s in statements if s.lstrip().startswith('insert into sky_records')]) <= 1
+    finally:
+        event.remove(engine(), 'before_cursor_execute', observed)
+    assert client.post(f'/api/v2/sessions/{sid}/complete', headers=auth()).json()['complete'] is True
+    detail = client.get(f'/api/v2/research/sessions/{sid}', headers=auth('researcher')).json()
+    assert detail['receipt']['receivedRecords'] == 50
+    assert len(detail['measurements']) == 49
 
 
 def test_deletion_blocks_replay_and_keeps_other_account(client):

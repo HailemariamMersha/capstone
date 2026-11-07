@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from sqlalchemy import select, delete, func, or_, case
+from sqlalchemy import select, delete, func, or_, case, tuple_
 from sqlalchemy.orm import Session
 from .database import Account, ResearchSession, Record, Sample, ResearchTrip, TripSegment, database, now
 from .auth import account, researcher, administrator, identity
@@ -173,6 +173,13 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
 def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depends(database)):
     s = owned(db, session_id, a, lock=True)
     expected = {(r['type'], r['id']): r['version'] for r in s.manifest['expected']}
+    # The session lock serializes ingestion/reconciliation. Fetch this bounded
+    # batch once, before adding rows: per-record db.get() also autoflushed every
+    # preceding insert, multiplying remote PostgreSQL round trips.
+    existing = {(r.kind, r.id): r for r in db.scalars(select(Record).where(
+        Record.session_id == session_id,
+        tuple_(Record.kind, Record.id).in_([(r.type, r.id) for r in body.records]),
+    ))}
     seen = set()
     for item in body.records:
         key = (item.type, item.id)
@@ -185,7 +192,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
             raise HTTPException(422, 'Payload belongs to another session')
         if item.type == 'session' and item.payload != s.raw:
             raise HTTPException(409, 'Session differs from manifest')
-        old = db.get(Record, (session_id, item.type, item.id))
+        old = existing.get(key)
         if old:
             if old.version != item.version or old.raw != item.payload:
                 raise HTTPException(409, 'Conflicting record version')
