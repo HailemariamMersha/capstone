@@ -9,6 +9,10 @@ import android.net.wifi.WifiManager
 import android.location.LocationManager
 import android.content.Context
 import android.os.Build
+import android.os.PowerManager
+import android.os.SystemClock
+import android.content.Intent
+import android.provider.Settings
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.network.OkHttpClientProvider
@@ -21,6 +25,26 @@ class FlightNetworkModule(private val context: ReactApplicationContext) : ReactC
     override fun getName() = "FlightNetwork"
     @ReactMethod fun addListener(name: String) {}
     @ReactMethod fun removeListeners(count: Int) {}
+    /** Lifecycle/clock evidence only; no location or participant traffic capture. */
+    @ReactMethod fun runtimeState(promise: Promise) {
+        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val result = Arguments.createMap()
+        result.putDouble("wallTimeMs", System.currentTimeMillis().toDouble())
+        result.putDouble("elapsedRealtimeMs", SystemClock.elapsedRealtime().toDouble())
+        result.putDouble("uptimeMs", SystemClock.uptimeMillis().toDouble())
+        result.putBoolean("powerSave", power.isPowerSaveMode)
+        result.putBoolean("deviceIdle", power.isDeviceIdleMode)
+        result.putBoolean("interactive", power.isInteractive)
+        result.putBoolean("batteryExempt", power.isIgnoringBatteryOptimizations(context.packageName))
+        result.putInt("processId", android.os.Process.myPid())
+        promise.resolve(result)
+    }
+    @ReactMethod fun openBatterySettings(promise: Promise) {
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            promise.resolve(null)
+        } catch (e: Exception) { promise.reject("SETTINGS", "Battery settings unavailable", e) }
+    }
     private fun changed(network: Network, lost: Boolean = false, kind: String = "available") {
         val event = Arguments.createMap()
         event.putString("handle", network.networkHandle.toString())

@@ -31,6 +31,10 @@ export async function runFileDownload(
   // The scheduler serializes downloads. A stable path also bounds leftovers after process loss.
   const path = `${fs.CachesDirectoryPath}/capstone-probe-download.bin`;
   let jobId: number | undefined;
+  const wallStarted = Date.now();
+  let observedBytes: number | null = null;
+  let stage = 'connecting';
+  let headersAfterMs: number | undefined;
   let failure: { kind: ProbeErrorType; message: string } | undefined;
   const stop = (kind: ProbeErrorType, message: string) => {
     failure ??= { kind, message };
@@ -58,9 +62,12 @@ export async function runFileDownload(
       },
       cacheable: false,
       connectionTimeout: Math.min(config.timeoutMs, 10000),
-      readTimeout: Math.min(config.timeoutMs, 10000),
+      readTimeout: Math.min(config.timeoutMs, 30000),
       progressInterval: 250,
       begin: response => {
+        result.httpStatus = response.statusCode;
+        headersAfterMs = Date.now() - wallStarted;
+        stage = 'body';
         if (response.statusCode < 200 || response.statusCode >= 300) {
           stop('http', `Probe server returned HTTP ${response.statusCode}.`);
         } else if (
@@ -88,6 +95,7 @@ export async function runFileDownload(
         }
       },
       progress: response => {
+        observedBytes = response.bytesWritten;
         if (response.bytesWritten > config.downloadBytes)
           stop('invalid_response', 'Download exceeded its requested size.');
       },
@@ -97,6 +105,7 @@ export async function runFileDownload(
     // Wait for the native worker to settle before deleting its file or starting another probe.
     const response = await task.promise;
     result.httpStatus = response.statusCode;
+    observedBytes = response.bytesWritten;
     result.probeRegion = header(response.headers, 'X-Probe-Region') ?? null;
     result.durationMs = clock.now() - started;
     if (failure) throw new Error(failure.message);
@@ -129,13 +138,29 @@ export async function runFileDownload(
       errorMessage: null,
       transferredBytes: response.bytesWritten,
       value: (response.bytesWritten * 8) / (result.durationMs * 1000),
+      transfer: {
+        stage: 'completed',
+        observedBytes,
+        bytesScope: 'download_file_written',
+        timeoutMs: config.timeoutMs,
+        headersAfterMs,
+        wallDurationMs: Date.now() - wallStarted,
+      },
     };
   } catch (error) {
     return {
       ...result,
       success: false,
       value: null,
-      transferredBytes: null,
+      transferredBytes: observedBytes,
+      transfer: {
+        stage,
+        observedBytes,
+        bytesScope: 'download_file_written',
+        timeoutMs: config.timeoutMs,
+        headersAfterMs,
+        wallDurationMs: Date.now() - wallStarted,
+      },
       durationMs: Math.max(0, clock.now() - started),
       errorType: failure?.kind ?? 'network',
       errorMessage:

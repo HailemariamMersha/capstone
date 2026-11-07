@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import {
   PermissionsAndroid,
   Platform,
+  NativeModules,
+  AppState,
   ScrollView,
   View,
   StyleSheet,
@@ -51,6 +53,19 @@ export default function FlightHome({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shadow, setShadow] = useState(false);
+  const [includeMlab, setIncludeMlab] = useState(true);
+  const [batteryExempt, setBatteryExempt] = useState<boolean | null>(null);
+  useEffect(() => {
+    const refresh = () =>
+      NativeModules.FlightNetwork?.runtimeState?.()
+        .then((state: { batteryExempt: boolean }) =>
+          setBatteryExempt(state.batteryExempt),
+        )
+        .catch(() => {});
+    refresh();
+    const listener = AppState.addEventListener('change', refresh);
+    return () => listener.remove();
+  }, []);
   useEffect(() => {
     const update = () => {
       const saved = currentTrip();
@@ -89,7 +104,8 @@ export default function FlightHome({
             'Allow precise location and notifications to start your trip.',
           );
         }
-        await startTrip(owner, details, shadow);
+        if (shadow) await startTrip(owner, details, true, { includeMlab });
+        else await startTrip(owner, details, false);
       }
     } catch (e) {
       setError(
@@ -248,6 +264,32 @@ export default function FlightHome({
             Detector shadow mode: {shadow ? 'on' : 'off'}
           </Button>
           <Button onPress={manual}>Researcher manual collection</Button>
+          {shadow && (
+            <Button onPress={() => setIncludeMlab(value => !value)}>
+              Include M-Lab in shadow test: {includeMlab ? 'on' : 'off'}
+            </Button>
+          )}
+          <Text variant="bodySmall">
+            Background battery access:{' '}
+            {batteryExempt == null
+              ? 'unavailable'
+              : batteryExempt
+              ? 'unrestricted'
+              : 'optimized'}
+            . For the locked-phone test, allow unrestricted battery use for
+            SkyMeasure.
+          </Text>
+          <Button
+            onPress={() =>
+              NativeModules.FlightNetwork?.openBatterySettings?.().catch(() =>
+                setError(
+                  'Open Android Settings → Battery to adjust background access.',
+                ),
+              )
+            }
+          >
+            Background battery settings
+          </Button>
         </View>
       )}
     </ScrollView>

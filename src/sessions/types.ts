@@ -1,6 +1,7 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  collectorPolicy?: typeof import('../trips/scheduler').COLLECTOR_POLICY;
   flightPolicy?: import('../trips/model').Trip['policy'];
   mlabPolicy?: {
     consentVersion: string;

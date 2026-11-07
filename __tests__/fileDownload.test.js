@@ -35,6 +35,34 @@ function filesystem(promise = Promise.resolve(response)) {
 }
 afterEach(() => jest.useRealTimers());
 
+test('a failed download retains observed file progress without a capacity claim', async () => {
+  let reject;
+  const fs = filesystem(
+    new Promise((_, fail) => {
+      reject = fail;
+    }),
+  );
+  const pending = runFileDownload(attempt, config, undefined, clock(), fs);
+  const options = fs.downloadFile.mock.calls[0][0];
+  options.begin({
+    statusCode: 200,
+    headers,
+    contentLength: config.downloadBytes,
+  });
+  options.progress({ bytesWritten: 12345 });
+  reject(new Error('connection lost'));
+  expect(await pending).toMatchObject({
+    success: false,
+    value: null,
+    transferredBytes: 12345,
+    transfer: {
+      stage: 'body',
+      observedBytes: 12345,
+      bytesScope: 'download_file_written',
+    },
+  });
+});
+
 test('large download streams to a cache file and verifies exact native byte count', async () => {
   const fs = filesystem();
   const result = await runFileDownload(attempt, config, undefined, clock(), fs);

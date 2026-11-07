@@ -4,7 +4,19 @@ import {
   MLAB_RESERVATION,
   MLAB_CONSENT,
 } from '../reference/tripMlab';
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import { NativeModules, NativeEventEmitter, AppState } from 'react-native';
+import { deadline } from '../services/deadline';
+import {
+  COLLECTOR_POLICY,
+  INTERVALS,
+  advance,
+  takeDue,
+  resetProbes,
+  transferTimeout,
+  newHealth,
+  increment,
+  type ScheduledProbe,
+} from './scheduler';
 import DeviceInfo from 'react-native-device-info';
 import { measurementStore as store } from '../storage/database';
 import { acquireActivity, setTripArmed } from '../services/activityGate';
@@ -39,7 +51,11 @@ interface Wifi {
   bound: boolean;
 }
 const native = NativeModules.FlightNetwork as
-  | { bindWifi(): Promise<Wifi | null>; release(): Promise<void> }
+  | {
+      bindWifi(): Promise<Wifi | null>;
+      release(): Promise<void>;
+      runtimeState?(): Promise<Record<string, number | boolean>>;
+    }
   | undefined;
 const executor = createBackgroundExecutor(true);
 let trip: Trip | null = null;
@@ -86,60 +102,118 @@ export function tripServiceStatus(): ServiceStatus | null {
     error: lastError,
   };
 }
-async function persist() {
-  if (trip) {
-    trip.revision++;
-    await store.saveTrip(trip);
-    publish();
-  }
+let persistenceLane: Promise<unknown> = Promise.resolve();
+let segmentLane: Promise<unknown> = Promise.resolve();
+function withSegment<T>(
+  task: (id: string) => Promise<T>,
+): Promise<T | undefined> {
+  const work = segmentLane.then(() => (segment ? task(segment) : undefined));
+  segmentLane = work.catch(() => {});
+  return work;
 }
-const config = (): MeasurementConfig => ({
+async function persist() {
+  if (!trip) return;
+  trip.revision++;
+  const snapshot = JSON.parse(JSON.stringify(trip)) as Trip;
+  const work = persistenceLane.then(() => store.saveTrip(snapshot));
+  persistenceLane = work.catch(() => {});
+  await work;
+  publish();
+}
+async function record(kind: string, details: Record<string, unknown>) {
+  await withSegment(async id => {
+    await store.addEvent(id, kind, details);
+    return true;
+  }).then(async written => {
+    if (written || !trip) return;
+    const queue = (trip.pendingControlEvents ??= []);
+    if (queue.length < 64) queue.push({ kind, details });
+    else {
+      const last = queue[63];
+      queue[63] = {
+        kind: 'collector_buffer_overflow',
+        details: {
+          droppedEvents:
+            last.kind === 'collector_buffer_overflow'
+              ? Number(last.details.droppedEvents) + 1
+              : 2,
+        },
+      };
+    }
+    await persist();
+  });
+}
+const config = (t = trip!): MeasurementConfig => ({
   ...participantDefaults,
+  collectorVersion: 'skymeasure-libraries-2',
+  collectorPolicy: COLLECTOR_POLICY,
+  streamDownloads: true,
   httpEnabled: true,
   referenceByteThreshold: 90 * 1048576,
   maxDurationMs: TRIP_POLICY.maximumMs,
   maxPayloadBytes:
-    trip!.policy.transferBytes +
-    trip!.policy.diagnosticBytes +
-    trip!.policy.liveUploadBytes,
+    t.policy.transferBytes +
+    t.policy.diagnosticBytes +
+    t.policy.liveUploadBytes,
   downloadBytes: TRIP_POLICY.downloadBytes,
   uploadBytes: TRIP_POLICY.uploadBytes,
   tracerouteMaxHops: 20,
   loadedLatencyEnabled: false,
-  tripId: trip!.id,
-  segmentIndex: trip!.segmentCount,
-  flight: trip!.flight,
-  flightPolicy: trip!.policy,
-  mlabPolicy: trip!.mlab
+  tripId: t.id,
+  segmentIndex: t.segmentCount,
+  flight: t.flight,
+  flightPolicy: t.policy,
+  mlabPolicy: t.mlab
     ? {
-        consentVersion: trip!.mlab.consentVersion,
+        consentVersion: t.mlab.consentVersion,
         reservationBytes: MLAB_RESERVATION,
         byteThresholdPerDirection: 90 * 1048576,
         maximumPairsPerTrip: 1,
         maximumPairsPerDay: 4,
       }
     : undefined,
-  collectionMode: trip!.shadow ? 'detector_shadow' : 'flight_auto',
+  collectionMode: t.shadow ? 'detector_shadow' : 'flight_auto',
 });
 async function openSegment() {
   if (!trip) return;
-  segment = await store.createSession(config(), undefined, trip.ownerId);
-  trip.segmentCount++;
-  await persist();
+  // Only the worker opens/closes; control writes take the same lane.
+  const work = segmentLane.then(async () => {
+    if (!trip) return;
+    segment = await store.createSession(config(), undefined, trip.ownerId);
+    trip.segmentCount++;
+    trip.segmentHealth = newHealth();
+    const buffered = trip.pendingControlEvents ?? [];
+    for (const event of buffered)
+      await store.addEvent(segment, event.kind, {
+        ...event.details,
+        bufferedDuringUpload: true,
+      });
+    trip.pendingControlEvents = [];
+    await persist();
+  });
+  segmentLane = work.catch(() => {});
+  await work;
 }
 async function closeSegment(reason: string) {
-  if (!segment || !trip) return;
-  await store.addEvent(segment, 'trip_segment_closed', {
-    tripId: trip.id,
-    reason,
-    budgets: { ...trip.used },
+  await withSegment(async id => {
+    if (!trip) return;
+    await store.addEvent(id, 'segment_health', {
+      policyVersion: COLLECTOR_POLICY.version,
+      ...trip.segmentHealth,
+      observedEndAt: new Date().toISOString(),
+    });
+    await store.addEvent(id, 'trip_segment_closed', {
+      tripId: trip.id,
+      reason,
+      budgets: { ...trip.used },
+    });
+    await store.endSession(
+      id,
+      trip.state === 'interrupted' ? 'interrupted' : 'completed',
+      reason,
+    );
+    segment = null;
   });
-  await store.endSession(
-    segment,
-    trip.state === 'interrupted' ? 'interrupted' : 'completed',
-    reason,
-  );
-  segment = null;
 }
 function wait(ms: number, signal: AbortSignal) {
   return new Promise<void>(resolve => {
@@ -178,6 +252,26 @@ export async function recoverTrips(owner: string, startup = false) {
       saved.segmentCount,
       ...indices.map(i => i + 1),
     );
+    if (saved.pendingControlEvents?.length) {
+      const recovered = await store.createSession(
+        config(saved),
+        undefined,
+        owner,
+      );
+      for (const event of saved.pendingControlEvents)
+        await store.addEvent(recovered, event.kind, {
+          ...event.details,
+          bufferedDuringUpload: true,
+          recoveredAfterInterruption: true,
+        });
+      await store.endSession(
+        recovered,
+        'interrupted',
+        'buffered_control_evidence_recovered',
+      );
+      saved.segmentCount++;
+      saved.pendingControlEvents = [];
+    }
     saved.state = 'interrupted';
     saved.phase = 'finished';
     saved.endedAt = Date.now();
@@ -190,6 +284,7 @@ export async function startTrip(
   owner: string,
   flight: FlightDetails,
   shadow = false,
+  options: { includeMlab?: boolean } = {},
 ) {
   if (tripRunning()) throw new Error('A trip is already running.');
   const details = flightDetails(flight);
@@ -243,12 +338,18 @@ export async function startTrip(
       nextUploadAt: now + 900000,
       due: {},
       shadow,
-      mlab: {
-        consentVersion: MLAB_CONSENT,
-        dueAt: null,
-        reserved: false,
-        status: 'waiting_for_connectivity',
-      },
+      collectorPolicy: COLLECTOR_POLICY.version,
+      pendingControlEvents: [],
+      transferFailures: { download: 0, upload: 0 },
+      mlab:
+        shadow && options.includeMlab === false
+          ? undefined
+          : {
+              consentVersion: MLAB_CONSENT,
+              dueAt: null,
+              reserved: false,
+              status: 'waiting_for_connectivity',
+            },
     };
     count = 0;
     latest = null;
@@ -258,7 +359,9 @@ export async function startTrip(
     await openSegment();
     await executor.start(
       () => {
-        if (segment) store.touchSession(segment).catch(() => abort?.abort());
+        withSegment(sessionId => store.touchSession(sessionId)).catch(() =>
+          abort?.abort(),
+        );
       },
       () => abort?.abort(),
     );
@@ -277,6 +380,8 @@ export async function startTrip(
             trip.endedAt ??= Date.now();
             if (trip.state === 'active') trip.state = 'completed';
             trip.reason ??= 'participant_stop';
+            if (!segment && trip.pendingControlEvents?.length)
+              await openSegment();
             await closeSegment(trip.reason);
             await persist();
           }
@@ -329,10 +434,18 @@ export async function stopTrip() {
   cancelTripUpload();
   await running;
 }
+
 async function loop(signal: AbortSignal) {
+  const stop = new AbortController();
+  let controlWake = new AbortController(),
+    workerWake = new AbortController();
+  let identityAbort: AbortController | null = null;
+  let wifi: Wifi | null = null;
+  let snapshot: NetworkSnapshot | null = null;
   let gps: GpsEvidence | null = null;
   let gpsAt = -Infinity,
-    identityAt = -Infinity;
+    identityAt = -Infinity,
+    identityDue = 0;
   let identity: {
     publicIp?: string;
     asn?: number;
@@ -340,9 +453,36 @@ async function loop(signal: AbortSignal) {
     popCode?: string;
     asnUnavailable?: string;
   } = {};
-  let handle: string | null = null;
-  let wake = new AbortController();
-  const listener = new NativeEventEmitter(
+  let lastControlAt = Date.now(),
+    lastElapsed: number | null = null;
+  let power: Record<string, number | boolean> | null = null;
+  let rotating = false,
+    recoveringGap = false;
+  let lastHeavyEnd = -Infinity;
+  let activity = 'idle';
+  const iso = (at = Date.now()) => new Date(at).toISOString();
+  const health = () => (trip!.segmentHealth ??= newHealth());
+  const ended = () =>
+    signal.aborted || stop.signal.aborted || !trip || trip.phase === 'finished';
+  const cancel = () => {
+    stop.abort();
+    probeAbort?.abort();
+    identityAbort?.abort();
+    cancelTripUpload();
+    controlWake.abort();
+    workerWake.abort();
+  };
+  const fail = () => {
+    lastError = 'Collection interrupted; saved observations are retained.';
+    if (trip) {
+      trip.state = 'interrupted';
+      trip.phase = 'finished';
+      trip.reason = 'collector_error';
+    }
+    cancel();
+  };
+  signal.addEventListener('abort', cancel);
+  const networkListener = new NativeEventEmitter(
     NativeModules.FlightNetwork,
   ).addListener(
     'flightNetworkChanged',
@@ -350,69 +490,199 @@ async function loop(signal: AbortSignal) {
       if (event?.kind !== 'capabilities') {
         identity = {};
         identityAt = -Infinity;
-      }
-      if (trip && event?.lost && event.handle === handle) {
-        trip.qualifiedKey = null;
-        trip.candidateKey = null;
-        trip.candidateAt = null;
-      }
-      if (event?.kind !== 'capabilities') {
+        identityDue = 0;
+        gps = null;
         probeAbort?.abort();
+        identityAbort?.abort();
         cancelTripUpload();
       }
-      wake.abort();
+      controlWake.abort();
+      workerWake.abort();
     },
   );
-  const cancellation = () => {
-    probeAbort?.abort();
-    wake.abort();
-  };
-  signal.addEventListener('abort', cancellation);
-  try {
-    while (!signal.aborted && trip && trip.phase !== 'finished') {
-      wake = new AbortController();
-      const cycleAt = Date.now();
-      const wifi = await native!.bindWifi().catch(() => null);
-      if (wifi?.handle !== handle) {
+  const appListener = AppState?.addEventListener?.('change', state => {
+    record('collector_lifecycle', { state, observedAt: iso() }).catch(fail);
+    controlWake.abort();
+    workerWake.abort();
+  });
+
+  async function control() {
+    let nextTick = Date.now();
+    while (!ended()) {
+      controlWake = new AbortController();
+      const now = Date.now();
+      power = (await native!.runtimeState?.().catch(() => null)) ?? null;
+      const elapsed =
+        typeof power?.elapsedRealtimeMs === 'number'
+          ? power.elapsedRealtimeMs
+          : null;
+      const unobserved = Math.max(
+        now - lastControlAt,
+        elapsed != null && lastElapsed != null ? elapsed - lastElapsed : 0,
+      );
+      if (unobserved > COLLECTOR_POLICY.gapMs) {
+        recoveringGap = true;
+        probeAbort?.abort();
+        const skipped: Record<string, number> = {};
+        for (const [type, interval] of Object.entries(INTERVALS)) {
+          const due = trip!.due[type];
+          if (due != null && due <= now) {
+            skipped[type] = Math.floor((now - due) / interval) + 1;
+            increment(health().expected, type, skipped[type]);
+            increment(health().skips, `late_wakeup:${type}`, skipped[type]);
+          }
+        }
+        trip!.due = resetProbes(now);
+        if (trip!.nextTransferAt != null && trip!.nextTransferAt <= now)
+          trip!.nextTransferAt = advance(
+            trip!.nextTransferAt,
+            now,
+            Math.max(
+              300000,
+              ((trip!.flight.expectedMinutes ?? 1440) * 60000) / 10,
+            ),
+          );
+        if (
+          trip!.mlab &&
+          !trip!.mlab.reserved &&
+          (trip!.mlab.dueAt ?? Infinity) <= now
+        )
+          trip!.mlab.dueAt = now + 60000 + Math.floor(Math.random() * 120000);
+        health().gaps++;
+        health().unobservedMs += unobserved;
+        await record('collector_gap', {
+          startedAt: iso(lastControlAt),
+          endedAt: iso(now),
+          durationMs: unobserved,
+          reason: 'late_control_wakeup',
+          skipped,
+          clock: 'wall_and_android_elapsed_realtime',
+          power,
+        });
+        recoveringGap = false;
+      }
+      lastControlAt = now;
+      lastElapsed = elapsed;
+      // Check before network work and before any resumed probe. A suspension can
+      // delay handling; record the real handling time rather than backdating it.
+      if (now >= trip!.startedAt + trip!.policy.maximumMs) {
+        trip!.phase = 'finished';
+        trip!.state = 'completed';
+        trip!.reason = 'safety_ceiling';
+        trip!.endedAt = now;
+        await record('collector_deadline', {
+          scheduledAt: iso(trip!.startedAt + trip!.policy.maximumMs),
+          handledAt: iso(now),
+          latenessMs: now - trip!.startedAt - trip!.policy.maximumMs,
+        });
+        probeAbort?.abort();
+        workerWake.abort();
+        break;
+      }
+      const selected = await native!.bindWifi().catch(() => null);
+      if (selected?.handle !== wifi?.handle) {
         identity = {};
         identityAt = -Infinity;
+        identityDue = 0;
         gps = null;
-        handle = wifi?.handle ?? null;
+        await record('collector_route', {
+          previousHandle: wifi?.handle ?? null,
+          selectedHandle: selected?.handle ?? null,
+          observedAt: iso(),
+        });
       }
+      wifi = selected;
       if (
         wifi?.bound &&
-        Date.now() - identityAt >= 60000 &&
-        reserve(trip, 'diagnostics', 2048)
+        Date.now() >= identityDue &&
+        !uploading &&
+        !rotating &&
+        reserve(trip!, 'diagnostics', 2048)
       ) {
-        identityAt = Date.now();
-        identity = {};
-        await persist();
-        probeAbort = new AbortController();
-        const timer = setTimeout(() => probeAbort?.abort(), 3000);
+        const handle = wifi.handle,
+          requestedAt = Date.now();
+        const requestDeadline = deadline(
+          COLLECTOR_POLICY.identityTimeoutMs,
+          stop.signal,
+        );
+        identityAbort = new AbortController();
+        const interrupt = () => identityAbort?.abort();
+        requestDeadline.signal.addEventListener('abort', interrupt);
+        let reason = 'network_error';
         try {
-          const result = await fetch(
+          const response = await fetch(
             `${participantDefaults.serverUrl}/api/v1/context`,
             {
-              signal: probeAbort.signal,
+              signal: identityAbort.signal,
               headers: { 'Cache-Control': 'no-cache', Connection: 'close' },
             },
           );
-          if (result.ok && result.headers.get('X-Capstone-Probe') === '1') {
-            const raw = await result.text();
+          reason = response.ok ? 'invalid_response' : `http_${response.status}`;
+          if (response.ok && response.headers.get('X-Capstone-Probe') === '1') {
+            const text = await response.text();
             if (
-              raw.length <= 2048 &&
-              !probeAbort.signal.aborted &&
+              text.length <= 2048 &&
+              !identityAbort.signal.aborted &&
               (await native!.bindWifi())?.handle === handle
-            )
-              identity = JSON.parse(raw);
+            ) {
+              const value = JSON.parse(text);
+              if (
+                value &&
+                typeof value === 'object' &&
+                (value.asn == null || Number.isSafeInteger(value.asn))
+              ) {
+                identity = {
+                  publicIp:
+                    typeof value.publicIp === 'string'
+                      ? value.publicIp
+                      : undefined,
+                  asn: value.asn ?? undefined,
+                  popCode:
+                    typeof value.popCode === 'string'
+                      ? value.popCode
+                      : undefined,
+                  reverseDns:
+                    typeof value.reverseDns === 'string'
+                      ? value.reverseDns
+                      : undefined,
+                  asnUnavailable:
+                    typeof value.asnUnavailable === 'string'
+                      ? value.asnUnavailable
+                      : undefined,
+                };
+                identityAt = Date.now();
+                reason = 'received';
+              }
+            }
           }
         } catch {
-          /* Unknown evidence is retained below. */
+          reason = requestDeadline.timedOut()
+            ? 'timeout'
+            : identityAbort.signal.aborted
+            ? 'cancelled'
+            : reason;
         } finally {
-          clearTimeout(timer);
+          requestDeadline.signal.removeEventListener('abort', interrupt);
+          requestDeadline.dispose();
+          identityAbort = null;
         }
+        identityDue =
+          Date.now() +
+          (reason === 'received'
+            ? COLLECTOR_POLICY.identityRefreshMs
+            : COLLECTOR_POLICY.identityRetryMs);
+        await record('collector_identity', {
+          requestedAt: iso(requestedAt),
+          completedAt: iso(),
+          reason,
+          duringActivity: activity,
+          cachedEvidenceRetained:
+            reason !== 'received' &&
+            Date.now() - identityAt <= COLLECTOR_POLICY.identityFreshMs,
+        });
       }
-      if (Date.now() - identityAt > 120000) identity = {};
+      if (Date.now() - identityAt > COLLECTOR_POLICY.identityFreshMs)
+        identity = {};
       let evidence = evaluate({
         now: Date.now(),
         networkKey: wifi?.bound ? wifi.networkKey : null,
@@ -429,7 +699,7 @@ async function loop(signal: AbortSignal) {
         Date.now() - gpsAt >= 60000
       ) {
         gpsAt = Date.now();
-        gps = await locationFix(signal);
+        gps = await locationFix(stop.signal);
         evidence = evaluate({
           now: Date.now(),
           networkKey: wifi.networkKey,
@@ -440,7 +710,7 @@ async function loop(signal: AbortSignal) {
           gps,
         });
       }
-      trip = transition(trip, evidence);
+      trip = transition(trip!, evidence);
       const battery = await DeviceInfo.getBatteryLevel().catch(() => -1);
       const charging = await DeviceInfo.isBatteryCharging().catch(() => null);
       if (battery >= 0 && battery <= 0.15 && charging === false) {
@@ -449,183 +719,423 @@ async function loop(signal: AbortSignal) {
         trip.endedAt = Date.now();
         trip.reason = 'battery';
       }
-      await persist();
-      if (segment)
-        await store.addEvent(segment, 'flight_detection', {
-          tripId: trip.id,
-          policyVersion: TRIP_POLICY.version,
-          phase: trip.phase,
-          shadow: trip.shadow,
-          ...evidence,
-        });
-      if (trip.phase === 'finished' || signal.aborted) break;
+      snapshot = {
+        id: '',
+        timestamp: iso(),
+        type: wifi?.bound ? 'wifi' : 'none',
+        isConnected: !!wifi?.bound,
+        ssid: wifi?.ssid ?? null,
+        bssid: wifi?.bssid ?? null,
+        publicIp: identity.publicIp ?? null,
+        asn: identity.asn ?? null,
+        publicIpObservedAt: Number.isFinite(identityAt)
+          ? iso(identityAt)
+          : null,
+        batteryPercent: battery < 0 ? null : Math.round(battery * 100),
+        isCharging: charging,
+        isInternetReachable: wifi?.validated ?? null,
+        flightEvidence: evidence,
+        popCode: identity.popCode ?? null,
+        reverseDns: identity.reverseDns ?? null,
+      };
+      await withSegment(async id => {
+        await store.saveSnapshot(id, snapshot!);
+        return true;
+      });
+      await record('flight_detection', {
+        tripId: trip.id,
+        policyVersion: trip.policy.version,
+        phase: trip.phase,
+        shadow: trip.shadow,
+        ...evidence,
+      });
+      await record('collector_heartbeat', {
+        observedAt: iso(),
+        scheduledAt: iso(nextTick),
+        activity,
+        power,
+        appState: AppState?.currentState ?? 'unknown',
+      });
       if (Date.now() >= trip.nextUploadAt) {
-        const start = Date.now();
-        trip.nextUploadAt +=
-          (Math.floor((start - trip.nextUploadAt) / 900000) + 1) * 900000;
+        rotating = true;
+        probeAbort?.abort();
+      }
+      if (trip.phase === 'finished') probeAbort?.abort();
+      await persist();
+      workerWake.abort();
+      if (Date.now() + COLLECTOR_POLICY.toleranceMs >= nextTick)
+        nextTick = advance(
+          nextTick,
+          Date.now() + COLLECTOR_POLICY.toleranceMs,
+          30000,
+        );
+      const identityWake =
+        wifi?.bound && !uploading && !rotating && identityDue > Date.now()
+          ? identityDue
+          : Infinity;
+      if (!ended())
+        await wait(
+          Math.max(1, Math.min(nextTick, identityWake) - Date.now()),
+          controlWake.signal,
+        );
+    }
+  }
+
+  async function probe(type: ProbeType, scheduledAt: number) {
+    if (
+      ended() ||
+      rotating ||
+      !wifi?.bound ||
+      Date.now() >= trip!.startedAt + trip!.policy.maximumMs
+    ) {
+      increment(health().skips, `control_preempted:${type}`);
+      await record('probe_skipped', {
+        type,
+        reason: ended()
+          ? 'trip_ended'
+          : rotating
+          ? 'segment_boundary'
+          : 'wifi_unavailable',
+        scheduledAt: iso(scheduledAt),
+      });
+      return;
+    }
+    const route = await native!.bindWifi().catch(() => null);
+    if (!route?.bound || route.handle !== wifi.handle) {
+      increment(health().skips, `wifi_route_changed:${type}`);
+      await record('probe_skipped', {
+        type,
+        reason: 'wifi_route_changed',
+        scheduledAt: iso(scheduledAt),
+      });
+      return;
+    }
+    const id = segment!;
+    const saved = snapshot
+      ? await withSegment(sid => store.saveSnapshot(sid, snapshot!))
+      : undefined;
+    const startPower =
+      (await native!.runtimeState?.().catch(() => null)) ?? null;
+    if (ended() || rotating) return;
+    const started = Date.now();
+    const attempt = await store.beginAttempt(id, type, iso(scheduledAt));
+    const cfg = config();
+    cfg.timeoutMs =
+      type === 'download' || type === 'upload'
+        ? transferTimeout(
+            type === 'download' ? cfg.downloadBytes : cfg.uploadBytes,
+          )
+        : Math.min(cfg.timeoutMs, 10000);
+    probeAbort = new AbortController();
+    activity = type;
+    increment(health().started, type);
+    health().maxLatenessMs = Math.max(
+      health().maxLatenessMs,
+      started - scheduledAt,
+    );
+    const timer = setTimeout(
+      () => probeAbort?.abort(),
+      type === 'traceroute'
+        ? 50000
+        : type === 'icmp_burst'
+        ? 35000
+        : cfg.timeoutMs + 2000,
+    );
+    try {
+      let result =
+        type === 'download' || type === 'upload' || type === 'http_rtt'
+          ? await runProbe(type, cfg, id, probeAbort.signal, undefined, attempt)
+          : await runDiagnostic(attempt, cfg, probeAbort.signal);
+      const callbackAt = Date.now();
+      const endPower =
+        (await native!.runtimeState?.().catch(() => null)) ?? null;
+      const elapsedDuration =
+        typeof startPower?.elapsedRealtimeMs === 'number' &&
+        typeof endPower?.elapsedRealtimeMs === 'number'
+          ? endPower.elapsedRealtimeMs - startPower.elapsedRealtimeMs
+          : callbackAt - started;
+      const reportedValue = result.value ?? null;
+      const timingValid =
+        !Number.isFinite(result.durationMs) ||
+        elapsedDuration - result.durationMs <=
+          COLLECTOR_POLICY.timingGapToleranceMs;
+      if (!timingValid)
+        result = {
+          ...result,
+          success: false,
+          value: null,
+          errorType: 'interrupted',
+          errorMessage:
+            'Clock or callback gap crossed this attempt; original samples and reported value are retained with scheduling evidence.',
+        };
+      await store.finishAttempt({
+        ...result,
+        id: attempt.id,
+        sessionId: id,
+        type,
+        scheduledAt: iso(scheduledAt),
+        networkSnapshot: saved ?? null,
+        scheduling: {
+          scheduledAt: iso(scheduledAt),
+          startedAt: iso(started),
+          callbackAt: iso(callbackAt),
+          saveRequestedAt: iso(),
+          timingValid,
+          reportedValue,
+          latenessMs: started - scheduledAt,
+          wallDurationMs: callbackAt - started,
+          startElapsedRealtimeMs:
+            typeof startPower?.elapsedRealtimeMs === 'number'
+              ? startPower.elapsedRealtimeMs
+              : null,
+          endElapsedRealtimeMs:
+            typeof endPower?.elapsedRealtimeMs === 'number'
+              ? endPower.elapsedRealtimeMs
+              : null,
+        },
+      });
+      increment(health().completed, type);
+      count++;
+      await record('measurement_saved', {
+        measurementId: attempt.id,
+        type,
+        scheduledAt: iso(scheduledAt),
+        startedAt: iso(started),
+        callbackAt: iso(callbackAt),
+        persistedAt: iso(),
+        wallDurationMs: Date.now() - started,
+      });
+      latest = {
+        type,
+        value: result.value,
+        unit: result.unit,
+        success: result.success,
+        timestamp: result.timestamp,
+      };
+      if (
+        (type === 'download' || type === 'upload') &&
+        result.errorType !== 'cancelled' &&
+        result.errorType !== 'interrupted'
+      ) {
+        const failures = (trip!.transferFailures ??= {
+          download: 0,
+          upload: 0,
+        });
+        failures[type] = result.success ? 0 : failures[type] + 1;
+        if (failures[type] === 2)
+          await record('transfer_disabled', {
+            type,
+            reason: 'two_consecutive_failures',
+            scope: 'this_trip',
+          });
+      }
+      publish();
+    } finally {
+      clearTimeout(timer);
+      probeAbort = null;
+      activity = 'idle';
+    }
+  }
+
+  async function worker() {
+    while (!ended()) {
+      workerWake = new AbortController();
+      const now = Date.now();
+      if (
+        now >= trip!.startedAt + trip!.policy.maximumMs ||
+        recoveringGap ||
+        now - lastControlAt > COLLECTOR_POLICY.gapMs
+      ) {
+        controlWake.abort();
+        await wait(250, workerWake.signal);
+        continue;
+      }
+      if (rotating || now >= trip!.nextUploadAt) {
+        rotating = true;
+        identityAbort?.abort();
+        const scheduled = trip!.nextUploadAt,
+          started = Date.now();
+        trip!.nextUploadAt = advance(scheduled, started, trip!.policy.uploadMs);
         await closeSegment('periodic_upload');
         await persist();
         release?.();
         release = null;
         uploading = true;
+        activity = 'upload';
         publish();
+        let outcome = 'deferred_connectivity';
         try {
-          if (wifi?.bound && wifi.validated)
-            await uploadTrip(trip, true, true, persist);
+          if (wifi?.bound && wifi.validated) {
+            await uploadTrip(trip!, true, true, persist);
+            outcome = 'opportunity_finished';
+          }
         } catch {
+          outcome = 'pending_retry';
           lastError = 'Upload pending; measurements continue.';
         } finally {
           uploading = false;
-          publish();
+          activity = 'idle';
           release = acquireActivity('measurement');
+          publish();
         }
-        if (signal.aborted) break;
-        await openSegment();
-        await store.addEvent(segment!, 'upload_pause', {
-          startedAt: start,
-          endedAt: Date.now(),
-          durationMs: Date.now() - start,
+        const endedAt = Date.now();
+        if (!ended()) await openSegment();
+        await record('upload_pause', {
+          startedAt: iso(started),
+          endedAt: iso(endedAt),
+          durationMs: endedAt - started,
+          scheduledAt: iso(scheduled),
+          latenessMs: started - scheduled,
+          limitMs: COLLECTOR_POLICY.uploadPauseMs,
+          outcome,
         });
+        rotating = false;
+        continue;
       }
-      if (trip.shadow && wifi?.bound)
-        trip.nextTransferAt ??= Date.now() + 300000;
-      if (wifi?.bound && (trip.phase === 'collecting' || trip.shadow)) {
-        const snapshot: NetworkSnapshot = {
-          id: '',
-          timestamp: new Date().toISOString(),
-          type: 'wifi',
-          isConnected: true,
-          ssid: wifi.ssid,
-          bssid: wifi.bssid,
-          publicIp: identity.publicIp ?? null,
-          asn: identity.asn ?? null,
-          publicIpObservedAt: Number.isFinite(identityAt)
-            ? new Date(identityAt).toISOString()
-            : null,
-          batteryPercent: battery < 0 ? null : Math.round(battery * 100),
-          isCharging: charging,
-          isInternetReachable: wifi.validated,
-          flightEvidence: evidence,
-          popCode: identity.popCode ?? null,
-          reverseDns: identity.reverseDns ?? null,
-        };
-        const saved = await store.saveSnapshot(segment!, snapshot);
-        const cfg = config();
-        if (trip.mlab && trip.mlab.dueAt == null) {
-          // Persist randomized spacing; segment rotation never resets it.
-          trip.mlab.dueAt =
-            Date.now() + 60000 + Math.floor(Math.random() * 120000);
-          await persist();
+      if (
+        !wifi?.bound ||
+        !(trip!.shadow || trip!.phase === 'collecting') ||
+        !snapshot
+      ) {
+        await wait(1000, workerWake.signal);
+        continue;
+      }
+      if (!Object.keys(trip!.due).length) trip!.due = resetProbes(now);
+      if (trip!.shadow) trip!.nextTransferAt ??= now + 300000;
+      if (trip!.mlab && trip!.mlab.dueAt == null) {
+        trip!.mlab.dueAt = now + 60000 + Math.floor(Math.random() * 120000);
+        await persist();
+      }
+      const heavyReady = now - lastHeavyEnd >= COLLECTOR_POLICY.heavySpacingMs;
+      if (
+        trip!.mlab &&
+        !trip!.mlab.reserved &&
+        (trip!.mlab.dueAt ?? Infinity) <= now &&
+        wifi.validated &&
+        heavyReady
+      ) {
+        const route = await native!.bindWifi().catch(() => null);
+        if (!route?.bound || route.handle !== wifi.handle) {
+          controlWake.abort();
+          await wait(1000, workerWake.signal);
+          continue;
         }
-        if (
-          trip.mlab &&
-          !trip.mlab.reserved &&
-          trip.mlab.dueAt != null &&
-          Date.now() >= trip.mlab.dueAt &&
-          wifi.validated &&
-          !signal.aborted
-        ) {
-          const route = await native!.bindWifi().catch(() => null);
-          if (route?.bound && route.handle === wifi.handle) {
-            trip.mlab.reserved = true;
-            const allowed = reserve(trip, 'transfers', MLAB_RESERVATION);
-            trip.mlab.status = allowed ? 'running' : 'allowance_unavailable';
-            await persist();
-            if (allowed) {
-              probeAbort = new AbortController();
-              if (signal.aborted) probeAbort.abort();
-              const results = await runTripMlab(
-                store,
-                segment!,
-                trip.mlab.consentVersion,
-                wifi.handle,
-                saved,
-                probeAbort.signal,
-              );
-              for (const result of results) {
-                count++;
-                latest = result;
-              }
-              trip.mlab.status = results.every(r => r.success)
-                ? 'complete'
-                : 'incomplete';
-              await persist();
-            }
-          }
-        }
-        const probe = async (type: ProbeType) => {
-          if (signal.aborted) return;
-          const currentWifi = await native!.bindWifi().catch(() => null);
-          if (!currentWifi?.bound || currentWifi.handle !== wifi.handle) {
-            await store.addEvent(segment!, 'probe_skipped', {
-              type,
-              reason: 'wifi_route_changed',
-            });
-            return;
-          }
+        trip!.mlab.reserved = true;
+        const allowed = reserve(trip!, 'transfers', MLAB_RESERVATION);
+        trip!.mlab.status = allowed ? 'running' : 'allowance_unavailable';
+        await persist();
+        if (allowed) {
           probeAbort = new AbortController();
-          const attempt = await store.beginAttempt(
-            segment!,
-            type,
-            new Date().toISOString(),
-          );
-          const timer = setTimeout(() => probeAbort?.abort(), 120000);
+          activity = 'mlab';
           try {
-            const result =
-              type === 'download' || type === 'upload' || type === 'http_rtt'
-                ? await runProbe(type, cfg, segment!, probeAbort.signal)
-                : await runDiagnostic(attempt, cfg, probeAbort.signal);
-            await store.finishAttempt({
-              ...result,
-              id: attempt.id,
-              networkSnapshot: saved,
-            });
-            count++;
-            latest = {
-              type: result.type ?? type,
-              value: result.value,
-              unit: result.unit,
-              success: result.success,
-              timestamp: result.timestamp,
-            };
-            publish();
+            const saved = await withSegment(id =>
+              store.saveSnapshot(id, snapshot!),
+            );
+            const results = await runTripMlab(
+              store,
+              segment!,
+              trip!.mlab.consentVersion,
+              wifi.handle,
+              saved ?? snapshot,
+              probeAbort.signal,
+              trip!.mlab.dueAt!,
+            );
+            count += results.length;
+            latest = results[results.length - 1] ?? latest;
+            trip!.mlab.status = results.every(r => r.success)
+              ? 'complete'
+              : 'incomplete';
           } finally {
-            clearTimeout(timer);
-          }
-        };
-        for (const [type, interval] of [
-          ['icmp_burst', 60000],
-          ['udp_echo', 60000],
-          ['tcp_connect', 60000],
-          ['traceroute', 900000],
-        ] as [ProbeType, number][]) {
-          if (signal.aborted || Date.now() < (trip.due[type] ?? 0)) continue;
-          trip.due[type] = Date.now() + interval;
-          if (!reserve(trip, 'diagnostics', requestedPayload(type, cfg))) {
-            await store.addEvent(segment!, 'probe_skipped', {
-              type,
-              reason: 'diagnostic_allowance',
-            });
-            continue;
+            probeAbort = null;
+            activity = 'idle';
+            lastHeavyEnd = Date.now();
           }
           await persist();
-          await probe(type);
-        }
-        if (
-          wifi.validated &&
-          !signal.aborted &&
-          reservePair(trip, Date.now())
-        ) {
-          await persist();
-          await probe('download');
-          await probe('upload');
+          continue;
         }
       }
-      if (!signal.aborted)
-        await wait(Math.max(100, 30000 - (Date.now() - cycleAt)), wake.signal);
+      const candidate = (Object.keys(INTERVALS) as ScheduledProbe[])
+        .sort((a, b) => (trip!.due[a] ?? Infinity) - (trip!.due[b] ?? Infinity))
+        .find(
+          type =>
+            (trip!.due[type] ?? Infinity) <= now + COLLECTOR_POLICY.toleranceMs,
+        );
+      if (candidate) {
+        const slot = takeDue(trip!.due[candidate]!, now, INTERVALS[candidate])!;
+        trip!.due[candidate] = slot.next;
+        increment(health().expected, candidate, slot.skipped + 1);
+        if (slot.skipped) {
+          increment(health().skips, `busy_deadline:${candidate}`, slot.skipped);
+          await record('probe_skipped', {
+            type: candidate,
+            count: slot.skipped,
+            reason: 'busy_deadline',
+            scheduledAt: iso(slot.scheduledAt),
+          });
+        }
+        if (
+          reserve(trip!, 'diagnostics', requestedPayload(candidate, config()))
+        ) {
+          await persist();
+          await probe(candidate, slot.scheduledAt);
+        } else {
+          increment(health().skips, `allowance:${candidate}`);
+          await record('probe_skipped', {
+            type: candidate,
+            reason: 'diagnostic_allowance',
+          });
+        }
+        continue;
+      }
+      const directions = (['download', 'upload'] as const).filter(
+        type => (trip!.transferFailures?.[type] ?? 0) < 2,
+      );
+      if (
+        !trip!.pendingTransferPair &&
+        wifi.validated &&
+        heavyReady &&
+        directions.length &&
+        trip!.nextTransferAt != null &&
+        now + COLLECTOR_POLICY.toleranceMs >= trip!.nextTransferAt
+      ) {
+        const scheduledAt = trip!.nextTransferAt;
+        if (
+          reservePair(trip!, now + COLLECTOR_POLICY.toleranceMs, directions)
+        ) {
+          trip!.pendingTransferPair = { scheduledAt, directions };
+          await persist();
+        }
+      }
+      if (trip!.pendingTransferPair && wifi.validated && heavyReady) {
+        const pending = trip!.pendingTransferPair;
+        const type = pending.directions.shift();
+        // Persist dequeue before beginning: interruptions cannot repeat a reserved direction.
+        await persist();
+        if (type) {
+          increment(health().expected, type);
+          await probe(type, pending.scheduledAt);
+        }
+        if (!pending.directions.length) {
+          trip!.pendingTransferPair = undefined;
+          lastHeavyEnd = Date.now();
+        }
+        await persist();
+        continue;
+      }
+      await wait(1000, workerWake.signal);
     }
+  }
+
+  const controller = control().catch(fail);
+  try {
+    await worker();
   } finally {
-    listener.remove();
-    signal.removeEventListener('abort', cancellation);
+    cancel();
+    await controller;
+    networkListener.remove();
+    appListener?.remove();
+    signal.removeEventListener('abort', cancel);
+    await segmentLane;
+    await persistenceLane;
   }
 }

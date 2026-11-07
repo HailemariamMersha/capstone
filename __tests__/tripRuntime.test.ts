@@ -108,6 +108,18 @@ beforeEach(() => {
   mockTrips.length = 0;
   mockSessions.length = 0;
   jest.clearAllMocks();
+  require('../src/measurements/diagnostics')
+    .runDiagnostic.mockReset()
+    .mockResolvedValue({ success: true });
+  require('../src/measurements/runProbe')
+    .runProbe.mockReset()
+    .mockResolvedValue({ success: true });
+  require('../src/reference/tripMlab')
+    .runTripMlab.mockReset()
+    .mockResolvedValue([
+      { type: 'ndt7_download', success: true },
+      { type: 'ndt7_upload', success: true },
+    ]);
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
     value: { getRandomValues: (b: Uint8Array) => b.fill(10) },
@@ -175,4 +187,167 @@ test('waiting without qualifying connectivity never publishes an M-Lab test', as
   await jest.advanceTimersByTimeAsync(1200001);
   expect(runTripMlab).not.toHaveBeenCalled();
   expect(currentTrip()!.used.transfers).toBe(0);
+});
+
+test('a simulated 35-minute sleep records a gap without firing overdue heavy tasks', async () => {
+  const { runProbe } = require('../src/measurements/runProbe');
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  await startTrip('researcher', {}, true);
+  await jest.advanceTimersByTimeAsync(1000);
+  jest.setSystemTime(Date.now() + 35 * 60000);
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(
+    mockEvents.some(
+      (r: any) => r[1] === 'collector_gap' && r[2].durationMs >= 35 * 60000,
+    ),
+  ).toBe(true);
+  expect(runProbe).not.toHaveBeenCalled();
+  expect(runTripMlab).not.toHaveBeenCalled();
+  expect(
+    mockStore.beginAttempt.mock.calls.filter(
+      (r: any) => r[1] === 'tcp_connect',
+    ),
+  ).toHaveLength(0);
+});
+
+test('detection keeps ticking while a measurement is busy and logs its real scheduling time', async () => {
+  const { runDiagnostic } = require('../src/measurements/diagnostics');
+  runDiagnostic.mockImplementationOnce(
+    () =>
+      new Promise(resolve =>
+        setTimeout(() => resolve({ success: true }), 100000),
+      ),
+  );
+  await startTrip('researcher', {}, true);
+  await jest.advanceTimersByTimeAsync(91000);
+  expect(
+    mockEvents.filter((r: any) => r[1] === 'flight_detection').length,
+  ).toBeGreaterThanOrEqual(4);
+  expect(mockStore.finishAttempt).not.toHaveBeenCalled();
+  await jest.advanceTimersByTimeAsync(20000);
+  expect(mockStore.finishAttempt.mock.calls[0][0]).toMatchObject({
+    scheduledAt: expect.any(String),
+    scheduling: { wallDurationMs: 100000, latenessMs: expect.any(Number) },
+  });
+  expect(mockEvents.some((r: any) => r[1] === 'measurement_saved')).toBe(true);
+});
+
+test('identity failures retry promptly and remain unknown without replacing fresh evidence', async () => {
+  globalThis.fetch = jest
+    .fn()
+    .mockRejectedValue(new Error('saturated link')) as any;
+  await startTrip('owner', {});
+  await jest.advanceTimersByTimeAsync(16000);
+  expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  expect(currentTrip()!.evidence!.asn.state).toBe('unknown');
+  expect(
+    mockEvents.some(
+      (r: any) =>
+        r[1] === 'collector_identity' && r[2].reason === 'network_error',
+    ),
+  ).toBe(true);
+});
+
+test('a boundary cancels a long transfer, keeps control evidence and closes before uploading', async () => {
+  const { runProbe } = require('../src/measurements/runProbe');
+  runProbe.mockImplementation(
+    (_: unknown, __: unknown, ___: unknown, signal: AbortSignal) =>
+      new Promise(resolve => {
+        const done = () => resolve({ success: false, errorType: 'cancelled' });
+        if (signal.aborted) done();
+        else signal.addEventListener('abort', done, { once: true });
+      }),
+  );
+  await startTrip('researcher', {}, true);
+  await jest.advanceTimersByTimeAsync(901000);
+  expect(currentTrip()!.segmentCount).toBe(2);
+  expect(mockSessions[0].state).toBe('completed');
+  expect(uploadTrip).toHaveBeenCalledTimes(1);
+  expect(
+    mockEvents.filter((r: any) => r[1] === 'flight_detection').length,
+  ).toBeGreaterThan(25);
+  expect(
+    mockEvents.some(
+      (r: any) => r[1] === 'segment_health' && r[2].started.download === 1,
+    ),
+  ).toBe(true);
+  expect(currentTrip()!.transferFailures?.download).toBe(0);
+});
+
+test('M-Lab completion spaces controlled transfers away from its actual finish', async () => {
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  const { runProbe } = require('../src/measurements/runProbe');
+  jest.spyOn(Math, 'random').mockReturnValue(0.99);
+  runTripMlab.mockImplementation(
+    () =>
+      new Promise(resolve =>
+        setTimeout(
+          () =>
+            resolve([
+              { type: 'ndt7_download', success: true },
+              { type: 'ndt7_upload', success: true },
+            ]),
+          120000,
+        ),
+      ),
+  );
+  await startTrip('researcher', {}, true);
+  await jest.advanceTimersByTimeAsync(330000);
+  expect(runTripMlab).toHaveBeenCalledTimes(1);
+  expect(runProbe).not.toHaveBeenCalled();
+  await jest.advanceTimersByTimeAsync(60000);
+  expect(runProbe).toHaveBeenCalledTimes(2);
+  jest.restoreAllMocks();
+});
+
+test('two failures disable each controlled direction without spending later pair reservations', async () => {
+  const { runProbe } = require('../src/measurements/runProbe');
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  runProbe.mockResolvedValue({ success: false, errorType: 'timeout' });
+  await startTrip('researcher', { expectedMinutes: 10 }, true, {
+    includeMlab: false,
+  });
+  await jest.advanceTimersByTimeAsync(1200000);
+  expect(runTripMlab).not.toHaveBeenCalled();
+  expect(runProbe).toHaveBeenCalledTimes(4);
+  expect(currentTrip()!.transferFailures).toEqual({ download: 2, upload: 2 });
+  expect(currentTrip()!.used.transfers).toBe(12000000);
+  expect(
+    mockEvents.filter((r: any) => r[1] === 'transfer_disabled'),
+  ).toHaveLength(2);
+});
+
+test('resume after the safety ceiling cannot start an overdue probe', async () => {
+  await startTrip('researcher', {}, true, { includeMlab: false });
+  await jest.advanceTimersByTimeAsync(1000);
+  const attempts = mockStore.beginAttempt.mock.calls.length;
+  jest.setSystemTime(Date.now() + 86400000);
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(mockStore.beginAttempt).toHaveBeenCalledTimes(attempts);
+  expect(currentTrip()).toMatchObject({
+    phase: 'finished',
+    reason: 'safety_ceiling',
+  });
+  expect(mockEvents.some((r: any) => r[1] === 'collector_deadline')).toBe(true);
+});
+
+test('a discontinuous callback clock invalidates the headline value while retaining reported evidence', async () => {
+  const { runDiagnostic } = require('../src/measurements/diagnostics');
+  runDiagnostic.mockImplementationOnce(
+    () =>
+      new Promise(resolve =>
+        setTimeout(
+          () => resolve({ success: true, value: 20, durationMs: 1 }),
+          5000,
+        ),
+      ),
+  );
+  await startTrip('researcher', {}, true, { includeMlab: false });
+  await jest.advanceTimersByTimeAsync(7000);
+  expect(mockStore.finishAttempt.mock.calls[0][0]).toMatchObject({
+    success: false,
+    value: null,
+    errorType: 'interrupted',
+    scheduling: { timingValid: false, reportedValue: 20 },
+  });
 });

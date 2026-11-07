@@ -278,3 +278,38 @@ test('ingestion is not silently replayed outside durable retry/budget accounting
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(auth.auth.refreshSession).not.toHaveBeenCalled();
 });
+
+test('upload parent cancellation does not replace the per-request timeout', async () => {
+  jest.useFakeTimers();
+  (auth.auth.getSession as jest.Mock).mockResolvedValue({
+    data: {
+      session: {
+        user: { id: 'a' },
+        access_token: 'token',
+        expires_at: Date.now() / 1000 + 3600,
+      },
+    },
+  });
+  const parent = new AbortController();
+  globalThis.fetch = jest.fn(
+    (_url, options) =>
+      new Promise((_, reject) => {
+        options!.signal!.addEventListener(
+          'abort',
+          () => reject(new Error('request timeout')),
+          { once: true },
+        );
+      }),
+  ) as any;
+  const pending = api(
+    '/sessions/s/complete',
+    { method: 'POST', signal: parent.signal },
+    'a',
+  );
+  const rejected = expect(pending).rejects.toThrow('request timeout');
+  await jest.advanceTimersByTimeAsync(15000);
+  await rejected;
+  expect(parent.signal.aborted).toBe(false);
+  expect((fetch as jest.Mock).mock.calls[0][1].signal).not.toBe(parent.signal);
+  jest.useRealTimers();
+});

@@ -52,9 +52,10 @@ export async function runProbe(
   sessionId: string,
   signal?: AbortSignal,
   dependencies: ProbeDependencies = defaults,
+  attempt?: Measurement,
 ): Promise<Measurement> {
   const base: Measurement = {
-    id: prototypeId('measurement'),
+    id: attempt?.id ?? prototypeId('measurement'),
     sessionId,
     timestamp: dependencies.timestamp(),
     type,
@@ -95,7 +96,10 @@ export async function runProbe(
       errorMessage: 'Probe cancelled.',
     };
   }
-  if (type === 'download' && config.downloadBytes > 8 * MIB) {
+  if (
+    type === 'download' &&
+    (config.streamDownloads || config.downloadBytes > 8 * MIB)
+  ) {
     return runFileDownload(base, config, signal, dependencies);
   }
   const body =
@@ -108,6 +112,9 @@ export async function runProbe(
       : '/upload';
   const controller = new AbortController();
   const started = dependencies.now();
+  const wallStarted = Date.now();
+  let stage = 'connecting';
+  let headersAfterMs: number | undefined;
   base.timestamp = dependencies.timestamp();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort = () => {};
@@ -145,6 +152,8 @@ export async function runProbe(
       },
     );
     base.httpStatus = response.status;
+    headersAfterMs = Math.max(0, Date.now() - wallStarted);
+    stage = type === 'upload' ? 'acknowledgement' : 'body';
     if (!response.ok) {
       throw new ProbeFailure(
         'http',
@@ -222,6 +231,15 @@ export async function runProbe(
       durationMs,
       transferredBytes: bytes,
       success: true,
+      transfer: {
+        stage: 'completed',
+        observedBytes: bytes,
+        bytesScope:
+          type === 'upload' ? 'server_acknowledged_payload' : 'download_body',
+        timeoutMs: config.timeoutMs,
+        headersAfterMs,
+        wallDurationMs: Date.now() - wallStarted,
+      },
       value:
         type === 'http_rtt' ? durationMs : (bytes * 8) / (durationMs * 1000),
     };
@@ -230,6 +248,14 @@ export async function runProbe(
       ...base,
       durationMs: Math.max(0, dependencies.now() - started),
       errorType: error instanceof ProbeFailure ? error.kind : 'network',
+      transfer: {
+        stage,
+        observedBytes: null,
+        bytesScope: 'unavailable',
+        timeoutMs: config.timeoutMs,
+        headersAfterMs,
+        wallDurationMs: Date.now() - wallStarted,
+      },
       errorMessage: error instanceof Error ? error.message : String(error),
     };
   } finally {

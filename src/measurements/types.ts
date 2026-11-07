@@ -26,12 +26,34 @@ export type ProbeErrorType =
   | 'invalid_config'
   | 'interrupted';
 export interface ProbeConfig {
+  streamDownloads?: boolean;
   serverUrl: string;
   timeoutMs: number;
   downloadBytes: number;
   uploadBytes: number;
 }
 export interface Measurement {
+  scheduledAt?: string;
+  scheduling?: {
+    scheduledAt: string;
+    startedAt: string;
+    callbackAt: string;
+    saveRequestedAt: string;
+    timingValid: boolean;
+    reportedValue: number | null;
+    latenessMs: number;
+    wallDurationMs: number;
+    startElapsedRealtimeMs: number | null;
+    endElapsedRealtimeMs: number | null;
+  };
+  transfer?: {
+    stage: string;
+    observedBytes: number | null;
+    bytesScope: string;
+    timeoutMs: number;
+    headersAfterMs?: number;
+    wallDurationMs: number;
+  };
   id: string;
   sessionId: string;
   timestamp: string;

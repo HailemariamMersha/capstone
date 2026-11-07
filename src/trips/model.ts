@@ -67,6 +67,14 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  collectorPolicy?: string;
+  segmentHealth?: import('./scheduler').SegmentHealth;
+  pendingControlEvents?: { kind: string; details: Record<string, unknown> }[];
+  transferFailures?: { download: number; upload: number };
+  pendingTransferPair?: {
+    scheduledAt: number;
+    directions: ('download' | 'upload')[];
+  };
   uploadedRevision?: number;
   /** Optional for historical trips, which never acquire automatic M-Lab tests. */
   mlab?: {
@@ -259,7 +267,11 @@ export function reserve(
   trip.used[category] += bytes;
   return true;
 }
-export function reservePair(trip: Trip, now: number): boolean {
+export function reservePair(
+  trip: Trip,
+  now: number,
+  directions: ('download' | 'upload')[] = ['download', 'upload'],
+): boolean {
   if (
     trip.nextTransferAt == null ||
     now < trip.nextTransferAt ||
@@ -272,7 +284,22 @@ export function reservePair(trip: Trip, now: number): boolean {
   );
   trip.nextTransferAt +=
     (Math.floor((now - trip.nextTransferAt) / interval) + 1) * interval;
-  if (!reserve(trip, 'transfers', 6000000)) return false;
+  if (
+    !directions.length ||
+    !reserve(
+      trip,
+      'transfers',
+      directions.reduce(
+        (n, type) =>
+          n +
+          (type === 'download'
+            ? trip.policy.downloadBytes
+            : trip.policy.uploadBytes),
+        0,
+      ),
+    )
+  )
+    return false;
   trip.transferPairs++;
   return true;
 }

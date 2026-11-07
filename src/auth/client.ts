@@ -6,6 +6,7 @@ import { createClient, type Session } from '@supabase/supabase-js';
 import * as Keychain from 'react-native-keychain';
 import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 import configuration from '../config/public.json';
+import { deadline } from '../services/deadline';
 
 // React Native supplies randomness through get-random-values. Supabase's PKCE
 // must use S256 even where WebCrypto.digest is absent (never the plain fallback).
@@ -49,15 +50,14 @@ export const auth = createClient(
   {
     global: {
       fetch: async (input, init) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
+        const requestDeadline = deadline(10000, init?.signal);
         try {
           return await fetch(input, {
             ...init,
-            signal: init?.signal ?? controller.signal,
+            signal: requestDeadline.signal,
           });
         } finally {
-          clearTimeout(timer);
+          requestDeadline.dispose();
         }
       },
     },
@@ -240,20 +240,20 @@ export async function api<T>(
   const initial = await validSession(owner);
   if (options.signal?.aborted)
     throw new Error('Upload opportunity ended; retry pending');
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  let response: Response;
-  const request = (token: string) =>
-    fetch(`${configuration.apiUrl}/api/v2${path}`, {
-      ...options,
-      signal: options.signal ?? controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...options.headers,
-      },
-    });
+  const requestDeadline = deadline(15000, options.signal);
+  const controller = requestDeadline;
   try {
+    let response: Response;
+    const request = (token: string) =>
+      fetch(`${configuration.apiUrl}/api/v2${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
     response = await request(initial.access_token);
     // A server may reject a revoked/expired token before the phone's expiry check.
     // Retry a bodyless read once, preserving the initiating owner. Uploads are
@@ -270,51 +270,51 @@ export async function api<T>(
         throw new Error('Upload opportunity ended; retry pending');
       response = await request(refreshed.access_token);
     }
-  } finally {
-    clearTimeout(timeout);
-  }
-  if (!response.ok) {
-    if (response.status === 401) throw signInRequired();
-    if (response.status === 403) {
-      let detail = '';
-      try {
-        const body = await response.json();
-        detail = typeof body.detail === 'string' ? body.detail : '';
-      } catch {
-        /* Use a safe generic authorization message. */
+    if (!response.ok) {
+      if (response.status === 401) throw signInRequired();
+      if (response.status === 403) {
+        let detail = '';
+        try {
+          const body = await response.json();
+          detail = typeof body.detail === 'string' ? body.detail : '';
+        } catch {
+          /* Use a safe generic authorization message. */
+        }
+        if (detail === 'Account deletion requested; uploads are disabled')
+          throw new ResearchAccessError(
+            403,
+            'account_deleted',
+            'This account has been deleted and cannot upload recordings. Choose another account or contact the study team.',
+          );
+        if (detail === 'Current research consent required')
+          throw new ResearchAccessError(
+            403,
+            'consent_required',
+            'Please review the current research information before uploading.',
+          );
+        if (
+          detail.startsWith('Researcher access required') ||
+          detail === 'Administrator access required'
+        )
+          throw new ResearchAccessError(
+            403,
+            'researcher_required',
+            'This account needs approval from a study administrator to use researcher tools.',
+          );
+        throw new ResearchAccessError(
+          403,
+          'forbidden',
+          'This account does not have access to that action. Your saved recordings are retained.',
+        );
       }
-      if (detail === 'Account deletion requested; uploads are disabled')
-        throw new ResearchAccessError(
-          403,
-          'account_deleted',
-          'This account has been deleted and cannot upload recordings. Choose another account or contact the study team.',
-        );
-      if (detail === 'Current research consent required')
-        throw new ResearchAccessError(
-          403,
-          'consent_required',
-          'Please review the current research information before uploading.',
-        );
-      if (
-        detail.startsWith('Researcher access required') ||
-        detail === 'Administrator access required'
-      )
-        throw new ResearchAccessError(
-          403,
-          'researcher_required',
-          'This account needs approval from a study administrator to use researcher tools.',
-        );
-      throw new ResearchAccessError(
-        403,
-        'forbidden',
-        'This account does not have access to that action. Your saved recordings are retained.',
+      throw new Error(
+        `Research service could not complete this request (${response.status}). Your saved data is safe.`,
       );
     }
-    throw new Error(
-      `Research service could not complete this request (${response.status}). Your saved data is safe.`,
-    );
+    return await response.json();
+  } finally {
+    requestDeadline.dispose();
   }
-  return response.json();
 }
 
 export async function loadProfile(owner: string): Promise<Profile> {

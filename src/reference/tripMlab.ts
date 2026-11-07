@@ -24,6 +24,7 @@ export async function runTripMlab(
   wifiHandle: string,
   snapshot: NetworkSnapshot,
   signal: AbortSignal,
+  scheduledAt?: number,
 ) {
   if (consent !== MLAB_CONSENT)
     throw new Error('M-Lab publication consent required.');
@@ -40,7 +41,11 @@ export async function runTripMlab(
   const attempts = [];
   for (const type of ['ndt7_download', 'ndt7_upload'] as const)
     attempts.push(
-      await store.beginAttempt(sessionId, type, new Date().toISOString()),
+      await store.beginAttempt(
+        sessionId,
+        type,
+        new Date(scheduledAt ?? Date.now()).toISOString(),
+      ),
     );
   const id = attempts[0].id;
   await store.addEvent(sessionId, 'reference_consent', {
