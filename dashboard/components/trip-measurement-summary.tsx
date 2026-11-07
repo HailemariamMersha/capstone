@@ -7,6 +7,7 @@ export type TripSummary = {
   protocols: ProtocolSummary[];
 };
 type ProtocolSummary = {
+  timingExcluded?: number;
   type: string;
   attempts: number;
   successful: number;
@@ -29,6 +30,10 @@ function outcome(m: ProtocolSummary, noun: string) {
   const parts = [`${count(m.successful)}/${count(m.attempts)} ${noun}`];
   if (m.timeouts) parts.push(`${count(m.timeouts)} timed out`);
   if (m.capped) parts.push(`${count(m.capped)} capped / partial`);
+  if (m.timingExcluded)
+    parts.push(
+      `${count(m.timingExcluded)} timing excluded after a collection gap`,
+    );
   const other = Math.max(0, m.failed - m.timeouts - m.capped);
   if (other)
     parts.push(`${count(other)} other ${other === 1 ? 'error' : 'errors'}`);

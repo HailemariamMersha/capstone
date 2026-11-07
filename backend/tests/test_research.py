@@ -298,6 +298,22 @@ def test_trip_rejects_coordinates_invalid_budgets_and_research_labels(client):
     assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 403
 
 
+def test_trip_median_excludes_flagged_timing_but_retains_observations(client):
+    trip_id = 'e' * 32
+    assert client.put('/api/v2/trips/' + trip_id, headers=auth(), json=trip_body()).status_code == 200
+    sid, manifest, records = experiment()
+    manifest['session']['config'].update(tripId=trip_id, segmentIndex=0)
+    records[1]['payload'].update(success=False, errorType='interrupted', scheduling={'timingValid': False})
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records': records}).status_code == 200
+    summary = client.get('/api/v2/research/trips', headers=auth('researcher')).json()['items'][0]['summary']
+    assert summary['protocols'][0]['medianMs'] is None
+    assert summary['protocols'][0]['timingExcluded'] == 1
+    assert summary['protocols'][0]['replies'] == 1
+    evidence = client.get('/api/v2/research/sessions/' + sid, headers=auth('researcher')).json()
+    assert evidence['measurements'][0]['details']['samples'][0]['rttMs'] == 0
+
+
 def test_trip_summary_pools_samples_without_duplicate_parents_and_preserves_partial_uploads(client):
     trip_id = 'c' * 32
     assert client.put('/api/v2/trips/' + trip_id, headers=auth(),

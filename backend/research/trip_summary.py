@@ -24,14 +24,16 @@ def summaries(db, trip_ids):
     capped = Record.raw['reference']['stopReason'].as_string() == 'data_threshold'
     timeout = and_(Record.success.is_(False), Record.raw['errorType'].as_string() == 'timeout')
     metrics = {}
-    for key, protocol, attempts, successful, failed, timeouts, caps, incomplete, reached in db.execute(
+    valid_timing = Record.raw['scheduling']['timingValid'].as_boolean().is_not(False)
+    for key, protocol, attempts, successful, failed, timeouts, caps, incomplete, reached, excluded in db.execute(
         select(TripSegment.trip_id, Record.protocol, func.count(),
             func.sum(case((Record.success.is_(True), 1), else_=0)),
             func.sum(case((Record.success.is_(False), 1), else_=0)),
             func.sum(case((timeout, 1), else_=0)),
             func.sum(case((capped, 1), else_=0)),
             func.sum(case((Record.raw['details']['complete'].as_boolean().is_(False), 1), else_=0)),
-            func.sum(case((Record.raw['route']['reached'].as_boolean().is_(True), 1), else_=0)))
+            func.sum(case((Record.raw['route']['reached'].as_boolean().is_(True), 1), else_=0)),
+            func.sum(case((~valid_timing, 1), else_=0)))
         .join(Record, Record.session_id == TripSegment.session_id)
         .where(TripSegment.trip_id.in_(trip_ids), Record.kind == 'measurement')
         .group_by(TripSegment.trip_id, Record.protocol)
@@ -39,7 +41,7 @@ def summaries(db, trip_ids):
         metric = {'type': protocol or 'unknown', 'attempts': attempts,
                   'successful': successful, 'failed': failed, 'timeouts': timeouts,
                   'capped': caps, 'incompleteBursts': incomplete, 'reached': reached,
-                  'sampleCount': 0, 'replies': 0, 'medianMs': None}
+                  'sampleCount': 0, 'replies': 0, 'medianMs': None, 'timingExcluded': excluded}
         metrics[(key, protocol)] = metric
         result[key]['protocols'].append(metric)
         result[key]['measurements'] += attempts
@@ -70,7 +72,7 @@ def summaries(db, trip_ids):
         func.count().over(partition_by=partition).label('count'))\
         .select_from(TripSegment).join(Sample, Sample.session_id == TripSegment.session_id)\
         .join(Record, sample_join)\
-        .where(TripSegment.trip_id.in_(trip_ids), Sample.phase == 'probe', valid_rtt).subquery()
+        .where(TripSegment.trip_id.in_(trip_ids), Sample.phase == 'probe', valid_rtt, valid_timing).subquery()
     for key, protocol, median in db.execute(select(
         ranked.c.trip_id, ranked.c.protocol, func.avg(ranked.c.rtt))
         .where(2 * ranked.c.rank >= ranked.c.count, 2 * ranked.c.rank <= ranked.c.count + 2)
