@@ -594,6 +594,56 @@ test('measurement guide defines every selectable field and supports search', asy
   });
 });
 
+test('timing gaps exclude displayed headlines while preserving original samples', async ({
+  page,
+}) => {
+  await signedIn(page, 'researcher', [
+    {
+      id: 'gap-probe',
+      type: 'icmp_burst',
+      success: false,
+      value: 123.456,
+      unit: 'ms',
+      timestamp: '2026-10-12T12:00:05Z',
+      scheduledAt: '2026-10-12T12:00:00Z',
+      scheduling: { timingValid: false, startedAt: '2026-10-12T12:00:02Z' },
+      details: {
+        summary: { medianMs: 123.456 },
+        samples: [{ sequence: 0, rttMs: 123.456 }],
+      },
+    },
+  ]);
+  await page.goto('/');
+  await page.locator('tbody button').first().click();
+  const parents = page.getByRole('region', {
+    name: 'Measurement results',
+    exact: true,
+  });
+  await expect(
+    parents.getByText('Timing gap detected', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    parents.getByRole('cell', { name: '123.456', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('No timing values match these filters.', { exact: true }),
+  ).toBeVisible();
+  const samples = page.getByRole('region', {
+    name: 'Individual samples',
+    exact: true,
+  });
+  await expect(
+    samples.getByRole('cell', { name: '123.456', exact: true }),
+  ).toBeVisible();
+  const scheduling = page.getByRole('region', {
+    name: 'Scheduling results',
+    exact: true,
+  });
+  await expect(
+    scheduling.getByRole('cell', { name: '2000', exact: true }),
+  ).toBeVisible();
+});
+
 test('session timeout explains the failure and allows retry; completed evidence does not poll', async ({
   page,
 }) => {

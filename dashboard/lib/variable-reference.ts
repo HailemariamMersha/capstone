@@ -82,12 +82,22 @@ const sourceOverrides: Record<string, Record<string, string>> = {
   Scheduling: {
     type: 'measurement.type',
     scheduled: 'measurement.scheduledAt',
-    executed: 'measurement.timestamp',
+    executed: 'measurement.scheduling.startedAt ?? measurement.timestamp',
     delayMs:
-      'Date.parse(measurement.timestamp) − Date.parse(measurement.scheduledAt)',
+      'Date.parse(measurement.scheduling.startedAt ?? measurement.timestamp) − Date.parse(measurement.scheduledAt)',
   },
 };
 export function variableDefinition(group: string, key: string): Definition {
+  if (key === 'timingStatus')
+    return {
+      datatype: 'string',
+      units: 'none',
+      source: 'measurement.scheduling.timingValid',
+      calculation:
+        'False → timing gap detected; true → no detected timing gap; absent → not assessed. A true flag does not establish path accuracy or exclude every source of timing error.',
+      blank:
+        'Older records without scheduling evidence are not assessed. Original samples remain available even when headline timing is excluded.',
+    };
   const definition = {
     ...fields[aliases[key] ?? key],
     source: sourceOverrides[group][key],
@@ -136,6 +146,11 @@ export const measurementFields: Field[] = [
     'outcome',
     'Overall outcome',
     'A successful burst can still contain individual timeouts.',
+  ],
+  [
+    'timingStatus',
+    'Timing evidence',
+    'Whether the collector detected a callback or clock gap; not proof of timing accuracy.',
   ],
   [
     'timestamp',

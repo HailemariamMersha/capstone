@@ -111,14 +111,33 @@ export function SessionEvidence({ data }: { data: Evidence }) {
     () =>
       matched.map(m => ({
         ...m,
+        value: m.scheduling?.timingValid === false ? null : m.value,
+        timingStatus:
+          m.scheduling?.timingValid === false
+            ? 'Timing gap detected'
+            : m.scheduling?.timingValid === true
+            ? 'No detected timing gap'
+            : 'Not assessed',
         outcome: parentOutcome(m),
         target: m.targetHost ?? m.probeServer,
-        medianMs: m.details?.summary?.medianMs,
-        p95Ms: m.details?.summary?.p95Ms,
-        differenceMs: m.details?.summary?.successiveDifferenceMs,
+        medianMs:
+          m.scheduling?.timingValid === false
+            ? null
+            : m.details?.summary?.medianMs,
+        p95Ms:
+          m.scheduling?.timingValid === false
+            ? null
+            : m.details?.summary?.p95Ms,
+        differenceMs:
+          m.scheduling?.timingValid === false
+            ? null
+            : m.details?.summary?.successiveDifferenceMs,
         replies: m.details?.summary?.replies,
         lossPercent: m.details?.lossPercent ?? m.details?.nonResponsePercent,
-        baselineMs: m.details?.baselineSummary?.medianMs,
+        baselineMs:
+          m.scheduling?.timingValid === false
+            ? null
+            : m.details?.baselineSummary?.medianMs,
         loadMbps: m.details?.load?.value,
         loadBytes: m.details?.load?.transferredBytes,
         library: m.raw?.library,
@@ -131,11 +150,12 @@ export function SessionEvidence({ data }: { data: Evidence }) {
   const scheduling = useMemo(
     () =>
       matched.map(m => {
-        const delay = Date.parse(m.timestamp) - Date.parse(m.scheduledAt);
+        const executed = m.scheduling?.startedAt ?? m.timestamp;
+        const delay = Date.parse(executed) - Date.parse(m.scheduledAt);
         return {
           type: m.type,
           scheduled: m.scheduledAt,
-          executed: m.timestamp,
+          executed,
           delayMs: Number.isFinite(delay) ? delay : null,
         };
       }),
@@ -145,7 +165,7 @@ export function SessionEvidence({ data }: { data: Evidence }) {
     .filter(m => m.unit === 'ms')
     .map(m => ({
       time: new Date(m.timestamp).toLocaleTimeString(),
-      [m.type]: m.value ?? null,
+      [m.type]: m.scheduling?.timingValid === false ? null : m.value ?? null,
     }));
   const methods = [
     ...new Set(matched.filter(m => m.unit === 'ms').map(m => String(m.type))),
@@ -247,7 +267,9 @@ export function SessionEvidence({ data }: { data: Evidence }) {
         </h2>
         <p className="text-sm muted">
           One row per complete measurement. Choose columns for throughput, loss,
-          baseline latency or network context.
+          baseline latency or network context. Detected timing gaps exclude
+          headline timing statistics; original individual samples and raw JSON
+          remain available. Older records are labelled not assessed.
         </p>
         <DataTable
           paginate
@@ -259,6 +281,7 @@ export function SessionEvidence({ data }: { data: Evidence }) {
             'value',
             'unit',
             'outcome',
+            'timingStatus',
             'timestamp',
             'target',
             'durationMs',
