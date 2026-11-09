@@ -75,9 +75,7 @@ export function createBackgroundExecutor(location = false): BackgroundExecutor {
             }),
           {
             taskName: 'CapstoneMeasurement',
-            taskTitle: location
-              ? 'SkyMeasure trip active'
-              : 'Capstone session active',
+            taskTitle: 'SkyMeasure collection active',
             taskDesc:
               'Measurements are saved on this device. Tap to open and stop.',
             taskIcon: { name: 'ic_measurement', type: 'drawable' },

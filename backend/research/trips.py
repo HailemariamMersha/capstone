@@ -33,11 +33,12 @@ class TripUpdate(BaseModel):
     segmentCount: int = Field(ge=0, le=10000)
     flight: Flight
     used: Budget
-    confidence: Literal['unconfirmed', 'network_only', 'gps_supported']
+    confidence: Literal['unconfirmed', 'asn_matched', 'network_only', 'gps_supported']
     provider: str | None = Field(None, max_length=100)
     reason: str | None = Field(None, max_length=300)
     policyVersion: str = Field(max_length=100)
     shadow: bool = False
+    detectorPolicyVersion: str | None = Field(None, max_length=80)
 
 @router.put('/trips/{trip_id}')
 def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database)):
@@ -56,6 +57,9 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
     if body.used.transfers > transfer_cap:
         raise HTTPException(422, 'Transfer reservation exceeds versioned policy')
     raw = body.model_dump()
+    # Preserve the exact legacy manifest shape for unchanged revision retries.
+    if body.detectorPolicyVersion is None:
+        raw.pop('detectorPolicyVersion', None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     if t:
         if t.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
@@ -63,6 +67,8 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
             raise HTTPException(409, 'Trip revision conflict')
         if body.policyVersion != t.raw['policyVersion']:
             raise HTTPException(409, 'Trip policy cannot change')
+        if body.detectorPolicyVersion != t.raw.get('detectorPolicyVersion'):
+            raise HTTPException(409, 'Trip detector policy cannot change')
         if body.startedAt != t.raw['startedAt'] or body.segmentCount < t.raw['segmentCount']:
             raise HTTPException(409, 'Trip history cannot move backwards')
         if any(raw['used'][k] < t.raw['used'][k] for k in raw['used']):

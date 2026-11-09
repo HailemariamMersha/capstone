@@ -189,6 +189,53 @@ test('waiting without qualifying connectivity never publishes an M-Lab test', as
   expect(currentTrip()!.used.transfers).toBe(0);
 });
 
+test('ASN alone qualifies without reading GPS or needing an airline SSID', async () => {
+  const { NativeModules } = require('react-native');
+  NativeModules.FlightNetwork.bindWifi.mockResolvedValueOnce({
+    networkKey: 'network:1',
+    handle: '1',
+    ssid: null,
+    bssid: null,
+    validated: true,
+    bound: true,
+  });
+  // Keep the same Wi-Fi handle throughout both confirmation observations.
+  NativeModules.FlightNetwork.bindWifi.mockResolvedValue({
+    networkKey: 'network:1',
+    handle: '1',
+    ssid: null,
+    bssid: null,
+    validated: true,
+    bound: true,
+  });
+  globalThis.fetch = jest.fn(async () => ({
+    ok: true,
+    headers: { get: () => '1' },
+    text: async () => JSON.stringify({ asn: 14593 }),
+  })) as any;
+  try {
+    await startTrip('owner', {}, false);
+    await jest.advanceTimersByTimeAsync(31000);
+    expect(currentTrip()).toMatchObject({
+      phase: 'collecting',
+      detectorPolicy: { version: 'asn-only-v1' },
+      evidence: { confidence: 'asn_matched', gpsDetails: null },
+    });
+    expect(require('../src/trips/location').locationFix).not.toHaveBeenCalled();
+    expect(mockSessions[0].config.detectorPolicy.version).toBe('asn-only-v1');
+    expect(mockStore.beginAttempt).toHaveBeenCalled();
+  } finally {
+    NativeModules.FlightNetwork.bindWifi.mockResolvedValue({
+      networkKey: 'wifi',
+      handle: '1',
+      ssid: 'Home',
+      bssid: null,
+      validated: true,
+      bound: true,
+    });
+  }
+});
+
 test('a simulated 35-minute sleep records a gap without firing overdue heavy tasks', async () => {
   const { runProbe } = require('../src/measurements/runProbe');
   const { runTripMlab } = require('../src/reference/tripMlab');

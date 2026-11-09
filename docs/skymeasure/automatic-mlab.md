@@ -3,7 +3,7 @@
 Policy `flight-mlab-2026-11-02`, consent `skymeasure-flight-mlab-2026-11-02`.
 Participants review research participation and M-Lab public-data disclosure in
 one onboarding step. Existing installations must review this new version.
-Location and notification remain Android permission prompts; M-Lab needs
+In the ASN-only pilot, notifications are requested before Start; location is optional for Wi-Fi details. M-Lab needs
 informed publication consent, not another Android permission.
 
 **Start trip** arms detection and schedules one NDT7 download/upload pair

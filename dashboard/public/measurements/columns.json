@@ -1382,7 +1382,7 @@
     "reference": {
       "datatype": "JSON object",
       "units": "none",
-      "meaning": "Optional NDT7 summary; server telemetry is not handset TCP_INFO.",
+      "meaning": "NDT7 summary. serverCounterSource=app_info uses application payload; tcp_info uses server TCP received bytes including TLS/WebSocket overhead. Server telemetry is not handset TCP_INFO.",
       "source": "m.reference",
       "example": {
         "library": "@m-lab/ndt7",
@@ -2159,6 +2159,22 @@
     "icmpChecksum": ["response.icmpChecksum"]
   },
   "tripColumns": {
+  "measurement.networkSnapshot.flightEvidence.detectorPolicyVersion": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Qualification rule version. asn-only-v1 uses ASN alone; absent on historical records.",
+    "source": "measurement.networkSnapshot.flightEvidence.detectorPolicyVersion",
+    "calculation": "Copied from recorded configuration or evidence; never inferred for historical records.",
+    "blank": "Historical or unavailable; retain original confidence semantics."
+  },
+  "session.detectorPolicyVersion": {
+    "datatype": "string",
+    "units": "none",
+    "meaning": "Qualification rule version. asn-only-v1 uses ASN alone; absent on historical records.",
+    "source": "session.config.detectorPolicy.version",
+    "calculation": "Copied from recorded configuration or evidence; never inferred for historical records.",
+    "blank": "Historical or unavailable; retain original confidence semantics."
+  },
   "session.tripId": {
     "datatype": "string",
     "units": "none",
@@ -2242,7 +2258,7 @@
   "measurement.networkSnapshot.flightEvidence.confidence": {
     "datatype": "string",
     "units": "none",
-    "meaning": "unconfirmed, network_only or gps_supported at this observation.",
+    "meaning": "asn_matched means a fresh configured-provider ASN match, not verified airborne status. unconfirmed means no fresh match; network_only and gps_supported are historical tiers.",
     "source": "measurement.networkSnapshot.flightEvidence.confidence",
     "calculation": "Copied from recorded evidence unless described otherwise.",
     "blank": "Unavailable, not applicable, or historical; never substitute zero."

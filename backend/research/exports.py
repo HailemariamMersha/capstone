@@ -60,6 +60,8 @@ def combined_rows(data):
         config = data['session'].get('config') or {}
         if config.get('tripId'):
             parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight') if k in config}, 'session.'))
+            if isinstance(config.get('detectorPolicy'), dict):
+                parent['session.detectorPolicyVersion'] = config['detectorPolicy'].get('version')
         parent.update(packet_fields(measurement.get('packet'), 'measurement.'))
         route = measurement.get('route') or {}
         parent.update(flatten({k: v for k, v in route.items() if k != 'samples'}, 'measurement.route.'))

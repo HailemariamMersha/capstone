@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer';
 import type { Trip } from '../src/trips/model';
-import { TRIP_POLICY } from '../src/trips/model';
+import { TRIP_POLICY, DETECTOR_POLICY } from '../src/trips/model';
 import { tripManifest, uploadTrip } from '../src/trips/sync';
 import { api, localSession } from '../src/auth/client';
 import { measurementStore } from '../src/storage/database';
@@ -54,6 +54,15 @@ beforeEach(() => {
   jest.clearAllMocks();
   (localSession as jest.Mock).mockResolvedValue({ user: { id: 'owner' } });
   (api as jest.Mock).mockResolvedValue({ uploadComplete: false });
+});
+test('only new trips include an explicit detector policy in their manifest', () => {
+  const t = trip();
+  expect(tripManifest(t)).not.toHaveProperty('detectorPolicyVersion');
+  t.detectorPolicy = DETECTOR_POLICY;
+  expect(tripManifest(t)).toHaveProperty(
+    'detectorPolicyVersion',
+    'asn-only-v1',
+  );
 });
 test('failed live requests and retries reserve UTF-8 payload before sending without resetting counters', async () => {
   const t = trip();

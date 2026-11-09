@@ -30,16 +30,15 @@ import type { Measurement, ProbeType } from '../measurements/types';
 import type { NetworkSnapshot } from '../network/types';
 import {
   TRIP_POLICY,
+  DETECTOR_POLICY,
   type Trip,
   type FlightDetails,
-  type GpsEvidence,
   flightDetails,
   evaluate,
   transition,
   reserve,
   reservePair,
 } from './model';
-import { locationFix } from './location';
 import { uploadTrip, cancelTripUpload } from './sync';
 
 interface Wifi {
@@ -57,7 +56,7 @@ const native = NativeModules.FlightNetwork as
       runtimeState?(): Promise<Record<string, number | boolean>>;
     }
   | undefined;
-const executor = createBackgroundExecutor(true);
+const executor = createBackgroundExecutor();
 let trip: Trip | null = null;
 let segment: string | null = null;
 let running: Promise<void> | null = null;
@@ -147,6 +146,7 @@ const config = (t = trip!): MeasurementConfig => ({
   ...participantDefaults,
   collectorVersion: 'skymeasure-libraries-2',
   collectorPolicy: COLLECTOR_POLICY,
+  detectorPolicy: t.detectorPolicy ?? DETECTOR_POLICY,
   streamDownloads: true,
   httpEnabled: true,
   referenceByteThreshold: 90 * 1048576,
@@ -323,6 +323,7 @@ export async function startTrip(
       reason: null,
       flight: details,
       policy: TRIP_POLICY,
+      detectorPolicy: DETECTOR_POLICY,
       segmentCount: 0,
       firstQualifiedAt: null,
       candidateAt: null,
@@ -442,9 +443,7 @@ async function loop(signal: AbortSignal) {
   let identityAbort: AbortController | null = null;
   let wifi: Wifi | null = null;
   let snapshot: NetworkSnapshot | null = null;
-  let gps: GpsEvidence | null = null;
-  let gpsAt = -Infinity,
-    identityAt = -Infinity,
+  let identityAt = -Infinity,
     identityDue = 0;
   let identity: {
     publicIp?: string;
@@ -491,7 +490,6 @@ async function loop(signal: AbortSignal) {
         identity = {};
         identityAt = -Infinity;
         identityDue = 0;
-        gps = null;
         probeAbort?.abort();
         identityAbort?.abort();
         cancelTripUpload();
@@ -594,7 +592,6 @@ async function loop(signal: AbortSignal) {
         identity = {};
         identityAt = -Infinity;
         identityDue = 0;
-        gps = null;
         await record('collector_route', {
           previousHandle: wifi?.handle ?? null,
           selectedHandle: selected?.handle ?? null,
@@ -697,33 +694,15 @@ async function loop(signal: AbortSignal) {
       }
       if (Date.now() - identityAt > COLLECTOR_POLICY.identityFreshMs)
         identity = {};
-      let evidence = evaluate({
+      const evidence = evaluate({
         now: Date.now(),
         networkKey: wifi?.bound ? wifi.networkKey : null,
         ssid: wifi?.ssid ?? null,
         asn: identity.asn ?? null,
         identityReason: identity.asnUnavailable,
         identityAt: Number.isFinite(identityAt) ? identityAt : null,
-        gps,
+        gps: null,
       });
-      if (
-        wifi?.bound &&
-        (evidence.asn.state === 'positive' ||
-          evidence.ssid.state === 'positive') &&
-        Date.now() - gpsAt >= 60000
-      ) {
-        gpsAt = Date.now();
-        gps = await locationFix(stop.signal);
-        evidence = evaluate({
-          now: Date.now(),
-          networkKey: wifi.networkKey,
-          ssid: wifi.ssid,
-          asn: identity.asn ?? null,
-          identityReason: identity.asnUnavailable,
-          identityAt: Number.isFinite(identityAt) ? identityAt : null,
-          gps,
-        });
-      }
       trip = transition(trip!, evidence);
       const battery = await DeviceInfo.getBatteryLevel().catch(() => -1);
       const charging = await DeviceInfo.isBatteryCharging().catch(() => null);
@@ -758,7 +737,7 @@ async function loop(signal: AbortSignal) {
       });
       await record('flight_detection', {
         tripId: trip.id,
-        policyVersion: trip.policy.version,
+        policyVersion: DETECTOR_POLICY.version,
         phase: trip.phase,
         shadow: trip.shadow,
         ...evidence,

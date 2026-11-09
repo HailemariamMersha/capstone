@@ -67,17 +67,19 @@ test('waiting at home does not run the disconnection timer', () => {
   expect(t.phase).toBe('watching');
   expect(t.disconnectedAt).toBeNull();
 });
-test('two evaluations admit network-only evidence without claiming GPS', () => {
-  let t = transition(initial(), evidence(1000));
+test('two fresh ASN evaluations qualify without SSID or GPS', () => {
+  const asnOnly = (at: number) => evidence(at, { ssid: null, gps: null });
+  let t = transition(initial(), asnOnly(1000));
   expect(t.firstQualifiedAt).toBeNull();
-  t = transition(t, evidence(30999));
+  t = transition(t, asnOnly(30999));
   expect(t.phase).toBe('watching');
-  t = transition(t, evidence(31000));
+  t = transition(t, asnOnly(31000));
   expect(t.phase).toBe('collecting');
-  expect(t.evidence?.confidence).toBe('network_only');
+  expect(t.evidence?.confidence).toBe('asn_matched');
+  expect(t.detectorPolicy?.version).toBe('asn-only-v1');
   expect(t.nextTransferAt).toBe(331000);
 });
-test('unknown GPS, stale identity and redacted SSID never become positive', () => {
+test('SSID and GPS cannot replace missing or stale ASN evidence', () => {
   expect(evidence(120001, { ssid: null, identityAt: 0 }).confidence).toBe(
     'unconfirmed',
   );
@@ -85,7 +87,10 @@ test('unknown GPS, stale identity and redacted SSID never become positive', () =
     'unconfirmed',
   );
   expect(evidence(1, { asn: null, gps: fix(1) }).confidence).toBe(
-    'gps_supported',
+    'unconfirmed',
+  );
+  expect(evidence(1, { ssid: 'Unrecognized', gps: null }).confidence).toBe(
+    'asn_matched',
   );
   for (const patch of [
     { mocked: true },
@@ -107,17 +112,38 @@ test('same-Wi-Fi internet outage retains collection; disconnection ends after gr
   t = transition(t, evidence(899999, { networkKey: null }));
   expect(t.phase).toBe('paused');
   t = transition(t, evidence(900000, { networkKey: null }));
-  expect(t.reason).toBe('wifi_unavailable_after_qualification');
+  expect(t.reason).toBe('qualifying_network_unavailable_after_qualification');
 });
-test('landing needs earlier airborne GPS and sustained valid low speed', () => {
+test('GPS speed cannot qualify collection or infer landing under ASN-only policy', () => {
   let t = transition(initial(), evidence(0, { gps: fix(0) }));
   t = transition(t, evidence(30000, { gps: fix(30000, 0) }));
   t = transition(t, evidence(330000, { gps: fix(330000, 0) }));
-  expect(t.reason).toBe('low_speed_after_airborne_evidence');
+  expect(t.phase).toBe('collecting');
+  expect(t.reason).toBeNull();
+  expect(t.airborneSeen).toBe(false);
   expect(
     transition(initial(), evidence(360000, { gps: fix(360000, 0) })).phase,
   ).not.toBe('finished');
 });
+test('a fresh non-provider ASN pauses collection and requires confirmation again', () => {
+  let t = transition(transition(initial(), evidence(0)), evidence(30000));
+  t = transition(t, evidence(60000, { asn: 64512 }));
+  expect(t.phase).toBe('paused');
+  expect(t.qualifiedKey).toBeNull();
+  t = transition(t, evidence(90000));
+  expect(t.phase).toBe('paused');
+  t = transition(t, evidence(120000));
+  expect(t.phase).toBe('collecting');
+});
+test('another network must requalify even when its SSID is identical', () => {
+  let t = transition(transition(initial(), evidence(0)), evidence(30000));
+  t = transition(t, evidence(60000, { networkKey: 'other-wifi', asn: null }));
+  expect(t.phase).toBe('paused');
+});
+test.each([0, -1, NaN, Infinity, 1.5, 4294967296])(
+  'invalid ASN %s remains unknown',
+  asn => expect(evidence(1, { asn }).asn.state).toBe('unknown'),
+);
 test.each([60, 840, 1440])(
   'spreads at most ten transfer reservations across %i minutes without reset',
   minutes => {

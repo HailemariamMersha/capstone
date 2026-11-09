@@ -152,7 +152,7 @@ function SessionDetail({
       {d.session.config?.tripId && (
         <section className="panel p-5 space-y-3">
           <h2 className="font-semibold">
-            Flight detection and collection gaps
+            Provider qualification and collection gaps
           </h2>
           <p>
             Segment {(d.session.config.segmentIndex ?? 0) + 1} ·{' '}
@@ -166,7 +166,7 @@ function SessionDetail({
                   <th>Observed</th>
                   <th>Phase / event</th>
                   <th>Confidence</th>
-                  <th>ASN / SSID / GPS</th>
+                  <th>ASN status / historical context</th>
                 </tr>
               </thead>
               <tbody>
@@ -185,11 +185,13 @@ function SessionDetail({
                       <td>{e.details?.confidence ?? 'Not applicable'}</td>
                       <td>
                         {e.kind === 'flight_detection'
-                          ? [
-                              e.details?.asn?.state,
-                              e.details?.ssid?.state,
-                              e.details?.gps?.state,
-                            ].join(' / ')
+                          ? e.details?.detectorPolicyVersion === 'asn-only-v1'
+                            ? `ASN: ${e.details?.asn?.state ?? 'unknown'}`
+                            : [
+                                e.details?.asn?.state,
+                                e.details?.ssid?.state,
+                                e.details?.gps?.state,
+                              ].join(' / ')
                           : e.details?.reason ??
                             `${e.details?.durationMs ?? 0} ms`}
                       </td>

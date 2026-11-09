@@ -6,7 +6,8 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
-import android.location.LocationManager
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Context
 import android.os.Build
 import android.os.PowerManager
@@ -54,10 +55,6 @@ class FlightNetworkModule(private val context: ReactApplicationContext) : ReactC
     }
     @ReactMethod fun bindWifi(promise: Promise) {
         try {
-            val location = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            if (!location.isProviderEnabled(LocationManager.GPS_PROVIDER) && !location.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                promise.reject("LOCATION_DISABLED", "Enable location services before starting a trip."); return
-            }
             if (callback == null) {
                 callback = object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) { changed(network) }
@@ -81,13 +78,19 @@ class FlightNetworkModule(private val context: ReactApplicationContext) : ReactC
             val info = if (Build.VERSION.SDK_INT >= 29) caps?.transportInfo as? WifiInfo else null
             @Suppress("DEPRECATION")
             val fallbackAllowed = manager.activeNetwork == network || manager.allNetworks.count { manager.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true } == 1
-            val wifi = if (info?.ssid != null && info.ssid != "<unknown ssid>") info else if (fallbackAllowed) (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).connectionInfo else null
+            // Wi-Fi selection/binding does not depend on optional SSID permission.
+            val wifi = try {
+                if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) null
+                else if (info?.ssid != null && info.ssid != "<unknown ssid>") info
+                else if (fallbackAllowed) (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).connectionInfo
+                else null
+            } catch (_: SecurityException) { null }
             val ssid = wifi?.ssid?.trim('"')?.takeUnless { it == "<unknown ssid>" }
             val result = Arguments.createMap()
-            result.putString("networkKey", ssid?.let { "ssid:$it" } ?: "network:${network.networkHandle}")
+            result.putString("networkKey", "network:${network.networkHandle}")
             result.putString("handle", network.networkHandle.toString())
             result.putString("ssid", ssid)
-            result.putString("bssid", wifi?.bssid)
+            result.putString("bssid", wifi?.bssid?.takeUnless { it == "02:00:00:00:00:00" })
             result.putBoolean("validated", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true)
             result.putBoolean("bound", manager.boundNetworkForProcess == network)
             promise.resolve(result)

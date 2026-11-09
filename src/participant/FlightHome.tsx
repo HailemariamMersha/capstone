@@ -86,23 +86,12 @@ export default function FlightHome({
       } else {
         if (Platform.OS !== 'android')
           throw new Error('Trip collection is currently available on Android.');
-        const permissions = [
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-        ];
-        if (Platform.Version >= 33)
-          permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
-        if (
-          granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] !==
-            'granted' ||
-          (Platform.Version >= 33 &&
-            granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
-              'granted')
-        ) {
-          throw new Error(
-            'Allow precise location and notifications to start your trip.',
+        if (Platform.Version >= 33) {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
           );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED)
+            throw new Error('Allow notifications to start your trip.');
         }
         if (shadow) await startTrip(owner, details, true, { includeMlab });
         else await startTrip(owner, details, false);
@@ -155,9 +144,9 @@ export default function FlightHome({
             ? trip.shadow
               ? 'Ground test. Flight detection is recorded without controlling the probes.'
               : trip.phase === 'watching'
-              ? 'Connect to your flight’s Wi-Fi. We’ll take it from there.'
+              ? 'Connect to your flight’s Wi-Fi. We’ll check its provider.'
               : trip.phase === 'paused'
-              ? 'Your trip will continue when your flight’s Wi-Fi returns.'
+              ? 'Your trip will continue when suitable connectivity returns.'
               : 'SkyMeasure is taking care of the rest.'
             : 'Add your flight, or skip straight to your trip.'}
         </Text>
@@ -177,7 +166,7 @@ export default function FlightHome({
                 : trip.shadow
                 ? 'Researcher shadow test'
                 : trip.phase === 'watching'
-                ? 'Waiting for flight Wi-Fi'
+                ? 'Checking network provider'
                 : trip.phase === 'paused'
                 ? 'Paused'
                 : 'Trip in progress'}

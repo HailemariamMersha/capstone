@@ -258,15 +258,13 @@ test('accepted participant Home has one Start and no separate speed-test button'
   expect(titles).not.toContain('Start speed test');
 });
 
-test('Start sends entered flight details after both phone permissions are granted', async () => {
+test('Start needs notification permission but does not request GPS access', async () => {
   jest.replaceProperty(Platform, 'OS', 'android');
   jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
   const permissions = jest
-    .spyOn(PermissionsAndroid, 'requestMultiple')
-    .mockResolvedValue({
-      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'granted',
-      [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS]: 'granted',
-    } as any);
+    .spyOn(PermissionsAndroid, 'request')
+    .mockResolvedValue('granted');
+  const locationRequests = jest.spyOn(PermissionsAndroid, 'requestMultiple');
   try {
     await render();
     await act(async () => {
@@ -282,11 +280,9 @@ test('Start sends entered flight details after both phone permissions are grante
     });
     await press('Start trip');
     expect(permissions).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      ]),
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
     );
+    expect(locationRequests).not.toHaveBeenCalled();
     expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
       'account-a',
       { flightNumber: 'QR123', departure: 'Doha', arrival: 'London' },
@@ -300,10 +296,8 @@ test('Skip and start discards entered fields and still honors permission denial'
   jest.replaceProperty(Platform, 'OS', 'android');
   jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
   const permission = jest
-    .spyOn(PermissionsAndroid, 'requestMultiple')
-    .mockResolvedValue({
-      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'denied',
-    } as any);
+    .spyOn(PermissionsAndroid, 'request')
+    .mockResolvedValue('denied');
   try {
     await render();
     await act(async () =>
@@ -314,11 +308,8 @@ test('Skip and start discards entered fields and still honors permission denial'
     );
     await press('Skip and start');
     expect(require('../src/trips/runtime').startTrip).not.toHaveBeenCalled();
-    expect(contains('Allow precise location and notifications')).toBe(true);
-    permission.mockResolvedValue({
-      [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]: 'granted',
-      [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS]: 'granted',
-    } as any);
+    expect(contains('Allow notifications to start your trip')).toBe(true);
+    permission.mockResolvedValue('granted');
     await press('Skip and start');
     expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
       'account-a',

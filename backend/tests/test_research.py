@@ -361,6 +361,24 @@ def test_trip_rejects_coordinates_invalid_budgets_and_research_labels(client):
     assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 403
 
 
+def test_asn_detector_policy_is_versioned_without_changing_historical_retries(client):
+    path = '/api/v2/trips/' + 'f'*32
+    body = {**trip_body(), 'confidence': 'asn_matched', 'detectorPolicyVersion': 'asn-only-v1'}
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    result = client.get('/api/v2/research/trips?confidence=asn_matched', headers=auth('researcher')).json()
+    assert result['total'] == 1
+    assert result['items'][0]['detectorPolicyVersion'] == 'asn-only-v1'
+    assert client.put(path, headers=auth('b'), json=body).status_code == 404
+    assert client.put(path, headers=auth(), json={**body, 'revision': 2, 'detectorPolicyVersion': 'other'}).status_code == 409
+    old_path = '/api/v2/trips/' + 'e'*32
+    old = {**trip_body(), 'confidence': 'network_only'}
+    assert client.put(old_path, headers=auth(), json=old).status_code == 200
+    assert client.put(old_path, headers=auth(), json=old).status_code == 200
+    legacy = client.get('/api/v2/trips', headers=auth()).json()['items']
+    assert 'detectorPolicyVersion' not in next(t for t in legacy if t['id'] == 'e'*32)
+
+
 def test_trip_median_excludes_flagged_timing_but_retains_observations(client):
     trip_id = 'e' * 32
     assert client.put('/api/v2/trips/' + trip_id, headers=auth(), json=trip_body()).status_code == 200
@@ -461,13 +479,15 @@ def test_trip_csv_metadata_is_additive_and_dictionary_covered():
     data = {'session': {'id': 's', 'config': {}}, 'measurements': [{'id': 'm', 'type': 'tcp_connect'}]}
     historical = list(combined_rows(data))[0]
     assert not any(k.startswith('session.flight') or k == 'session.tripId' for k in historical)
-    data['session']['config'] = {'tripId': 't', 'segmentIndex': 0, 'collectionMode': 'flight_auto', 'flight': {'flightNumber': 'TEST', 'expectedMinutes': 840}}
-    data['measurements'][0]['networkSnapshot'] = {'flightEvidence': {'gpsDetails': None, 'confidence': 'network_only'}}
+    data['session']['config'] = {'tripId': 't', 'segmentIndex': 0, 'collectionMode': 'flight_auto', 'flight': {'flightNumber': 'TEST', 'expectedMinutes': 840}, 'detectorPolicy': {'version': 'asn-only-v1'}}
+    data['measurements'][0]['networkSnapshot'] = {'flightEvidence': {'gpsDetails': None, 'confidence': 'asn_matched', 'detectorPolicyVersion': 'asn-only-v1'}}
     row = list(combined_rows(data))[0]
     dictionary = json.loads(Path('scripts/measurements/columns.json').read_text())['tripColumns']
     assert set(row) - set(historical) <= set(dictionary)
     assert row['session.segmentIndex'] == 0
     assert row['session.flight.expectedMinutes'] == 840
+    assert row['session.detectorPolicyVersion'] == 'asn-only-v1'
+    assert row['measurement.networkSnapshot.flightEvidence.confidence'] == 'asn_matched'
     assert not any(k.endswith('.gpsDetails') for k in row)
 
 def test_mlab_budget_requires_new_policy_and_policy_is_immutable(client):

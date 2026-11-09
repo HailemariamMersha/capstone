@@ -755,6 +755,30 @@ test('trip filters and partial segments preserve the distinction from active pho
   ).toBeVisible();
 });
 
+test('ASN-only trips expose their policy and filter without claiming an airborne flight', async ({
+  page,
+}) => {
+  await signedIn(page, 'researcher', undefined, {
+    confidence: 'asn_matched',
+    detectorPolicyVersion: 'asn-only-v1',
+    shadow: false,
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  await expect(
+    page.getByText('Qualification policy: asn-only-v1'),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/It does not establish an airborne flight/),
+  ).toBeVisible();
+  const request = page.waitForRequest(r =>
+    r.url().includes('confidence=asn_matched'),
+  );
+  await page.getByLabel('Latest confidence').selectOption('asn_matched');
+  await request;
+  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
+});
+
 test('trip cards show pooled results and remain scrollable on a phone', async ({
   page,
 }) => {

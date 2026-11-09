@@ -20,6 +20,9 @@ export function tripManifest(t: Trip) {
     reason: t.reason,
     policyVersion: t.policy.version,
     shadow: t.shadow,
+    ...(t.detectorPolicy
+      ? { detectorPolicyVersion: t.detectorPolicy.version }
+      : {}),
   };
 }
 let cancelCurrent: (() => void) | null = null;

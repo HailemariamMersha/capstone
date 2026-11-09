@@ -359,6 +359,8 @@ One baseline or during-transfer HTTP transaction.
 
 | Column | Meaning | Datatype; units | Source | Blank |
 | --- | --- | --- | --- | --- |
+| `measurement.networkSnapshot.flightEvidence.detectorPolicyVersion` | Qualification rule version. asn-only-v1 uses ASN alone; absent on historical records. | string; none | measurement.networkSnapshot.flightEvidence.detectorPolicyVersion | Historical or unavailable; retain original confidence semantics. |
+| `session.detectorPolicyVersion` | Qualification rule version. asn-only-v1 uses ASN alone; absent on historical records. | string; none | session.config.detectorPolicy.version | Historical or unavailable; retain original confidence semantics. |
 | `session.tripId` | Trip join key shared by its segments. | string; none | session.config.tripId | Unavailable, not applicable, or historical; never substitute zero. |
 | `session.segmentIndex` | Zero-based segment order within the trip. | integer; none | session.config.segmentIndex | Unavailable, not applicable, or historical; never substitute zero. |
 | `session.collectionMode` | flight_auto, detector_shadow or research_manual. | string; none | session.config.collectionMode | Unavailable, not applicable, or historical; never substitute zero. |
@@ -369,7 +371,7 @@ One baseline or during-transfer HTTP transaction.
 | `measurement.networkSnapshot.flightEvidence.at` | Detector evaluation time. | integer; ms since Unix epoch | measurement.networkSnapshot.flightEvidence.at | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.flightEvidence.networkKey` | Observed Wi-Fi continuity identifier; not proof of a flight. | string; none | measurement.networkSnapshot.flightEvidence.networkKey | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.flightEvidence.provider` | Versioned ASN registry match. | string; none | measurement.networkSnapshot.flightEvidence.provider | Unavailable, not applicable, or historical; never substitute zero. |
-| `measurement.networkSnapshot.flightEvidence.confidence` | unconfirmed, network_only or gps_supported at this observation. | string; none | measurement.networkSnapshot.flightEvidence.confidence | Unavailable, not applicable, or historical; never substitute zero. |
+| `measurement.networkSnapshot.flightEvidence.confidence` | asn_matched means a fresh configured-provider ASN match, not verified airborne status. unconfirmed means no fresh match; network_only and gps_supported are historical tiers. | string; none | measurement.networkSnapshot.flightEvidence.confidence | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.flightEvidence.asn.state` | positive, negative or unknown; unknown is not a negative observation. | string; none | measurement.networkSnapshot.flightEvidence.asn.state | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.flightEvidence.asn.observedAt` | Source observation time; not refreshed per packet. | integer; ms since Unix epoch | measurement.networkSnapshot.flightEvidence.asn.observedAt | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.flightEvidence.asn.reason` | Rule or unavailability reason recorded by the detector. | string; none | measurement.networkSnapshot.flightEvidence.asn.reason | Unavailable, not applicable, or historical; never substitute zero. |

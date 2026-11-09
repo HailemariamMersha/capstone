@@ -764,11 +764,12 @@ function Account() {
           })
         }
       >
-        Location permission
+        Optional Wi-Fi details
       </Button>
       <Text>
-        Location helps identify flight Wi-Fi and movement. GPS coordinates are
-        never saved.
+        Android may require location permission and system Location to reveal
+        Wi-Fi identifiers. Collection uses ASN matching and works without these
+        optional details. Automatic trips do not collect GPS movement.
       </Text>
       <Divider />
       <Text variant="titleLarge">Research participation</Text>

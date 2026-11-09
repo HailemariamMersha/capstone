@@ -14,7 +14,17 @@ export const TRIP_POLICY = {
   altitudeM: 3048,
   speedMps: 128.611,
 } as const;
-export type Confidence = 'unconfirmed' | 'network_only' | 'gps_supported';
+export const DETECTOR_POLICY = {
+  version: 'asn-only-v1',
+  confirmationMs: 30000,
+  identityFreshMs: 120000,
+} as const;
+// Historical confidence labels remain readable; new qualification uses ASN only.
+export type Confidence =
+  | 'unconfirmed'
+  | 'asn_matched'
+  | 'network_only'
+  | 'gps_supported';
 export type Phase = 'watching' | 'collecting' | 'paused' | 'finished';
 export interface FlightDetails {
   flightNumber?: string;
@@ -57,6 +67,7 @@ export interface Signal {
   reason: string;
 }
 export interface Evidence {
+  detectorPolicyVersion?: string;
   at: number;
   networkKey: string | null;
   asn: Signal;
@@ -67,6 +78,7 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  detectorPolicy?: typeof DETECTOR_POLICY;
   collectorPolicy?: string;
   segmentHealth?: import('./scheduler').SegmentHealth;
   pendingControlEvents?: { kind: string; details: Record<string, unknown> }[];
@@ -145,13 +157,18 @@ export function evaluate(input: {
     !!networkKey &&
     input.identityAt != null &&
     now >= input.identityAt &&
-    now - input.identityAt <= 120000;
+    now - input.identityAt <= DETECTOR_POLICY.identityFreshMs;
+  const validAsn =
+    input.asn != null &&
+    Number.isSafeInteger(input.asn) &&
+    input.asn > 0 &&
+    input.asn <= 4294967295;
   const provider =
-    identityFresh && input.asn != null ? PROVIDERS[input.asn] ?? null : null;
+    identityFresh && validAsn ? PROVIDERS[input.asn!] ?? null : null;
   const asn = signal(
-    identityFresh && input.asn != null ? !!provider : null,
+    identityFresh && validAsn ? !!provider : null,
     input.identityAt,
-    identityFresh && input.asn != null
+    identityFresh && validAsn
       ? 'provider_registry'
       : input.identityReason ?? 'identity_unavailable_or_stale',
   );
@@ -180,9 +197,8 @@ export function evaluate(input: {
     gps?.observedAt ?? null,
     gpsValid ? 'WGS84_altitude_and_speed' : 'fix_unavailable_invalid_or_stale',
   );
-  const networkMatches =
-    Number(asn.state === 'positive') + Number(ssid.state === 'positive');
   return {
+    detectorPolicyVersion: DETECTOR_POLICY.version,
     at: now,
     networkKey,
     asn,
@@ -190,28 +206,29 @@ export function evaluate(input: {
     gps: gs,
     provider,
     gpsDetails: gps,
-    confidence: !networkKey
-      ? 'unconfirmed'
-      : gs.state === 'positive' && networkMatches >= 1
-      ? 'gps_supported'
-      : networkMatches === 2
-      ? 'network_only'
-      : 'unconfirmed',
+    confidence: asn.state === 'positive' ? 'asn_matched' : 'unconfirmed',
   };
 }
 export function transition(trip: Trip, evidence: Evidence): Trip {
-  const t: Trip = { ...trip, evidence };
+  const t: Trip = {
+    ...trip,
+    detectorPolicy: trip.detectorPolicy ?? DETECTOR_POLICY,
+    evidence,
+  };
   const now = evidence.at;
   if (t.phase === 'finished') return t;
-  if (t.qualifiedKey && t.qualifiedKey !== evidence.networkKey)
+  if (
+    t.qualifiedKey &&
+    (t.qualifiedKey !== evidence.networkKey ||
+      evidence.asn.state === 'negative')
+  )
     t.qualifiedKey = null;
-  if (evidence.gps.state === 'positive') t.airborneSeen = true;
-  if (evidence.confidence !== 'unconfirmed') {
+  if (evidence.asn.state === 'positive') {
     if (t.candidateKey !== evidence.networkKey || t.candidateAt == null) {
       t.candidateKey = evidence.networkKey;
       t.candidateAt = now;
     }
-    if (now - t.candidateAt >= 30000) {
+    if (now - t.candidateAt >= DETECTOR_POLICY.confirmationMs) {
       t.qualifiedKey = evidence.networkKey;
       t.firstQualifiedAt ??= now;
       t.nextTransferAt ??= now + 300000;
@@ -227,21 +244,14 @@ export function transition(trip: Trip, evidence: Evidence): Trip {
     t.phase = t.firstQualifiedAt == null ? 'watching' : 'paused';
     if (t.firstQualifiedAt != null) t.disconnectedAt ??= now;
   }
-  const g = evidence.gpsDetails;
-  const low =
-    t.airborneSeen &&
-    evidence.gps.state !== 'unknown' &&
-    g?.speedMps != null &&
-    g.speedMps <= 30;
-  t.lowSpeedAt = low ? t.lowSpeedAt ?? now : null;
+  // ASN cannot establish an airborne aircraft or infer its landing.
+  t.lowSpeedAt = null;
   const reason =
     now - t.startedAt >= TRIP_POLICY.maximumMs
       ? 'safety_ceiling'
       : t.disconnectedAt != null &&
         now - t.disconnectedAt >= TRIP_POLICY.disconnectMs
-      ? 'wifi_unavailable_after_qualification'
-      : t.lowSpeedAt != null && now - t.lowSpeedAt >= TRIP_POLICY.landingMs
-      ? 'low_speed_after_airborne_evidence'
+      ? 'qualifying_network_unavailable_after_qualification'
       : null;
   return reason
     ? { ...t, state: 'completed', phase: 'finished', endedAt: now, reason }

@@ -20,6 +20,7 @@ type Trip = {
   firstQualifiedAt: number | null;
   reason: string | null;
   shadow: boolean;
+  detectorPolicyVersion?: string;
   flight: {
     flightNumber?: string;
     departure?: string;
@@ -52,9 +53,11 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
     <section className="space-y-5">
       <h2 className="text-xl font-semibold">Trips and received segments</h2>
       <p>
-        Last reported collection state is not a live-phone indicator.
-        Network-only evidence does not establish an airborne flight. Flight
-        details are participant-reported.
+        Last reported collection state is not a live-phone indicator. ASN
+        matching identifies a configured provider network, including possible
+        ground use. It does not establish an airborne flight. Flight details are
+        participant-reported. Network-only and GPS-supported are historical
+        tiers.
       </p>
       <div className="flex flex-wrap gap-3">
         <label>
@@ -69,8 +72,9 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
           >
             <option value="">All</option>
             <option value="unconfirmed">Unconfirmed</option>
-            <option value="network_only">Network-only</option>
-            <option value="gps_supported">GPS-supported</option>
+            <option value="asn_matched">ASN matched</option>
+            <option value="network_only">Network-only (historical)</option>
+            <option value="gps_supported">GPS-supported (historical)</option>
           </select>
         </label>
         <label>
@@ -123,6 +127,9 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
             {t.confidence.replaceAll('_', ' ')} · last reported {t.state} /{' '}
             {t.phase}
           </p>
+          {t.detectorPolicyVersion && (
+            <p>Qualification policy: {t.detectorPolicyVersion}</p>
+          )}
           <p>
             {t.firstQualifiedAt == null
               ? 'Never qualified'
