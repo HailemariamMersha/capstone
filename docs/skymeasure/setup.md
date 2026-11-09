@@ -1,5 +1,7 @@
 # SkyMeasure staging setup
 
+> Current hosting: isolated SkyMeasure API/UDP services on the shared lab host, Supabase PostgreSQL/Auth, and Vercel dashboard. Region is `lab-location-unconfirmed`. DigitalOcean instructions below document the original deployment and retained rollback host; do not reprovision it for the current pilot. Current qualification is [ASN-only](../measurements/flight-collection.md).
+
 > For the current anonymous-participant flight pilot, follow [flight rollout and MaxMind setup](flight-rollout.md). Google/PKCE instructions below apply to researchers and retained Google accounts. The new participant flow uses background anonymous enrollment and fifteen-minute trip segments.
 
 **31 October 2026:** the API hostname now points to the shared lab server at `23.235.205.53`; its API, UDP service, independent HTTPS certificate, and renewal dry run are verified. The phone update/test remains pending. See [lab migration and current cutover status](lab-migration.md) before following the historical DigitalOcean provisioning instructions below.

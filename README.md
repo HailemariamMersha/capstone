@@ -1,229 +1,107 @@
-> **Current library-only collection:** Android packet measurements now use `icmpenguin`, `react-native-tcp-socket` and `react-native-udp`. The custom C++ engine is preserved on `experiment/custom-packet-engine`. See [library choices, exact field limitations and comparison commands](docs/library-packet-comparison.md). Historical custom-engine validation below applies to that baseline.
-
 # SkyMeasure
 
-SkyMeasure now includes a participant app and a private researcher workspace around the existing library collector. See the [staging setup guide](docs/skymeasure/setup.md), [delivery and validation record](docs/skymeasure/validation.md), and [combined CSV guide](docs/skymeasure/combined-csv.md). The [collector reliability guide](docs/skymeasure/collector-reliability.md) explains planned versus actual timing, collection gaps, transfer progress and segment health.
+SkyMeasure is an Android research pilot for crowdsourced in-flight network measurements on unrooted phones. The participant app uses React Native and TypeScript; an authenticated FastAPI service stores research evidence in Supabase PostgreSQL, and a Next.js dashboard lets approved researchers inspect and export it. Android ships first; iOS device and background behavior are not validated.
 
-Participants now tap **Get started**, review research consent, optionally enter flight details, and tap **Start trip**. Supabase anonymous authentication supplies an installation identity in the background; participants provide no email/password. Existing Google accounts retain their records, and researchers keep Google sign-in. Paper/React Navigation, encrypted Keychain credentials and account-owned OP-SQLite storage remain in use.
+**Review this branch:** [feature/skymeasure-participant-dashboard](https://github.com/HailemariamMersha/capstone/tree/feature/skymeasure-participant-dashboard). The repository's `main` branch contains an earlier collector. The repository is public; access to the [research dashboard](https://capstone-backend-henna.vercel.app/) still requires a researcher role.
 
-The flight pilot separates Watching, Collecting, Paused and Finished states, records network-only versus GPS-supported evidence, and rotates closed measurement segments every fifteen minutes within one continuous trip. It reserves 300 MiB per trip: 200 MiB for one automatic M-Lab benchmark, 60 MiB for controlled transfers, and 20 MiB each for diagnostics/context and live uploads. M-Lab public-data consent is part of onboarding; participants press Start trip once. The Next.js dashboard groups received segments into trips and retains individual observations and authenticated exports. FastAPI `/api/v2` enforces ownership and researcher roles over PostgreSQL/JSONB; public enrollment cannot grant researcher access.
+## Participant and researcher flow
 
-See the [flight measurement policy and limitations](docs/measurements/flight-collection.md) and [flight rollout/MaxMind setup guide](docs/skymeasure/flight-rollout.md). This is a staged pilot: real-flight accuracy, captive-Wi-Fi routing and the complete Android lifecycle matrix still need device evidence. Public recruitment additionally requires enrollment protection, approved participant text and completed identity-deletion configuration. The API/UDP service now runs in isolated SkyMeasure services on the shared lab server; its region remains `lab-location-unconfirmed`. The DigitalOcean host is retained for rollback. The dashboard is [capstone-backend-henna.vercel.app](https://capstone-backend-henna.vercel.app/).
+Participants review the study and M-Lab publication disclosure, optionally enter flight details, and tap **Start trip**. Supabase anonymous authentication supplies a pseudonymous installation identity without an email/password screen. Existing Google identities retain their ownership; researchers sign in with Google. Records save to account-owned OP-SQLite before upload. Identity reset never reassigns old records.
 
-> Android pilot: use `npm run android:pilot` for a configured APK. See [Google sign-in recovery and build validation](docs/skymeasure/sign-in-recovery.md).
+The current detector, **`asn-only-v1`**, qualifies selected Wi-Fi using two fresh matching provider-ASN evaluations at least thirty seconds apart. GPS and airline SSIDs do not qualify it; automatic trips do not sample GPS. A provider match can occur on the ground and **does not prove that a phone is airborne**. Unknown lookups cannot initially qualify; outages on the same previously qualified Wi-Fi retain probe evidence. A fresh nonmatching ASN pauses collection. See the [current collection policy](docs/measurements/flight-collection.md).
 
-## Crowdsourced satellite network measurements on moving platforms
+One continuous trip contains closed fifteen-minute segments. Upload pauses retain trip budgets and detector state. The dashboard groups received segments, displays missing/reconciled evidence and dynamic measurement summaries, and offers filters, variable explanations, raw JSON and combined measurement/sample CSV. A received segment reports the phone's last state, not whether it is currently online.
 
-An Android capstone for measuring network performance during flights and other mobility scenarios. We ship Android this semester and develop shared React Native/TypeScript code for a later iPhone release. The research contribution is an offline-first measurement pipeline, reliability evaluation and a real or simulated mobility dataset.
+```mermaid
+flowchart LR
+  P[Android participant app] --> L[(Local OP-SQLite)]
+  P -->|active probes| N[Targets and lab probe services]
+  P -->|identity and tokens| A[Supabase Auth]
+  L -->|closed segments over HTTPS| F[FastAPI on isolated lab services]
+  F --> D[(Supabase PostgreSQL / JSONB)]
+  W[Next.js dashboard on Vercel] -->|researcher token| F
+  P -->|one consented NDT7 benchmark| M[M-Lab public measurement platform]
+```
 
-The semester milestones are in the [full semester plan](docs/semester-plan.md). The [packet-engine update](docs/packet-engine.md) records the subsequently requested packet-level methods and replaces the earlier HTTP-first collection defaults.
+The API and UDP service run in isolated services on a shared lab server. Its region is `lab-location-unconfirmed`; the DigitalOcean host is retained for rollback. Do not label an unknown host location London or Frankfurt.
 
-## Understand the collected data
+## Measurements and implementation
 
-Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md), and [library versus native audit](docs/measurements/comparison.md). Generate six readable measurement CSVs and sanity-check reports from a saved JSON export:
+| Measurement | Current implementation | Interpretation |
+| --- | --- | --- |
+| ICMP RTT, jitter and loss | `icmpenguin` through a thin Android adapter | Individual library probe responses; not full packet capture |
+| Traceroute | `icmpenguin`, twenty-hop default | Per-hop probe evidence; library response labels have documented limitations |
+| TCP connection duration | `react-native-tcp-socket` | Connection callback duration; no custom kernel `TCP_INFO` collection |
+| UDP echo RTT, jitter and loss | `react-native-udp` with bounded controlled echo server | Per-probe application datagrams; timeout does not prove a library limitation |
+| Controlled download/upload | `@dr.pogodin/react-native-fs` streaming downloads; React Native `fetch` uploads | Known payload and elapsed time; not an Ookla-equivalent capacity test |
+| M-Lab NDT7 benchmark | Pinned patched `ndt7-client-android` library | One automatic pair per trip, publication consent required; capped/partial results are not valid completed speeds |
+| Network and device context | NetInfo, device-info, server GeoLite2-ASN, cached PTR, Android Wi-Fi binding adapter | Availability varies; context is not a fresh reading per packet |
+
+Automatic trips schedule minute-level ICMP/UDP/TCP, fifteen-minute traceroutes, spaced controlled transfers and one M-Lab pair. HTTP RTT and loaded-latency implementations remain available in collector tooling; loaded-latency tests are off in automatic trips. [Scheduling and health](docs/skymeasure/collector-reliability.md) explains deadlines, gaps, failures and cancellations. Dedicated measurement-block scheduling is a proposal, not an implemented feature.
+
+The per-trip application-accounted allowance is 300 MiB: 200 MiB M-Lab reservation, 60 MiB controlled transfers, 20 MiB diagnostics/context and 20 MiB live uploads. It excludes unobservable transport overhead and additional post-trip synchronization. The [M-Lab guide](docs/skymeasure/automatic-mlab.md) explains caps, formulas and public-data disclosure.
+
+React Native Paper/Navigation provide the UI, Keychain stores tokens, background-actions runs the visible foreground task, and background-fetch offers opportunistic closed-session retries. Custom Android code selects/binds Wi-Fi and exposes library results; it is distinct from an application-owned packet engine. The historical custom engine is preserved on `experiment/custom-packet-engine`; see the [library/native comparison](docs/library-packet-comparison.md). Exact dependency versions are pinned in package manifests and the Android NDT7 source.
+
+## Run and review
+
+Use Node 22.13+ (including Node SQLite support), the React Native Android toolchain and an Android phone with USB debugging for physical checks.
 
 ```sh
-npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis-directory
-```
-
-## Architecture
-
-**Cross-platform by default; use React Native libraries for operating-system integration.**
-
-```text
-React Native CLI + TypeScript (no Expo)
-  UI / shared session controller / packet probes + optional HTTP
-    → react-native-background-actions (platform background execution)
-    → OP-SQLite in WAL mode (local source of truth)
-    → account-owned deferred sync (closed sessions; foreground + Android Headless JS)
-    → authenticated FastAPI → Supabase PostgreSQL / JSONB → private Next.js dashboard
-```
-
-Session orchestration, scheduling, HTTP probes and persistence logic run in TypeScript. The background-actions library owns its native foreground service; there is no custom Kotlin measurement service. Thin Android bridges expose the pinned icmpenguin ping/traceroute library and optional SpeedChecker SDK. TCP and UDP echo use React Native socket libraries. Scheduling, result interpretation, storage and UI stay in TypeScript. See [the library comparison](docs/library-packet-comparison.md).
-
-Keep probe definitions, HTTP RTT/download/upload logic, configuration, data models, database schema, API client and sync orchestration shared. Platform permissions and background execution remain isolated. iOS will reuse this application code, but its background execution and release configuration must be validated separately; continuous locked-phone measurement is not established on iOS. The library documents the distinction in its [background execution guidance](https://github.com/Rapsssito/react-native-background-actions#readme).
-
-Android uses a declared `specialUse` foreground service for user-started research measurement, with foreground-service, notification and wake-lock permissions. The service type is supplied both in the manifest and library options. Play Store distribution requires review of this use case; see [Android service types](https://developer.android.com/develop/background-work/services/fgs/service-types). The pinned library version is installed through npm without local native patches.
-
-## Researcher manual collection and historical session behavior
-
-The retained researcher manual mode defaults to **packet measurements**: ten-sample ICMP bursts and UDP traceroute to `google.com`. TCP connects to `https://google.com` (port 443); controlled UDP and optional HTTP use build-time study endpoints. Participants do not enter URLs or shared tokens. Android ICMP and traceroute use icmpenguin; TCP and UDP echo use their React Native libraries. Available reply bytes and raw callbacks are retained; kernel TCP_INFO is unavailable in this build. HTTP is opt-in. React Native/TypeScript still owns the UI, scheduling, interpretation, storage and exports.
-
-Enable **HTTP measurements** for controlled RTT/download/upload or loaded latency. Transfer sizes remain editable from 1 byte to 100 MiB per direction (defaults: 1 MiB download, 256 KiB upload), within the session budget. Old saved configurations preserve their original schedules. Tests run serially except explicit loaded-latency transfers; missed intervals are logged and skipped.
-Downloads larger than 8 MiB use the existing filesystem library to stream into a temporary cache file, avoiding React Native full-body/base64 memory copies. These results use method `http_download_to_file`, including disk-write time; smaller downloads retain `http_full_transaction`. Native transfer completion is awaited before cleanup or the next probe.
-
-**ICMP, TCP, UDP and traceroute** retain available library results, failures and raw output. ICMP header fields are decoded from actual returned bytes and replies are checked against the requested sequence/payload. Library-classified traceroute errors retain their original labels; unavailable ICMP type/code fields remain empty. TCP retains endpoint metadata and application counters, with callback timing that includes resolution. Controlled UDP echo retains datagram bytes and requires a reachable server. These are active-probe observations, not full IP packet capture. See [methods, limits and comparison](docs/library-packet-comparison.md).
-
-**Participant session safeguards** default to ten minutes, a 100 MiB planned-payload allowance, and stopping at or below 15% battery when unplugged. The configurable session allowance supports up to 16 GiB for long experiments; the per-probe maximum remains 100 MiB. Attempts reserve their full payload allowance, including failures and cancellations. This is not a carrier-data counter: headers, retransmissions and context/sync traffic are outside the allowance. The first exhausted limit ends the session and records its reason. Existing session configurations are normalized when resumed.
-
-**Context snapshots** record network type, connectivity, available Wi-Fi details, battery percentage, charging state and server-observed public IP/ASN. They are collected at session start, about once a minute and after network changes, between probes. Location permission for Wi-Fi details is optional and requested only by the dedicated button; denied/unavailable values stay null. The controlled context pipeline does not collect GPS coordinates. The separately consented SpeedChecker free SDK requires location and shares data with its vendor. ASN enrichment requires a server-side database; local USB requests correctly have no public IP/ASN. Third-party NetInfo reachability polling is disabled. Packet-only sessions skip HTTP context requests, leaving public IP/ASN null. When enabled, context requests can warm the probe connection and are outside its timed interval.
-
-**OP-SQLite** remains the local source of truth. Schema version 3 adds account ownership and upload state without deleting existing records, enables WAL/foreign keys, and serializes transactions. An attempt is committed before its network request. Results and sync queue entries are committed together. On foreground recovery, old active sessions and unfinished attempts become interrupted; background upload initialization does not close an active session; recovery never restarts collection automatically. Resume creates a new linked session.
-
-**Export CSV / Export JSON** is available for every saved session. Format-4 CSVs omit custom-only kernel/socket columns: 70 measurement columns and 64 sample columns. CSV shares a bundle of measurement, individual sample, event and network-context tables, together with the full saved JSON and a field guide. The eight-file bundle includes `packets.jsonl` for available decoded/native observations and `library-callbacks.jsonl` for retained library requests and callbacks, alongside per-probe CSV fields and bounded reference logs. Buffer scopes distinguish application payloads and ICMP messages; historical native observations remain preserved in JSON. Exports include all rows beyond the visible history page and preserve failures and missing values. See [export fields and computer-side conversion](docs/packet-exports.md) and [Linux mechanisms, library justification and related papers](docs/research/packet-measurement-review.md). Exports use consistent repository reads; a live SQLite database is never copied. Spreadsheet formula characters are escaped in CSV. Stable cache files are shared through the OS share sheet.
-
-**Automatic account uploads** run after collection stops, on app opening, when connectivity changes, and during Android background opportunities. Wi-Fi is the default. The reusable service shares the collection activity gate, checks persisted active sessions, uses bounded versioned batches, persists retry backoff, and refreshes credentials before sending. Expired login leaves records pending. A manifest registers expected IDs/versions first; the server marks complete only after reconciliation. Historical ownerless experiments remain local/exportable, and cannot enter another account's queue.
-
-Supabase validates authentication; FastAPI enforces ownership and team roles. PostgreSQL tables retain original JSONB plus indexed measurement/sample fields. The dashboard refreshes every 15 seconds while visible and knows only what has arrived. Background retry timing is opportunistic; force-stopped Android apps retry only after reopening. See the [setup and device acceptance instructions](docs/skymeasure/setup.md).
-
-**Automatic M-Lab NDT7 tests** use a pinned, patched Android client within the foreground trip service. One download/upload pair runs after suitable connectivity qualifies, with 90 MiB thresholds per direction and explicit incomplete results on cap or failure. Results share the current segment and its upload queue. See [consent, budgets, methods and validation](docs/skymeasure/automatic-mlab.md). The older WebView tool remains available only in researcher manual collection.
-
-**Traceroute** uses pinned `icmpenguin` 1.0.0-rc.3 on this comparison branch; its complete library results are retained. Partial results and all exposed library fields are preserved; missing kernel fields are not reconstructed. **SpeedChecker** SDK 4.2.299 is available in an opt-in Android build with consent before initialization, foreground cancellation and separate saved reference results. See [setup, methods and remaining physical tests](docs/native-adapters.md). See [library evaluation and methodology](docs/library-evaluation.md). Our shared application logic remains TypeScript; native libraries provide OS integration. iOS is not validated.
-
-The [custom-payload phone experiment](docs/experiments/2026-09-28-custom-payloads.md) verified three 5 MiB downloads and three 2 MiB uploads, exact saved byte counts, automatic session completion and successful sync.
-
-## Code organization
-
-- `src/sessions/`: configuration, lifecycle state machine and serialized operations.
-- `src/background/`: background-actions adapter and task-start acknowledgement.
-- `src/measurements/`: HTTP/ICMP adapters, schedules, safeguards and structured results.
-- `src/storage/`: OP-SQLite adapter, schema, transactional repository and recovery.
-- `src/components/SessionSettings.tsx`, `SessionHistory.tsx`: configuration and saved history.
-- `src/services/measurement.ts`, `App.tsx`: composition, permissions and controls.
-- `src/network/`: NetInfo and battery context collection.
-- `src/reference/`: automatic trip NDT7 integration and legacy manual reference-test flows.
-- `android/app/src/main/java/com/labpracticeapp/diagnostics/`: Thin Android library bridges.
-- `android/app/src/speedchecker/`: opt-in vendor SDK adapter and manifest overlay.
-- `src/export/`, `src/sync/`: CSV/JSON sharing and acknowledged batch synchronization.
-- `src/api/`, `backend/`: shared protocol and local FastAPI probe server.
-
-```ts
-startSession(config?: MeasurementConfig, resumedFromId?: string): Promise<string>
-stopSession(): Promise<void>
-getServiceStatus(): Promise<ServiceStatus>
-subscribeToStatus(listener: (status: ServiceStatus) => void): () => void
-```
-
-Status states are `stopped`, `starting`, `running` and `stopping`. Repeated starts share the active session; stop is idempotent. Startup requires native task acknowledgement. Failed platform cleanup preserves a retryable Stop control.
-
-## Revised semester milestones
-
-| Milestone | Deliverable and acceptance | Timeline |
-| --- | --- | --- |
-| M1 — Project foundation | RN CLI/TypeScript, shared interfaces and architecture, Android build and basic screen on a physical phone | Week 1 |
-| M2 — RN measurement proof | Reusable TypeScript RTT/download/upload probes, configuration, timeout/error results, temporary screen and minimal FastAPI probes | Weeks 2–3 |
-| M3 — Background execution proof | Library-backed TypeScript probes continue for 30–60 minutes locked/backgrounded, with explainable timing and session status on reopen | Weeks 3–4 |
-| M4 — Offline-first storage | SQLite/OP-SQLite with WAL; save measurements before upload; local history, session recovery, durable queue | Weeks 4–5 |
-| M5 — Complete measurement engine | Separate probe schedules, connection timing if feasible, failure/gap logs, structured context, battery/data safeguards; multi-hour ground run | Weeks 6–7 |
-| M6 — Backend and deferred sync | FastAPI ingestion, PostgreSQL/TimescaleDB, acknowledged batches, idempotent IDs, retries, first deployed region | Weeks 8–9 |
-| M7 — Network and flight context | NetInfo, available WiFi metadata, backend public IP/ASN, manual flight/provider details, optional location | Weeks 10–11 |
-| M8 — Fake-flight evaluation | Lock, background, process loss, reconnect, network interruption, backend outage/delay, failed probes/uploads, repeated sync and OS service limits | Weeks 11–12 |
-| M9 — Real-world validation | Flight dataset if available, otherwise a controlled unstable-network or mobile fallback; full phone-to-analysis path | Weeks 12–13 |
-| M10 — Analysis | Reproducible pandas/Jupyter RTT, throughput, outages, context and success-rate figures | Weeks 13–14 |
-| M11 — Finalization | Stable Android prototype, documented methods/limitations, dataset format, demo, report and presentation | Weeks 14–15 |
-
-M3 is an experimental gate: an active notification alone does not prove that TypeScript probes keep executing. Validate actual timestamps and results. If the library-backed approach fails, resolve the background architecture before flight collection. The explicitly requested native packet adapter supplies OS socket evidence; it does not replace the shared background/session controller.
-
-Planned initial schedule: connectivity every 15–30 seconds, RTT every 60 seconds, download/upload every five minutes, metadata on change plus periodic snapshots, public IP/ASN at session start and network changes, optional low-frequency location, and sync independently when connectivity is suitable.
-
-SQLite persists measurements before upload attempts; the local backend acknowledges ingestion batches. The deployment stack is FastAPI in Docker on DigitalOcean, Supabase PostgreSQL, and a Vercel researcher dashboard; TimescaleDB is not required. The initial probe host is in London (`lon1`), replacing the originally planned Frankfurt host. Its HTTPS API connects to the London Supabase project through a dedicated database role and private `skymeasure` schema. The dashboard is deployed; authenticated phone uploads still require real-account validation. Probes use controlled HTTP endpoints; HTTP RTT is an application-layer measurement, not ICMP latency. GPS and SSID availability must not block collection.
-
-Before a flight, prove the entire ground pipeline: start → background probes → local persistence → network loss and failure records → reconnect → idempotent sync → analysis. iOS release, additional probe regions, raw DNS, advanced provider classification, a public dataset interface are later work. The private researcher dashboard is implemented in `dashboard/`. Optional Android traceroute and reference-test adapters are now implemented; field validation remains open. Participant signup uses Google through Supabase; third-party speed-test reference flows remain developer tools.
-
-## Development
-
-Prerequisites: Node >=22.11, JDK 17, Android SDK/platform 36, build tools 36.0.0 and NDK 27.1.12297006. Configure `ANDROID_HOME` or an ignored `android/local.properties` with your SDK path.
-
-```bash
 npm ci
-npm start
-```
-
-With an emulator or USB-debugging phone attached, in another terminal:
-
-```bash
-adb devices
-adb reverse tcp:8081 tcp:8081
-npm run android
-```
-
-Validation:
-
-```bash
 npm run typecheck
-npm run lint
 npm test -- --runInBand --watchman=false
-cd android
-./gradlew :app:assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-The bundled release variant does not need Metro, but currently uses the scaffold's debug signing key for local testing. Application ID remains `com.labpracticeapp`. iOS simulator/device builds and signing are not validated this semester.
+For a configured pilot APK, copy `.env.skymeasure.example` to `.env.skymeasure.local` and supply **public application configuration only**, then run:
 
-## Run scheduled measurements locally
+```sh
+npm run android:pilot
+```
 
-From the repository root (Python 3.14 was used for validation):
+The builder reads the local file, uses the pilot-specific OAuth callback, verifies configuration inside the APK and restores the sanitized tracked configuration. Outputs and the build manifest are under `build/pilot/current/`. The APK currently uses the standard development signing key; use it for supervised testing, not a public production release. Share the APK; JSON exports and build manifests are researcher evidence, not install dependencies. `npm start` and `npm run android` support development with separately configured public settings; never commit those local settings.
 
-```bash
+Backend setup and validation:
+
+```sh
 python3 -m venv backend/.venv
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
-backend/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
-```
-
-In another terminal, connect the emulator or USB-debugging phone:
-
-```bash
-adb reverse tcp:8000 tcp:8000
-```
-
-The following legacy collector procedure applies to the earlier technical screen; use the SkyMeasure setup guide for the new participant build. To test HTTP, first enable **HTTP measurements**. Leave the URL at `http://127.0.0.1:8000`, and tap **Start session**. View the session in **Saved sessions** to see RTT, download and upload results. Background or lock the phone, reopen it and refresh history. Stop the server to verify persisted failure results. **Stop session** aborts any in-flight probe, saves its cancellation and ends the session.
-
-Force-stop and relaunch during a session to test recovery: it should be stopped, the old session should be interrupted, and saved results should remain. Resume that history entry to start a linked session. Do not clear app data for this check.
-
-Android release networking permits HTTP only for localhost, 127.0.0.1 and the emulator host alias 10.0.2.2. Other release servers must use HTTPS. Debug builds additionally allow HTTP LAN servers for development. The local server needs no cloud account or deployment.
-
-Backend tests:
-
-```bash
 backend/.venv/bin/python -m pytest backend/tests -q
 ```
 
-## Background and recovery acceptance checklist
+Configure server-only environment inputs using [the setup guide](docs/skymeasure/setup.md). Run locally with `backend/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000`. Legacy shared-token ingestion is restricted to explicit local development mode; staging uses authenticated `/api/v2` ownership and researcher authorization.
 
-1. Start: running only after the library task starts, with a session ID and foreground notification when allowed. Confirm actual successful probes in saved history.
-2. Stop: abort and save the current probe, stop timers/service and mark the session completed. Repeated starts/stops must not create duplicate services.
-3. Lock/background for **30 minutes, 60 minutes and two hours on a physical Android phone**, using a bundled build. Record device/OS, timestamps, gaps, results, battery and data usage. A notification or heartbeat alone does not satisfy M3.
-4. Test removal from Recents separately from force-stop. Relaunch after process loss: stopped status, interrupted previous session, preserved results and unfinished-attempt recovery. Resume must create a linked new ID.
-5. Test notification denial, startup rejection/timeout, database failure and retry.
-6. Disconnect the network and stop/delay the server: failed probes must persist, collection must remain controllable, and reconnect must permit later successful probes. Queue entries must survive restarts; after sync, verify matching records exist on the server before they disappear from the pending count.
+Dashboard:
 
-Inspect Android service state with `adb shell dumpsys activity services com.labpracticeapp`. Unit tests cannot establish OS/OEM endurance. M3 remains an experimental gate until the physical runs pass. Full M5/M6 acceptance, cloud deployment and physical reliability testing are necessary before the flight pipeline is ready.
+```sh
+npm ci --prefix dashboard
+# Copy dashboard/.env.example to dashboard/.env.local and configure public endpoints.
+npm run dev --prefix dashboard
+npm run typecheck --prefix dashboard
+npm test --prefix dashboard
+```
 
-## Validation
+Offline analysis of an existing complete session JSON (original exports remain unchanged):
 
-- The packet engine passed all nine native checks on the physical Galaxy A34. A [two-minute Google-target phone run](docs/experiments/2026-10-03-google-phone.md) received 20/20 ICMP replies, connected TCP twice and reached Google at traceroute hop 10 with original ICMP type/code values preserved. All records synced and raw exports were verified. Long-run/locked-screen and satellite-path validation remain pending. See [current validation details](docs/packet-engine.md).
+```sh
+npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis
+```
 
-- The earlier M2 emulator test verified two RTT/download/upload batches against local FastAPI, then three structured failures with the server stopped. All 13 backend contract tests passed.
-- Automated checks now cover native task acknowledgement, startup/cleanup failures, session lifecycle, cancellation, skipped intervals, persisted history and real SQLite transactions. Repository tests verify WAL, restart recovery, durable IDs, rollback when queue insertion fails, concurrent operations and schema-version rejection, version-one migration, export completeness, limits and acknowledged sync. SQLite tests use Node's `node:sqlite`; use Node 22.13+ for these tests (Node 26.5 used here).
-- Physical-phone 30/60/120-minute background endurance, battery impact, Recents behavior and iOS builds remain pending. Emulator checks establish functionality only, not satellite performance or physical-device reliability.
+Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md) and [combined CSV guide](docs/skymeasure/combined-csv.md). Blank values mean unavailable or inapplicable, not zero. Parent values repeated across sample rows must not be summed repeatedly. Regenerate shared documentation with `npm run measurements:docs` and `npm run skymeasure:docs`.
 
-### M3/M4 implementation checks — 2026-09-18
+## Repository map and validation status
 
-- TypeScript, ESLint and 54 Jest tests passed; all 13 backend tests passed.
-- Android release build passed with OP-SQLite 18.2.3 and background-actions 4.1.0; no custom Kotlin measurement implementation remains.
-- API 36.1 ARM64 emulator: actual RTT, 1 MiB download and 256 KiB upload succeeded and appeared in SQLite-backed history. Android reported the library service as foreground.
-- A resumed session completed a scheduled RTT at `11:59:40Z` during a screen-off interval of more than one minute; its initial probes ran at `11:58:40Z`. History showed the same session with four successful results.
-- Force-stop/relaunch retained results, marked the old session interrupted and left runtime status stopped. Resume created a new durable ID linked to the old session and reused its configuration.
-- With a deliberately delayed RTT endpoint, force-stop during the request recovered one explicit `interrupted` result with unconfirmed bytes, retaining earlier successes and pending queue entries.
-- Normal Stop during a delayed request persisted a `cancelled` result, completed the session and removed the foreground service (`dumpsys` showed none).
-- These bounded emulator checks support the implementation; the physical-device endurance checklist above is still open. Backend synchronization was added in the later increment below.
+| Path | Contents |
+| --- | --- |
+| `src/`, `App.tsx` | Participant UI, authentication, trip runtime, collector, storage and sync |
+| `android/`, `ios/` | Platform projects; Android adapters and NDT7 integration; iOS scaffold |
+| `backend/` | FastAPI probes, UDP service, ingestion, authorization, research queries and exports |
+| `dashboard/` | Researcher workspace and browser tests |
+| `scripts/`, `patches/` | Build/configuration tools, analysis dictionary and owned dependency patches |
+| `__tests__/`, `backend/tests/` | Collector, privacy, ownership, upload and analysis tests |
+| `deploy/` | Deployment templates and isolated lab-service tooling |
+| `docs/` | [Reading map](docs/README.md), current policies and dated experiment evidence |
 
+Automated checks and dated physical ground tests support implementation behavior. They do not establish airborne detection accuracy, captive-Wi-Fi routing for every protocol, unplugged endurance across manufacturers, or iOS support. Public recruitment still requires protected enrollment, approved study text and completed identity-deletion operations. See [validation](docs/skymeasure/validation.md) and dated [experiment records](docs/experiments/).
 
-### Testing the new features
-
-1. Install the rebuilt release APK with `adb install -r` to retain existing data. Migration is automatic.
-2. Start the updated backend and reconnect `adb reverse tcp:8000 tcp:8000`.
-3. For a short test, set maximum duration to one minute. Optionally enter `127.0.0.1` as an explicitly local ICMP adapter test. The session should stop automatically, record its reason, and retain results/context.
-4. Export CSV and JSON from that session using the phone share sheet. Check that JSON includes configuration/events/snapshots.
-5. On the historical developer UI (not the participant app), with `CAPSTONE_LOCAL_DEV=1` and collection stopped, use `http://127.0.0.1:8000` in Sync server URL and tap Sync now. Up to 50 records are acknowledged per batch; repeat or enable automatic retries to drain the queue.
-6. Stop the server, sync another completed session, restart the server, and wait for backoff before retrying. Confirm the server retains one record per installation/type/ID.
-7. For actual-network ICMP/public-IP tests, use a reachable remote probe server. USB/loopback results cannot validate those network paths. Physical-phone endurance and iOS validation remain open.
-
-### Export/context/ICMP/sync validation — 2026-09-26
-
-- TypeScript, ESLint and 72 Jest tests pass; 16 backend tests pass. Android release assembly passes with the newly pinned native libraries.
-- Existing emulator sessions from schema version 1 remain visible after the schema version 2 upgrade. Automated migration tests also verify record preservation and recovery.
-- Two one-minute emulator sessions ended automatically with `session_limit: duration` events. The ICMP-enabled session saved HTTP RTT, download, upload and one successful local ICMP sample (native RTT and TTL), plus Wi-Fi/battery/charging context.
-- Native Android share sheets opened with `session.json` and `session.csv` attachments. Automated export tests cover quoting and complete history beyond 50 rows.
-- Emulator to FastAPI ingestion: 41 records acknowledged (5 sessions, 17 measurements, 16 events, 3 snapshots), verified in the server SQLite database; pending count became zero.
-- Loopback ICMP and USB HTTP validate implementation only. Actual-network comparison, physical-phone endurance with the new dependencies, optional Wi-Fi details across manufacturers, remote ASN enrichment and iOS validation remain open.
+Private runtime configuration, raw participant datasets, generated APKs and local presentation outputs stay outside source control. See [SECURITY.md](SECURITY.md) before sharing logs or evidence. Historical documents preserve prior policies and custom-engine experiments; the current policy and dependency manifests take precedence for new builds.

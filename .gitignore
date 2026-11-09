@@ -88,8 +88,34 @@ backend/data/
 .env.*
 !.env.example
 !.env.pilot.example
+!.env.skymeasure.example
 .next/
 playwright-report/
 test-results/
 
 *.tsbuildinfo
+
+# Private research evidence and generated deliveries (keep local)
+/output/
+/exports/
+/datasets/
+/private-data/
+*.apk
+*.aab
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.mmdb
+*.pcap
+*.pcapng
+*.log
+
+# Private credentials/signing material; public CA .crt files remain tracked
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
