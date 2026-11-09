@@ -4,10 +4,12 @@ Start with the [repository README](../README.md). Current implementation is on `
 
 | Question | Read |
 | --- | --- |
+| How do I join and run checks locally? | [Contributor guide](../CONTRIBUTING.md) |
+| Where does each component live? | [Architecture and source map](architecture.md) |
 | How does the current trip qualify and collect? | [ASN-only collection policy](measurements/flight-collection.md) |
 | When do probes run, and how are gaps/failures recorded? | [Collector reliability](skymeasure/collector-reliability.md) |
 | What does each column mean? | [Measurement guide](measurements/guide.md), [generated dictionary](measurements/columns.md), [combined CSV](skymeasure/combined-csv.md) |
-| What do the libraries expose or omit? | [Library comparison](../docs/library-packet-comparison.md), [capability audit](measurements/comparison.md) |
+| What do the libraries expose or omit? | [Library comparison](library-packet-comparison.md), [capability audit](measurements/comparison.md) |
 | What is M-Lab and why are results capped? | [Automatic M-Lab](skymeasure/automatic-mlab.md) |
 | How do the dashboard filters work? | [Dashboard filters](skymeasure/dashboard-filters.md) |
 | How do we configure services and accounts? | [Staging setup](skymeasure/setup.md), [rollout and ASN setup](skymeasure/flight-rollout.md) |

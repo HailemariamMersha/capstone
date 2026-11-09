@@ -1,5 +1,7 @@
 # SkyMeasure supervisor pilot — 1 November 2026
 
+> Historical build/install record. For the current APK build procedure use [CONTRIBUTING](../../CONTRIBUTING.md#4-build-or-debug-the-participant-app); current behavior and validation are in [the ASN policy](../measurements/flight-collection.md) and [validation history](validation.md). Do not use the dated APK/version below as the latest release.
+
 **Superseded for new builds:** the [automatic M-Lab update](automatic-mlab.md) combines publication consent with onboarding, adds one speed-test pair to Start trip, and raises the trip allowance to 300 MiB. Deploy its new consent version before distributing the new APK. The dated artifacts and validation below describe the earlier build only.
 
 

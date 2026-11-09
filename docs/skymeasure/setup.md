@@ -4,9 +4,9 @@
 
 > For the current anonymous-participant flight pilot, follow [flight rollout and MaxMind setup](flight-rollout.md). Google/PKCE instructions below apply to researchers and retained Google accounts. The new participant flow uses background anonymous enrollment and fifteen-minute trip segments.
 
-**31 October 2026:** the API hostname now points to the shared lab server at `23.235.205.53`; its API, UDP service, independent HTTPS certificate, and renewal dry run are verified. The phone update/test remains pending. See [lab migration and current cutover status](lab-migration.md) before following the historical DigitalOcean provisioning instructions below.
+**Deployment history:** the 31 October lab cutover is recorded in [lab migration](lab-migration.md). Later ground-device checks and the latest ASN-only build have separate evidence in [validation](validation.md). Do not read a dated pending/passed check as the status of every later build.
 
-This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The shared lab server now serves the Supabase-backed API at `https://api.hailemariam.com`; the former London Droplet remains available for rollback. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. Earlier physical-phone-to-dashboard runs succeeded on DigitalOcean; validation of the lab-configured Android build remains pending.
+This repository contains the participant application, private researcher dashboard, and authenticated API. The collection libraries and probe algorithms are unchanged. Use a separate staging project and study test accounts; final research text and consent approval are deployment inputs. The shared lab server now serves the Supabase-backed API at `https://api.hailemariam.com`; the former London Droplet remains available for rollback. The dashboard is live at `https://capstone-backend-henna.vercel.app`; the user confirmed browser Google sign-in, and the first administrator role has been verified. Later lab-configured ground runs are documented in [validation](validation.md); physical validation of the new ASN-only pilot remains pending. New contributors should start with [CONTRIBUTING](../../CONTRIBUTING.md), which separates credential-free local checks from deployment setup.
 
 ## 1. Supabase and Google
 
@@ -147,31 +147,31 @@ npm run dev --prefix dashboard
 
 The web app checks roles for presentation; FastAPI independently enforces them for every query/download. It polls visible data every 15 seconds, showing received sessions only. Client-held tokens are cleared on sign-out and the query cache is discarded. Downloads are authenticated fetches, not public storage links.
 
-## 5. Android public configuration
+## 5. Current Android public configuration
 
-Set `SKYMEASURE_SUPABASE_URL`, `SKYMEASURE_SUPABASE_PUBLISHABLE_KEY`, `SKYMEASURE_API_URL`, `SKYMEASURE_PROBE_URL`, `SKYMEASURE_UDP_IPV4`, and `SKYMEASURE_PROBE_REGION` in your local shell, then:
+Copy `.env.skymeasure.example` to the ignored `.env.skymeasure.local` and supply public staging endpoint/publishable-key values. For a configured ARM64 pilot:
 
 ```sh
-npm run skymeasure:configure
-npm run android
+npm run android:pilot
 ```
 
-The generator writes only public values into `src/config/public.json` and refuses secret-looking Supabase keys. Use a separate configuration/build for staging. Run `npm run skymeasure:docs` after changing the measurement guide or dictionary to refresh the dashboard copies. The checked-in defaults deliberately leave sign-in disabled until configured; there is no fake account or silent production fallback.
+The builder reads that file automatically, chooses `com.labpracticeapp.flightpilot://auth/callback`, verifies actual bundled settings and restores the tracked sanitized configuration. The development-key APK and build manifest are under `build/pilot/current/`. The Supabase project must register that callback. No database password, OAuth secret or service-role key belongs in this file or APK.
 
-Default sessions are ten minutes, 100 MiB, library packet probes, and a 15% battery safeguard. HTTP is optional. Duration, budget, transfer sizes/intervals, probe switches and loaded latency live under Advanced. Notes are optional. Notification permission is requested on start; Wi-Fi-detail permission is requested separately in Account.
+For Metro/debug builds, the package instead uses `com.labpracticeapp://auth/callback`. See [the explicit configure/run commands](../../CONTRIBUTING.md#4-build-or-debug-the-participant-app); `npm run skymeasure:configure` alone reads the shell environment, not `.env.skymeasure.local`. Local generated public configuration must not be committed. Before public distribution, use protected production signing; this setup does not publish an app store release.
 
-Before shipping, supply a proper Android release keystore; the existing project debug signing setup is for development. This work does not publish to an app store.
+Current participants enroll pseudonymously without an email/password screen, review research/M-Lab disclosure, optionally enter flight details and Start. No duration is selected. ASN-only admission controls automatic collection; automatic trips do not sample GPS. Notifications are requested before Start; location is optional for Wi-Fi identifiers. The current trip allowance is 300 MiB and HTTP transfers are part of the automatic policy, with loaded-latency tests off. The ten-minute/100 MiB Advanced session screen is retained researcher tooling, not the participant trip default. Exact rules are in [the current collection policy](../measurements/flight-collection.md).
 
-## 6. Physical acceptance run
+## 6. Current physical acceptance procedure
 
-Use two real Google test accounts, one ordinary participant and one approved researcher. No physical phone was attached when implementation started; no Google client/project was supplied. The following checks require those inputs and must not be reported as passed by mocked tests:
+Use a separate staging installation/project and an approved Google researcher account; participants use internal anonymous authentication. A test involving M-Lab needs its public-data disclosure and permission to spend the reserved traffic. Mocked tests and a built APK do not satisfy these device checks:
 
-1. Cancel Google sign-in; return successfully on another attempt; accept the displayed version of consent. Test TalkBack focus, 200% text size, and touch targets on Welcome, Home, Sessions and Account.
-2. Start a ten-minute session, lock the screen, stop, verify results and Wi-Fi upload. Confirm HTTP remains optional and the exact configuration is stored. Missing values must say unavailable.
-3. Remove the app from Recents, restore Wi-Fi, and inspect eventual delivery. Reboot and repeat. BackgroundFetch is opportunistic, generally no more frequent than 15 minutes; exact timing is not guaranteed.
-4. Force-stop separately. Android suppresses retries until reopening. Reopening must recover an interrupted collection before uploading its saved evidence.
-5. Start offline after a previous login. Sign out with pending records, sign in as Account B, and verify A's sessions are invisible and are not uploaded by B. Sign back in as A and retry. Expired/revoked credentials leave the queue pending.
-6. Interrupt an upload; resend the same batch; verify partial status and exact reconciliation. Check the raw JSON, distinct measurement count, sample count, chart units and combined export.
-7. Delete A's data, confirm server and local rows disappear, B is unaffected, and the identity-deletion worker completes. Confirm queued data from another device cannot reappear.
+1. Enroll a new participant online; review the displayed consent and M-Lab disclosure. Cancel/retry researcher Google sign-in separately. Check TalkBack focus, larger text and touch targets across onboarding, Home, Sessions and Account.
+2. Verify ordinary nonmatching Wi-Fi remains Watching beyond ten minutes. Use explicitly labelled researcher shadow mode for a ground measurement pipeline test. Validate real ASN admission on a suitable provider connection; a synthetic match is not flight validation. Start/Stop, locked screen, results and closed-segment upload must agree with saved evidence.
+3. Test optional location denial, hidden SSID, Wi-Fi plus cellular and captive portals per protocol. A missing identifier must not block ASN admission; traffic must not be silently labelled Wi-Fi while routed over cellular.
+4. Exercise a fifteen-minute rotation, upload timeout, connectivity restoration and retained budgets/deadlines. Remove from Recents and reboot separately. BackgroundFetch is opportunistic; exact retry timing is not guaranteed. Interrupted evidence survives; new collection requires Start.
+5. Force-stop separately. Android suppresses retries until reopening. Reopening must reconcile the interrupted trip before uploading saved evidence.
+6. Arm offline after prior enrollment, then restore Wi-Fi. Test expired/revoked identity, pending records, researcher sign-out/account switching and explicit reset without transferring ownership to a new identity.
+7. Interrupt/duplicate uploads and verify expected versions, missing segments, raw JSON, distinct measurements/sample counts, chart units and combined CSV. A session can upload completely while containing failed probes.
+8. Use disposable identities for deletion checks: confirm deleted ownership cannot reappear through queued records, unrelated accounts remain intact, and the configured identity-deletion worker completes. Do not delete a shared researcher account to test this.
 
-[Background-fetch behavior](https://github.com/transistorsoft/react-native-background-fetch) explains Android termination/reboot and OS limits. Never imply that the dashboard can see unsent sessions or active phones.
+[Background-fetch behavior](https://github.com/transistorsoft/react-native-background-fetch) explains Android termination/reboot and OS limits. The dashboard sees received evidence, not active phones. Record each test’s APK/source version, device/OS, power/connectivity conditions and timestamps; retain limitations alongside successful checks. See [validation](validation.md) for what has actually run.

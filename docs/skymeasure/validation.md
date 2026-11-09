@@ -1,4 +1,14 @@
-# SkyMeasure implementation and validation — 2026-10-22
+# SkyMeasure implementation and validation history
+
+## 9 November: current ASN-only pilot 1.1.5
+
+The current detector is `asn-only-v1`: two fresh provider-ASN evaluations qualify selected Wi-Fi, without GPS/SSID admission or automatic GPS sampling. Earlier `network_only`/`gps_supported` confidence labels keep their historical meanings. Allowance remains 300 MiB and the scheduler/upload segment policy remains unchanged.
+
+275 mobile tests, 45 backend tests and 17 dashboard browser tests passed; one optional PostgreSQL test was skipped on the operator’s local run. Two optional private-dataset tests may also skip on a fresh clone. Mobile/dashboard TypeScript, dashboard production build and configured Android pilot/instrumentation assembly passed. The API was deployed with additive manifest compatibility, health/schema checks and unchanged UDP process; Vercel deployment passed. A built instrumentation APK is not a device-test pass.
+
+The new APK was not installed or physically validated because USB debugging was unauthorized. Prior ground tests do not validate the new admission rule. Real-flight ASN coverage, selected-Wi-Fi routing with cellular/captive portals, unplugged endurance, the full Android lifecycle matrix and iOS remain unvalidated. See the [dated review/build record](../experiments/2026-11-09-repository-review.md), [current collection policy](../measurements/flight-collection.md) and [contributor guide](../../CONTRIBUTING.md).
+
+All entries below are dated evidence for their own builds, not a current configuration specification.
 
 ## 8 November: collector reliability pilot
 
@@ -45,7 +55,7 @@ See [lab-migration.md](lab-migration.md) for configuration, limitations, and rol
 
 See [dashboard-filters.md](dashboard-filters.md) for use and scope.
 
-## Delivered source increments
+## Original delivered source increments — 22 October (historical)
 
 | Area | Implemented behavior |
 | --- | --- |

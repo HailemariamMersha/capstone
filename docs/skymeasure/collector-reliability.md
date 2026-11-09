@@ -1,4 +1,6 @@
-# Collector scheduling and evidence — pilot 1.1.4
+# Collector scheduling and evidence — policy collector-scheduler-2026-11-08
+
+> Introduced in pilot 1.1.4 and retained in 1.1.5. Qualification is now separately documented by the [ASN-only policy](../measurements/flight-collection.md); historical GPS-based admission does not apply to new automatic trips.
 
 The collector changes how existing tests are scheduled and explained. It adds
 no network measurement method, changes no historical record, and does not

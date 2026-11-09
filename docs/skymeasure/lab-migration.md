@@ -1,5 +1,7 @@
 # Lab-server migration
 
+> This is a dated migration/rollback record. See [current setup](setup.md) and [validation history](validation.md) for subsequent phone runs and the ASN-only pilot. A pending check below describes its date, not the current status of every build.
+
 ## Deployment status — 31 October 2026
 
 SkyMeasure's API hostname now points to the lab's InMotion server,

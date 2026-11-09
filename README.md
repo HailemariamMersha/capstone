@@ -4,6 +4,8 @@ SkyMeasure is an Android research pilot for crowdsourced in-flight network measu
 
 **Review this branch:** [feature/skymeasure-participant-dashboard](https://github.com/HailemariamMersha/capstone/tree/feature/skymeasure-participant-dashboard). The repository's `main` branch contains an earlier collector. The repository is public; access to the [research dashboard](https://capstone-backend-henna.vercel.app/) still requires a researcher role.
 
+**Joining the work?** Follow [CONTRIBUTING.md](CONTRIBUTING.md) for the correct branch, local setup without cloud credentials, tests, Android builds and the contribution workflow. The [architecture/source map](docs/architecture.md) shows where each part lives.
+
 ## Participant and researcher flow
 
 Participants review the study and M-Lab publication disclosure, optionally enter flight details, and tap **Start trip**. Supabase anonymous authentication supplies a pseudonymous installation identity without an email/password screen. Existing Google identities retain their ownership; researchers sign in with Google. Records save to account-owned OP-SQLite before upload. Identity reset never reassigns old records.
@@ -45,7 +47,7 @@ React Native Paper/Navigation provide the UI, Keychain stores tokens, background
 
 ## Run and review
 
-Use Node 22.13+ (including Node SQLite support), the React Native Android toolchain and an Android phone with USB debugging for physical checks.
+Use Node 22.13+ (including Node SQLite support) for shared-code checks. Android builds additionally need the React Native Android toolchain; physical checks need a USB-debugging phone. Contributors can run collector, backend and dashboard tests without live research credentials; see [the contributor guide](CONTRIBUTING.md).
 
 ```sh
 npm ci
