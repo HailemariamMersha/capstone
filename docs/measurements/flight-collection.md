@@ -1,16 +1,18 @@
 # Automatic trip collection: ASN-only qualification
 
-Current detector: `asn-only-v1` (pilot 1.1.5). Budget policy remains `flight-mlab-2026-11-02`; consent remains `skymeasure-flight-mlab-2026-11-02`. The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
+Current detector: `asn-only-v1` (private pilot 1.2.0), with explicit test-ASN provenance. Pilot budget policy is `flight-pilot-uncapped-2026-11-14`; consent is `skymeasure-flight-pilot-2026-11-14`. See [the complete pilot change and compatibility guide](../skymeasure/uncapped-pilot.md). The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
 
 ## What starts collection
 
-Start trip arms monitoring on the selected, process-bound Android Wi-Fi network. Flight number, departure, arrival and expected length are optional participant reports, not verified flight information. Expected length changes transfer spacing, never the stop time.
+Start trip arms monitoring on the selected, process-bound Android Wi-Fi network. Flight number, departure, arrival and expected length are required participant reports for new pilot trips, not verified flight information. Historical optional fields remain valid. Expected length changes transfer spacing, never the stop time.
 
 Only a fresh provider ASN match can qualify a connection. The configured registry is Starlink AS14593, Inmarsat AS31515, Intelsat AS22351, Panasonic AS64294, SITA AS206433 and ViaSat AS40306. This is an incomplete provider allowlist, not an authoritative list of aircraft networks. A positive match means **provider-matched connectivity**, including possible ground use; it does not establish that a phone is airborne.
 
 The server observes the request's public address through its trusted proxy and looks up GeoLite2-ASN. The phone refreshes identity approximately every minute, expires observations after two minutes, and invalidates them when the selected Wi-Fi handle changes. Lookup timeout is ten seconds, with a fifteen-second failure retry. Lookup failure is unknown, not a nonmatching ASN. ASN must be a positive 32-bit integer; invalid values are unknown. VPN attribution is unsupported; the app pauses rather than bypassing an active VPN.
 
 The control lane evaluates every thirty seconds and on network changes. Two positive evaluations at least thirty seconds apart admit collection on that same Wi-Fi handle. Each observation records ASN state, reason, observation time, `confidence=asn_matched` and `detectorPolicyVersion=asn-only-v1`. Confidence describes the current evidence, not whether the trip ever qualified. A newly enrolled installation needs connectivity; an existing identity can arm monitoring offline, but cannot initially qualify without ASN evidence.
+
+The private pilot additionally accepts AS12 (TEST New York University) only when its build/configuration gates are enabled. It uses the same two-evaluation admission path, without researcher roles or bypass. Any such observation permanently marks the trip as ground-test evidence; dashboard flight totals exclude it by default. ASN identifies a whole provider network, not one Wi-Fi router.
 
 SSID is optional context and cannot qualify a connection. Automatic trips no longer request GPS fixes or require location permission. Android location permission and enabled system Location can still be needed for optional Wi-Fi identifiers; missing identifiers remain null and do not prevent binding. The geolocation library/patch remains for legacy diagnostic code and historical interpretation, not automatic trip qualification.
 
@@ -20,7 +22,7 @@ After qualification, an unknown/stale ASN on the **same** selected Wi-Fi retains
 
 The ten-minute disconnection grace starts only after first qualification and covers loss of qualifying connectivity. Watching at home does not end after ten minutes. Stop, battery at or below 15% while not charging, or the 24-hour safety ceiling also end collection. GPS speed no longer ends an ASN-only trip. No ending claims a verified landing. Reopening after process loss preserves interrupted evidence and requires Start for new collection; force-stop/reboot does not promise automatic rearming.
 
-Researcher shadow mode bypasses qualification for explicitly labelled ground tests, while recording the detector's actual decisions. It must not relabel a home connection as an in-flight connection.
+The new phone interface exposes neither shadow mode nor manual researcher controls. Their old API authorization remains for historical clients; the current AS12 pilot exercises normal admission and retains explicit ground-test labels.
 
 ## Schedule and allowance
 
@@ -28,9 +30,9 @@ Measurements remain serial: ten ICMP probes, twenty 128-byte UDP probes and one 
 
 Controlled HTTP pairs use decimal 5,000,000-byte download and 1,000,000-byte upload. First pair: five minutes after qualification; later spacing: max(five minutes, expected length / ten), default expected length twenty-four hours. At most ten pair reservations. Late opportunities are skipped, with no catch-up burst. Failed/cancelled reservations are not refunded; two consecutive failures disable that controlled direction. An underestimated flight can exhaust throughput sampling early. These short transfers are not Ookla or a comprehensive link-capacity test.
 
-One automatic M-Lab NDT7 pair is scheduled with a saved one-to-three-minute delay after qualification, waiting for validated selected Wi-Fi. It has a 200 MiB reservation within the trip allocation and a 90 MiB cap per direction; capped/partial tests do not receive a valid completed speed. Its publication disclosure is part of onboarding. See [automatic M-Lab](../skymeasure/automatic-mlab.md). Controlled transfers are spaced away from its actual finish.
+One automatic M-Lab NDT7 pair is scheduled with a saved one-to-three-minute delay after qualification, waiting for validated selected Wi-Fi. The private pilot has no byte cutoff and does not reserve 200 MiB. Normal protocol duration, the 60-second pair watchdog, Stop, one pair per trip and four attempts per 24 hours remain. Completed speed still requires valid clean completion; interrupted/failed runs retain evidence with `value=null`. Controlled transfers are spaced away from M-Lab's actual finish. See [the current uncapped pilot](../skymeasure/uncapped-pilot.md) for payload-counter semantics and public-data disclosure.
 
-The per-trip 300 MiB application-accounted allowance comprises 260 MiB transfers (200 MiB M-Lab + 60 MiB controlled), 20 MiB probes/context and 20 MiB live uploads. Segment boundaries never reset these counters. Exhausting an allocation disables only that activity. Identity requests reserve 2048 bytes; live uploads reserve serialized UTF-8 request bytes plus a conservative 64 KiB response allowance, including retries. This is not carrier-billed traffic: transport headers, retransmissions, authentication and post-trip uploads are additional/unobserved traffic.
+The pilot keeps independent application-accounted allocations of 60 MiB controlled transfers, 20 MiB probes/context and 20 MiB live uploads, while M-Lab is outside those limits. There is no overall 300 MiB ceiling. Segment boundaries never reset counters. Historical 300 MiB policies retain their original 200 MiB reservation and byte caps. Exhausting a bounded allocation disables only that activity. Identity requests reserve 2048 bytes; live uploads reserve serialized UTF-8 request bytes plus a conservative 64 KiB response allowance, including retries. These are not carrier-billed traffic: transport headers, retransmissions, authentication and post-trip uploads are additional/unobserved traffic.
 
 The fourteen-hour probe payload estimate is 840 × (10×64×2 + 20×128×2) + 56×(20×3×32×2) = 5,591,040 bytes = 5.33 MiB. It excludes detection, context, headers, retransmissions and uploads; it is a model, not a measured interface counter. Loaded-latency tests are off for automatic trips.
 

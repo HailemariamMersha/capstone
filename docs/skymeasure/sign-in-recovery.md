@@ -1,5 +1,7 @@
 # Android Google sign-in recovery — 2 November 2026
 
+> **Current pilot 1.2.0:** [account-free phone flow, AS12 normal admission and uncapped M-Lab](uncapped-pilot.md). The bounded budgets, sign-in UI and dated validations below describe their original versions.
+
 The pilot had three separate issues:
 
 - Try again on the missing-profile screen only fetched the profile. It did not

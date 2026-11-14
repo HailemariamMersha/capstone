@@ -41,6 +41,7 @@ type Summary = {
   receivedRecords: number;
   expectedRecords: number;
   uploadStatus: string;
+  groundTest?: boolean;
 };
 type Raw = Record<string, any>;
 const date = (value?: string | null) =>
@@ -149,6 +150,11 @@ function SessionDetail({
         </div>
         <Badge complete={Boolean(d.receipt.completedAt)} />
       </div>
+      {d.trip?.groundTest && (
+        <p className="panel p-4 font-semibold">
+          Ground network test · not flight evidence
+        </p>
+      )}
       {d.session.config?.tripId && (
         <section className="panel p-5 space-y-3">
           <h2 className="font-semibold">
@@ -313,6 +319,7 @@ function SessionDetail({
 }
 function Workspace({ profile }: { profile: Profile }) {
   const [section, setSection] = useState('Overview');
+  const [includeGroundTests, setIncludeGroundTests] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [protocol, setProtocol] = useState('');
@@ -333,6 +340,7 @@ function Workspace({ profile }: { profile: Profile }) {
     until,
     collector,
     context,
+    includeGroundTests: String(includeGroundTests),
   });
   for (const [key, v] of [...filters]) if (!v) filters.delete(key);
   const sessions = useData<{ items: Summary[]; total: number }>(
@@ -340,7 +348,7 @@ function Workspace({ profile }: { profile: Profile }) {
     !selected && ['Overview', 'Sessions', 'Downloads'].includes(section),
   );
   const overview = useData<Record<string, number>>(
-    '/research/overview',
+    `/research/overview?includeGroundTests=${includeGroundTests}`,
     !selected && section === 'Overview',
   );
   const participants = useData<{
@@ -373,6 +381,7 @@ function Workspace({ profile }: { profile: Profile }) {
             onClick={() => setSelected(c.row.original.id)}
           >
             {date(c.row.original.collectedAt)}
+            {c.row.original.groundTest && ' · Ground test'}
           </button>
         ),
       },
@@ -523,7 +532,23 @@ function Workspace({ profile }: { profile: Profile }) {
                   {error || sessions.error?.message || overview.error?.message}
                 </Notice>
               )}
-            {section === 'Trips' && <Trips openSession={setSelected} />}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={includeGroundTests}
+                onChange={e => {
+                  setIncludeGroundTests(e.target.checked);
+                  setOffset(0);
+                }}
+              />
+              Include ground-test data (excluded from flight totals by default)
+            </label>
+            {section === 'Trips' && (
+              <Trips
+                openSession={setSelected}
+                includeGroundTests={includeGroundTests}
+              />
+            )}
             {section === 'Measurement guide' && <MeasurementGuide />}
             {section === 'Overview' && (
               <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">

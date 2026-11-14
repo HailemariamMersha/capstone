@@ -5,9 +5,12 @@ fs.cpSync('docs/measurements/audits', 'dashboard/public/measurements/audits', {
 });
 for (const name of fs.readdirSync('docs/measurements')) {
   if (name.endsWith('.md'))
-    fs.copyFileSync(
-      `docs/measurements/${name}`,
+    fs.writeFileSync(
       `dashboard/public/measurements/${name}`,
+      fs.readFileSync(`docs/measurements/${name}`, 'utf8').replaceAll(
+        '(../skymeasure/',
+        '(https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/',
+      ),
     );
 }
 fs.copyFileSync(

@@ -4,6 +4,7 @@ Start with the [repository README](../README.md). Current implementation is on `
 
 | Question | Read |
 | --- | --- |
+| What changed in the current private pilot? | [Account-free UI, AS12 and uncapped M-Lab](skymeasure/uncapped-pilot.md) |
 | How do I join and run checks locally? | [Contributor guide](../CONTRIBUTING.md) |
 | Where does each component live? | [Architecture and source map](architecture.md) |
 | How does the current trip qualify and collect? | [ASN-only collection policy](measurements/flight-collection.md) |

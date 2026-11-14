@@ -679,7 +679,7 @@
     "requestedBytes": {
       "datatype": "integer",
       "units": "bytes",
-      "meaning": "Reserved/configured application payload allowance; burst estimates are not observed wire traffic.",
+      "meaning": "Reserved/configured application payload allowance; burst estimates are not observed wire traffic. Null for the uncapped pilot NDT7 test; this does not mean zero traffic.",
       "source": "m.requestedBytes",
       "example": 52428800,
       "calculation": "Copied from the stated source; no calculation.",
@@ -2159,6 +2159,38 @@
     "icmpChecksum": ["response.icmpChecksum"]
   },
   "tripColumns": {
+  "measurement.networkSnapshot.flightEvidence.qualificationSource": {
+    "datatype": "string or null",
+    "units": "none",
+    "meaning": "provider_asn or ground_test_asn; null when no fresh matching ASN. Not evidence of an airborne aircraft.",
+    "source": "measurement.networkSnapshot.flightEvidence.qualificationSource",
+    "calculation": "Copied from original trip metadata or detector evidence.",
+    "blank": "Historical, unknown or inapplicable; never substitute zero."
+  },
+  "trip.mlabUsage.uploadClientBytes": {
+    "datatype": "integer or null",
+    "units": "bytes",
+    "meaning": "Last M-Lab client-reported upload payload counter; not carrier-billed bytes or server application bytes.",
+    "source": "trip.mlabUsage.uploadClientBytes",
+    "calculation": "Copied from original trip metadata or detector evidence.",
+    "blank": "Historical, unknown or inapplicable; never substitute zero."
+  },
+  "trip.mlabUsage.downloadClientBytes": {
+    "datatype": "integer or null",
+    "units": "bytes",
+    "meaning": "Last M-Lab client-reported received payload bytes; transport overhead excluded. Null means unobserved, not zero.",
+    "source": "trip.mlabUsage.downloadClientBytes",
+    "calculation": "Copied from original trip metadata or detector evidence.",
+    "blank": "Historical, unknown or inapplicable; never substitute zero."
+  },
+  "trip.groundTest": {
+    "datatype": "boolean",
+    "units": "none",
+    "meaning": "Sticky ground-test provenance for the whole trip, including earlier segments; test-ASN observations cannot be relabelled as flight evidence.",
+    "source": "trip.groundTest",
+    "calculation": "Copied from original trip metadata or detector evidence.",
+    "blank": "Historical, unknown or inapplicable; never substitute zero."
+  },
   "measurement.networkSnapshot.flightEvidence.detectorPolicyVersion": {
     "datatype": "string",
     "units": "none",

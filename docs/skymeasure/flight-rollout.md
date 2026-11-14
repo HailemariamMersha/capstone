@@ -1,5 +1,7 @@
 # Flight pilot deployment checklist
 
+> **Current pilot 1.2.0:** [account-free phone flow, AS12 normal admission and uncapped M-Lab](uncapped-pilot.md). The bounded budgets, sign-in UI and dated validations below describe their original versions.
+
 > **Current qualification (pilot 1.1.5):** [ASN-only policy](../measurements/flight-collection.md). Deploy the additive backend support for `asn_matched` and `detectorPolicyVersion` before distributing that APK. GPS/SSID no longer gate collection; prior validation records below retain their original policy. No database migration or consent-version change is introduced by this reduction in automatic collection.
 
 **Superseded for new builds:** the [automatic M-Lab update](automatic-mlab.md) combines publication consent with onboarding, adds one speed-test pair to Start trip, and raises the trip allowance to 300 MiB. Deploy its new consent version before distributing the new APK. The dated artifacts and validation below describe the earlier build only.

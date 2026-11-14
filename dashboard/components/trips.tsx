@@ -20,6 +20,11 @@ type Trip = {
   firstQualifiedAt: number | null;
   reason: string | null;
   shadow: boolean;
+  groundTest?: boolean;
+  mlabUsage?: {
+    downloadClientBytes: number | null;
+    uploadClientBytes: number | null;
+  };
   detectorPolicyVersion?: string;
   flight: {
     flightNumber?: string;
@@ -34,13 +39,19 @@ type Trip = {
   segments: { index: number; sessionId: string; uploaded: boolean }[];
   summary?: TripSummary;
 };
-export function Trips({ openSession }: { openSession(id: string): void }) {
+export function Trips({
+  openSession,
+  includeGroundTests = false,
+}: {
+  openSession(id: string): void;
+  includeGroundTests?: boolean;
+}) {
   const [confidence, setConfidence] = useState('');
   const [provider, setProvider] = useState('');
   const [page, setPage] = useState(0);
   const path = `/research/trips?offset=${
     page * 20
-  }&limit=20&confidence=${encodeURIComponent(
+  }&limit=20&includeGroundTests=${includeGroundTests}&confidence=${encodeURIComponent(
     confidence,
   )}&provider=${encodeURIComponent(provider)}`;
   const query = useQuery<{ total: number; items: Trip[] }>({
@@ -95,6 +106,7 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
               'Panasonic',
               'SITA',
               'ViaSat',
+              'TEST New York University',
             ].map(p => (
               <option key={p}>{p}</option>
             ))}
@@ -116,7 +128,11 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
           </h3>
           <p>
             Participant {t.participantId} ·{' '}
-            {t.shadow ? 'Researcher shadow test' : 'Automatic collection'}
+            {t.groundTest
+              ? 'Ground network test · excluded from flight totals'
+              : t.shadow
+              ? 'Researcher shadow test'
+              : 'Automatic collection'}
           </p>
           <p>
             Started {new Date(t.startedAt).toLocaleString()} · latest receipt{' '}
@@ -143,8 +159,23 @@ export function Trips({ openSession }: { openSession(id: string): void }) {
             {t.missingSegments.length} incomplete or missing of {t.segmentCount}{' '}
             reported segments
           </p>
+          {t.mlabUsage && (
+            <p>
+              M-Lab client-reported payload: download{' '}
+              {t.mlabUsage.downloadClientBytes == null
+                ? 'unavailable'
+                : `${(t.mlabUsage.downloadClientBytes / 1048576).toFixed(
+                    2,
+                  )} MiB`}
+              ; upload{' '}
+              {t.mlabUsage.uploadClientBytes == null
+                ? 'unavailable'
+                : `${(t.mlabUsage.uploadClientBytes / 1048576).toFixed(2)} MiB`}
+              . Transport overhead excluded.
+            </p>
+          )}
           <p>
-            Reserved payload: transfers{' '}
+            Bounded reservations: transfers{' '}
             {(t.used.transfers / 1048576).toFixed(2)} MiB; probes/context{' '}
             {(t.used.diagnostics / 1048576).toFixed(2)} MiB; live uploads{' '}
             {(t.used.uploads / 1048576).toFixed(2)} MiB

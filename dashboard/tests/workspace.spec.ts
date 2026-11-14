@@ -1007,3 +1007,34 @@ test('trip summary distinguishes capped speed tests and unavailable summaries', 
     page.getByRole('region', { name: 'Trip measurement summary', exact: true }),
   ).toHaveCount(0);
 });
+
+test('ground-test toggle reaches backend filters and marks trip provenance', async ({
+  page,
+}) => {
+  await signedIn(page, 'researcher', undefined, {
+    groundTest: true,
+    provider: 'TEST New York University',
+    shadow: false,
+    mlabUsage: {
+      downloadClientBytes: 1500000000,
+      uploadClientBytes: 1200000000,
+    },
+  });
+  await page.goto('/');
+  const checkbox = page.getByRole('checkbox', {
+    name: /Include ground-test data/,
+  });
+  await expect(checkbox).not.toBeChecked();
+  const request = page.waitForRequest(r =>
+    r.url().includes('/research/overview?includeGroundTests=true'),
+  );
+  await checkbox.check();
+  await request;
+  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  await expect(
+    page.getByText('Ground network test · excluded from flight totals'),
+  ).toBeVisible();
+  await expect(page.getByText(/M-Lab client-reported payload/)).toContainText(
+    '1430.51 MiB',
+  );
+});

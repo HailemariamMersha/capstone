@@ -1,5 +1,7 @@
 # One Start: automatic M-Lab speed tests
 
+> **Current pilot 1.2.0:** [account-free phone flow, AS12 normal admission and uncapped M-Lab](uncapped-pilot.md). The bounded budgets, sign-in UI and dated validations below describe their original versions.
+
 Policy `flight-mlab-2026-11-02`, consent `skymeasure-flight-mlab-2026-11-02`.
 Participants review research participation and M-Lab public-data disclosure in
 one onboarding step. Existing installations must review this new version.
