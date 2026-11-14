@@ -30,6 +30,8 @@ import type { Measurement, ProbeType } from '../measurements/types';
 import type { NetworkSnapshot } from '../network/types';
 import {
   TRIP_POLICY,
+  PILOT_TRIP_POLICY,
+  PILOT_POLICY_VERSION,
   DETECTOR_POLICY,
   type Trip,
   type FlightDetails,
@@ -40,6 +42,7 @@ import {
   reservePair,
 } from './model';
 import { uploadTrip, cancelTripUpload } from './sync';
+import publicConfig from '../config/public.json';
 
 interface Wifi {
   networkKey: string;
@@ -51,6 +54,7 @@ interface Wifi {
 }
 const native = NativeModules.FlightNetwork as
   | {
+      pilotBuild?: boolean;
       bindWifi(): Promise<Wifi | null>;
       release(): Promise<void>;
       runtimeState?(): Promise<Record<string, number | boolean>>;
@@ -149,12 +153,15 @@ const config = (t = trip!): MeasurementConfig => ({
   detectorPolicy: t.detectorPolicy ?? DETECTOR_POLICY,
   streamDownloads: true,
   httpEnabled: true,
-  referenceByteThreshold: 90 * 1048576,
+  referenceByteThreshold:
+    t.policy.version === PILOT_POLICY_VERSION ? null : 90 * 1048576,
   maxDurationMs: TRIP_POLICY.maximumMs,
   maxPayloadBytes:
-    t.policy.transferBytes +
-    t.policy.diagnosticBytes +
-    t.policy.liveUploadBytes,
+    t.policy.version === PILOT_POLICY_VERSION
+      ? null
+      : t.policy.transferBytes +
+        t.policy.diagnosticBytes +
+        t.policy.liveUploadBytes,
   downloadBytes: TRIP_POLICY.downloadBytes,
   uploadBytes: TRIP_POLICY.uploadBytes,
   tracerouteMaxHops: 20,
@@ -166,12 +173,16 @@ const config = (t = trip!): MeasurementConfig => ({
   mlabPolicy: t.mlab
     ? {
         consentVersion: t.mlab.consentVersion,
-        reservationBytes: MLAB_RESERVATION,
-        byteThresholdPerDirection: 90 * 1048576,
+        reservationBytes:
+          t.policy.version === PILOT_POLICY_VERSION ? null : MLAB_RESERVATION,
+        byteThresholdPerDirection:
+          t.policy.version === PILOT_POLICY_VERSION ? null : 90 * 1048576,
         maximumPairsPerTrip: 1,
         maximumPairsPerDay: 4,
       }
     : undefined,
+  pilotTestAsnsEnabled: t.policy.version === PILOT_POLICY_VERSION,
+  groundTest: t.groundTest ?? false,
   collectionMode: t.shadow ? 'detector_shadow' : 'flight_auto',
 });
 async function openSegment() {
@@ -287,7 +298,7 @@ export async function startTrip(
   options: { includeMlab?: boolean } = {},
 ) {
   if (tripRunning()) throw new Error('A trip is already running.');
-  const details = flightDetails(flight);
+  const details = flightDetails(flight, true);
   starting = true;
   try {
     release = acquireActivity('measurement');
@@ -322,7 +333,11 @@ export async function startTrip(
       phase: 'watching',
       reason: null,
       flight: details,
-      policy: TRIP_POLICY,
+      policy:
+        native.pilotBuild === true && publicConfig.pilotTestAsnsEnabled
+          ? PILOT_TRIP_POLICY
+          : TRIP_POLICY,
+      groundTest: false,
       detectorPolicy: DETECTOR_POLICY,
       segmentCount: 0,
       firstQualifiedAt: null,
@@ -702,6 +717,8 @@ async function loop(signal: AbortSignal) {
         identityReason: identity.asnUnavailable,
         identityAt: Number.isFinite(identityAt) ? identityAt : null,
         gps: null,
+        allowTestAsns:
+          native?.pilotBuild === true && publicConfig.pilotTestAsnsEnabled,
       });
       trip = transition(trip!, evidence);
       const battery = await DeviceInfo.getBatteryLevel().catch(() => -1);
@@ -1017,7 +1034,9 @@ async function loop(signal: AbortSignal) {
           continue;
         }
         trip!.mlab.reserved = true;
-        const allowed = reserve(trip!, 'transfers', MLAB_RESERVATION);
+        const uncapped = trip!.policy.version === PILOT_POLICY_VERSION;
+        const allowed =
+          uncapped || reserve(trip!, 'transfers', MLAB_RESERVATION);
         trip!.mlab.status = allowed ? 'running' : 'allowance_unavailable';
         await persist();
         if (allowed) {
@@ -1035,7 +1054,16 @@ async function loop(signal: AbortSignal) {
               saved ?? snapshot,
               probeAbort.signal,
               trip!.mlab.dueAt!,
+              uncapped,
             );
+            trip!.mlabUsage = {
+              downloadClientBytes:
+                results.find(r => r.type === 'ndt7_download')?.reference
+                  ?.clientBytes ?? null,
+              uploadClientBytes:
+                results.find(r => r.type === 'ndt7_upload')?.reference
+                  ?.clientBytes ?? null,
+            };
             count += results.length;
             latest = results[results.length - 1] ?? latest;
             trip!.mlab.status = results.every(r => r.success)

@@ -49,7 +49,7 @@ class Uploader(private val cbRegistry: CallbackRegistry, private val executor: E
                 synchronized(this) {
                     if (done.get()) return
                     bytes = PayloadTransformer.performDynamicTuning(bytes, ws.queueSize(), totalBytesSent)
-                    if (totalBytesSent + bytes.size > cbRegistry.byteLimit) { finish("data_threshold"); return }
+                    if (cbRegistry.byteLimit != null && totalBytesSent + bytes.size > cbRegistry.byteLimit) { finish("data_threshold"); return }
                     if (ws.queueSize() + bytes.size < 16 * 1024 * 1024) {
                         if (!ws.send(bytes)) { finish("network"); return }
                         totalBytesSent += bytes.size

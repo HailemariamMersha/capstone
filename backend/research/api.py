@@ -27,7 +27,7 @@ def string(value, limit=100):
 
 
 router = APIRouter(prefix='/api/v2')
-CONSENT_VERSION = 'skymeasure-flight-mlab-2026-11-02'
+from .policies import CONSENT_VERSION, LEGACY_CONSENT, PILOT_POLICY, require_consent
 
 
 class Strict(BaseModel):
@@ -53,9 +53,10 @@ def get_profile(a=Depends(account)):
 @router.patch('/profile')
 def update_profile(body: ProfileUpdate, a=Depends(account), db: Session = Depends(database)):
     if body.consentVersion is not None:
-        if body.consentVersion != CONSENT_VERSION:
+        if body.consentVersion not in (LEGACY_CONSENT, CONSENT_VERSION):
             raise HTTPException(409, 'Please read the current research information')
-        a.consent_version, a.consent_at = body.consentVersion, now()
+        if a.consent_version != CONSENT_VERSION or body.consentVersion == CONSENT_VERSION:
+            a.consent_version, a.consent_at = body.consentVersion, now()
     a.mobile_uploads = body.mobileUploads
     db.commit()
     return profile(a)
@@ -129,8 +130,7 @@ def owned(db, session_id, a, lock=False):
 
 @router.put('/sessions/{session_id}/manifest')
 def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = Depends(database)):
-    if a.consent_version != CONSENT_VERSION:
-        raise HTTPException(403, 'Current research consent required')
+    require_consent(a)
     if body.session.get('id') != session_id or body.session.get('state') not in ('completed', 'interrupted'):
         raise HTTPException(422, 'Only a closed session can be uploaded')
     config = body.session.get('config') or {}
@@ -140,6 +140,7 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
     if trip_id is not None:
         trip = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
         if not trip or trip.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
+        require_consent(a, trip.raw['policyVersion'])
         if type(ordinal) is not int or ordinal < 0 or ordinal >= trip.raw['segmentCount']:
             raise HTTPException(422, 'Segment outside registered trip')
         link = db.get(TripSegment, (trip_id, ordinal))
@@ -201,6 +202,11 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
             raise HTTPException(409, 'Completed session is immutable')
         raw = item.payload
         context = raw.get('networkSnapshot') if isinstance(raw.get('networkSnapshot'), dict) else raw if item.type == 'snapshot' else {}
+        flight_evidence = context.get('flightEvidence')
+        if context.get('asn') == 12 and isinstance(flight_evidence, dict) and flight_evidence.get('qualificationSource') == 'ground_test_asn':
+            ground_trip = db.scalar(select(ResearchTrip).join(TripSegment, TripSegment.trip_id == ResearchTrip.id).where(TripSegment.session_id == session_id))
+            if not ground_trip or not ground_trip.raw.get('groundTest'):
+                raise HTTPException(422, 'Test ASN evidence requires ground-test trip provenance')
         provenance = raw.get('raw') if isinstance(raw.get('raw'), dict) else {}
         db.add(Record(session_id=session_id, kind=item.type, id=item.id, version=item.version,
                       timestamp=string(raw.get('timestamp'), 40), protocol=string(raw.get('type'), 50) if item.type == 'measurement' else None,
@@ -247,7 +253,8 @@ def session_summaries(db, sessions):
         func.sum(case((Record.kind == 'measurement', 1), else_=0)),
         func.sum(case(((Record.kind == 'measurement') & Record.success.is_(False), 1), else_=0)),
     ).where(Record.session_id.in_([s.id for s in sessions])).group_by(Record.session_id))}
-    return [summary(db, s, counts.get(s.id, (0, 0, 0))) for s in sessions]
+    tests = dict(db.execute(select(TripSegment.session_id, ResearchTrip.raw['groundTest'].as_boolean()).join(ResearchTrip, ResearchTrip.id == TripSegment.trip_id).where(TripSegment.session_id.in_([s.id for s in sessions]))).all())
+    return [{**summary(db, s, counts.get(s.id, (0, 0, 0))), 'groundTest': bool(tests.get(s.id))} for s in sessions]
 
 
 @router.get('/sessions')
@@ -258,8 +265,11 @@ def own_sessions(a=Depends(account), db: Session = Depends(database), offset: in
     return {'total': total, 'items': session_summaries(db, values)}
 
 
-def query_sessions(participant=None, protocol=None, outcome=None, q=None, since=None, until=None, collector=None, context=None):
+def query_sessions(participant=None, protocol=None, outcome=None, q=None, since=None, until=None, collector=None, context=None, includeGroundTests=False):
     query = select(ResearchSession)
+    if not includeGroundTests:
+        ground = select(TripSegment.session_id).join(ResearchTrip, ResearchTrip.id == TripSegment.trip_id).where(ResearchTrip.raw['groundTest'].as_boolean().is_(True))
+        query = query.where(ResearchSession.id.not_in(ground))
     if participant:
         query = query.where(ResearchSession.participant_id == participant)
     if q:
@@ -283,8 +293,8 @@ def query_sessions(participant=None, protocol=None, outcome=None, q=None, since=
 
 
 @router.get('/research/sessions')
-def research_sessions(a=Depends(researcher), db: Session = Depends(database), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), participant: str | None = None, protocol: str | None = None, outcome: Literal['success', 'failure'] | None = None, q: str | None = None, since: str | None = None, until: str | None = None, collector: str | None = None, context: str | None = None, format: Literal['json', 'csv'] = 'json'):
-    query = query_sessions(participant, protocol, outcome, q, since, until, collector, context)
+def research_sessions(a=Depends(researcher), db: Session = Depends(database), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), participant: str | None = None, protocol: str | None = None, outcome: Literal['success', 'failure'] | None = None, q: str | None = None, since: str | None = None, until: str | None = None, collector: str | None = None, context: str | None = None, format: Literal['json', 'csv'] = 'json', includeGroundTests: bool=False):
+    query = query_sessions(participant, protocol, outcome, q, since, until, collector, context, includeGroundTests)
     count = db.scalar(select(func.count()).select_from(query.subquery()))
     if format == 'csv':
         if count > 10000:
@@ -295,12 +305,16 @@ def research_sessions(a=Depends(researcher), db: Session = Depends(database), of
 
 
 @router.get('/research/overview')
-def overview(a=Depends(researcher), db: Session = Depends(database)):
-    return {'trips': db.scalar(select(func.count()).select_from(ResearchTrip)), 'participants': db.scalar(select(func.count(func.distinct(ResearchSession.participant_id)))),
-            'sessions': db.scalar(select(func.count()).select_from(ResearchSession)),
-            'partialSessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.completed_at.is_(None))),
-            'measurements': db.scalar(select(func.count()).select_from(Record).where(Record.kind == 'measurement')),
-            'failures': db.scalar(select(func.count()).select_from(Record).where(Record.kind == 'measurement', Record.success.is_(False)))}
+def overview(a=Depends(researcher), db: Session = Depends(database), includeGroundTests: bool=False):
+    ids = query_sessions(includeGroundTests=includeGroundTests).order_by(None).with_only_columns(ResearchSession.id)
+    trip_query = select(func.count()).select_from(ResearchTrip)
+    if not includeGroundTests: trip_query = trip_query.where(ResearchTrip.raw['groundTest'].as_boolean().is_not(True))
+    return {'trips': db.scalar(trip_query),
+            'participants': db.scalar(select(func.count(func.distinct(ResearchSession.participant_id))).where(ResearchSession.id.in_(ids))),
+            'sessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.id.in_(ids))),
+            'partialSessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.id.in_(ids), ResearchSession.completed_at.is_(None))),
+            'measurements': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement')),
+            'failures': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement', Record.success.is_(False)))}
 
 
 @router.get('/research/sessions/{session_id}')
@@ -313,6 +327,8 @@ def detail(session_id: str, request: Request, format: Literal['json', 'csv'] = '
             'measurements': [r.raw for r in records if r.kind == 'measurement'],
             'events': [r.raw for r in records if r.kind == 'event'],
             'snapshots': [r.raw for r in records if r.kind == 'snapshot'], 'receipt': summary(db, s)}
+    trip = db.scalar(select(ResearchTrip).join(TripSegment, TripSegment.trip_id == ResearchTrip.id).where(TripSegment.session_id == session_id))
+    if trip: data['trip'] = {'id': trip.id, **trip.raw}
     if format == 'csv':
         return Response(csv_text(combined_rows(data)), media_type='text/csv', headers={'Content-Disposition': f'attachment; filename="{session_id}-combined.csv"'})
     if view == 'readable':

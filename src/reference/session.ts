@@ -115,7 +115,7 @@ export function referenceMeasurement(
     version: string;
     method: string;
     source: string;
-    byteThreshold: number;
+    byteThreshold: number | null;
   } = {
     library: '@m-lab/ndt7',
     version: NDT7_VERSION,

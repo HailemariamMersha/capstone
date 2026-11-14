@@ -26,8 +26,8 @@ const mockSession = {
 const mockProfile = {
   participantId: 'p',
   role: 'participant',
-  consentVersion: 'skymeasure-flight-mlab-2026-11-02',
-  requiredConsentVersion: 'skymeasure-flight-mlab-2026-11-02',
+  consentVersion: 'skymeasure-flight-pilot-2026-11-14',
+  requiredConsentVersion: 'skymeasure-flight-pilot-2026-11-14',
   mobileUploads: false,
 };
 jest.mock('../src/auth/client', () => ({
@@ -184,21 +184,25 @@ const contains = (text: string) =>
   renderer.root
     .findAllByType(Text)
     .some(n => String(n.props.children).includes(text));
-test('signed-out users can enroll without an account and retain researcher sign-in', async () => {
+test('participants enroll without visible sign-in or researcher controls', async () => {
   (localSession as jest.Mock).mockResolvedValue(null);
   await render();
   await press('Get started');
   expect(require('../src/auth/client').enrollParticipant).toHaveBeenCalled();
-  await press('Researcher Google sign-in');
-  expect(signIn).toHaveBeenCalled();
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => /Google|shadow|manual collection/.test(String(b.props.title))),
+  ).toBe(false);
+  expect(signIn).not.toHaveBeenCalled();
   expect(startSession).not.toHaveBeenCalled();
 });
-test('accepted participants see optional trip details and no duration control', async () => {
+test('accepted participants see required trip details and Settings without account controls', async () => {
   await render();
   await press('Sessions');
   expect(contains('Your contributions')).toBe(true);
-  await press('Account');
-  expect(contains('Your account')).toBe(true);
+  await press('Settings');
+  expect(contains('Settings')).toBe(true);
   await press('Home');
   expect(contains('Where are you flying?')).toBe(true);
   expect(
@@ -272,6 +276,7 @@ test('Start needs notification permission but does not request GPS access', asyn
         ['Flight number', 'QR123'],
         ['From', 'Doha'],
         ['To', 'London'],
+        ['Expected hours', '8'],
       ])
         renderer.root
           .findAllByType(TextInput)
@@ -285,37 +290,30 @@ test('Start needs notification permission but does not request GPS access', asyn
     expect(locationRequests).not.toHaveBeenCalled();
     expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
       'account-a',
-      { flightNumber: 'QR123', departure: 'Doha', arrival: 'London' },
+      {
+        flightNumber: 'QR123',
+        departure: 'Doha',
+        arrival: 'London',
+        expectedMinutes: 480,
+      },
       false,
     );
   } finally {
     jest.restoreAllMocks();
   }
 });
-test('Skip and start discards entered fields and still honors permission denial', async () => {
+test('incomplete flight details cannot start and there is no Skip button', async () => {
   jest.replaceProperty(Platform, 'OS', 'android');
-  jest.spyOn(Platform, 'Version', 'get').mockReturnValue(36);
-  const permission = jest
-    .spyOn(PermissionsAndroid, 'request')
-    .mockResolvedValue('denied');
   try {
     await render();
-    await act(async () =>
+    expect(
       renderer.root
-        .findAllByType(TextInput)
-        .find(input => input.props.label === 'Flight number')!
-        .props.onChangeText('DO NOT SEND'),
-    );
-    await press('Skip and start');
+        .findAllByType(Button)
+        .some(b => b.props.title === 'Skip and start'),
+    ).toBe(false);
+    await press('Start trip');
     expect(require('../src/trips/runtime').startTrip).not.toHaveBeenCalled();
-    expect(contains('Allow notifications to start your trip')).toBe(true);
-    permission.mockResolvedValue('granted');
-    await press('Skip and start');
-    expect(require('../src/trips/runtime').startTrip).toHaveBeenCalledWith(
-      'account-a',
-      {},
-      false,
-    );
+    expect(contains('Expected flight length')).toBe(true);
   } finally {
     jest.restoreAllMocks();
   }
@@ -335,19 +333,22 @@ test('full study details are accessible while the publication disclosure stays v
   expect(contains('300 MiB')).toBe(false);
 });
 
-test('missing profile offers real Google sign-in independently of connection retry', async () => {
+test('missing profile offers retry without creating an identity or opening Google', async () => {
   (loadProfile as jest.Mock).mockRejectedValue(
     new Error('Sign-in needs to be restored'),
   );
   (secureStorage.getItem as jest.Mock).mockResolvedValue(null);
   await render();
   expect(contains('Reconnect to SkyMeasure')).toBe(true);
-  await press('Sign in with Google');
-  expect(signIn).toHaveBeenCalledTimes(1);
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .some(b => /Google/.test(String(b.props.title))),
+  ).toBe(false);
   const profileCalls = (loadProfile as jest.Mock).mock.calls.length;
   await press('Retry connection');
   expect(loadProfile).toHaveBeenCalledTimes(profileCalls + 1);
-  expect(signIn).toHaveBeenCalledTimes(1);
+  expect(signIn).not.toHaveBeenCalled();
 });
 test('a deleted account response replaces cached Home with explicit recovery', async () => {
   const { ResearchAccessError } = require('../src/auth/client');

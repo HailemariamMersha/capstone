@@ -4,7 +4,7 @@ jest.mock('../src/reference/tripMlab', () => ({
     { type: 'ndt7_download', success: true },
     { type: 'ndt7_upload', success: true },
   ]),
-  MLAB_CONSENT: 'skymeasure-flight-mlab-2026-11-02',
+  MLAB_CONSENT: 'skymeasure-flight-pilot-2026-11-14',
   MLAB_RESERVATION: 200 * 1048576,
 }));
 const mockEvents: unknown[] = [];
@@ -94,11 +94,19 @@ jest.mock('../src/trips/sync', () => ({
   cancelTripUpload: jest.fn(),
 }));
 import {
-  startTrip,
+  startTrip as startTripImpl,
   stopTrip,
   currentTrip,
   tripRunning,
 } from '../src/trips/runtime';
+const fullFlight = {
+  flightNumber: 'TEST001',
+  departure: 'Test origin',
+  arrival: 'Test destination',
+  expectedMinutes: 1440,
+};
+const startTrip = (owner: string, flight: any, shadow = false, options?: any) =>
+  startTripImpl(owner, { ...fullFlight, ...flight }, shadow, options);
 import { uploadTrip } from '../src/trips/sync';
 import { currentActivity, isTripArmed } from '../src/services/activityGate';
 beforeEach(() => {
@@ -439,4 +447,55 @@ test('a discontinuous callback clock invalidates the headline value while retain
     errorType: 'interrupted',
     scheduling: { timingValid: false, reportedValue: 20 },
   });
+});
+
+test('pilot AS12 uses normal admission and uncapped M-Lab without consuming controlled reservations', async () => {
+  const { NativeModules } = require('react-native');
+  const config = require('../src/config/public.json');
+  NativeModules.FlightNetwork.pilotBuild = true;
+  config.pilotTestAsnsEnabled = true;
+  globalThis.fetch = jest.fn(async () => ({
+    ok: true,
+    headers: { get: () => '1' },
+    text: async () => JSON.stringify({ asn: 12 }),
+  })) as any;
+  const { runTripMlab } = require('../src/reference/tripMlab');
+  runTripMlab.mockResolvedValue([
+    {
+      type: 'ndt7_download',
+      success: true,
+      reference: { clientBytes: 1500000000 },
+    },
+    {
+      type: 'ndt7_upload',
+      success: true,
+      reference: { clientBytes: 1200000000 },
+    },
+  ]);
+  try {
+    await startTrip('owner', {});
+    await jest.advanceTimersByTimeAsync(31000);
+    expect(currentTrip()).toMatchObject({
+      phase: 'collecting',
+      shadow: false,
+      groundTest: true,
+    });
+    await jest.advanceTimersByTimeAsync(180000);
+    expect(runTripMlab).toHaveBeenCalledTimes(1);
+    expect(runTripMlab.mock.calls[0][7]).toBe(true);
+    expect(currentTrip()!.used.transfers).toBe(0);
+    expect(currentTrip()!.mlabUsage).toEqual({
+      downloadClientBytes: 1500000000,
+      uploadClientBytes: 1200000000,
+    });
+    expect(mockSessions[0].config).toMatchObject({
+      maxPayloadBytes: null,
+      referenceByteThreshold: null,
+      mlabPolicy: { reservationBytes: null, byteThresholdPerDirection: null },
+    });
+  } finally {
+    await stopTrip();
+    config.pilotTestAsnsEnabled = false;
+    NativeModules.FlightNetwork.pilotBuild = false;
+  }
 });

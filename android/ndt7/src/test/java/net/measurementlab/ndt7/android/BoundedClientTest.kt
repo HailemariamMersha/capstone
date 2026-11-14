@@ -9,7 +9,7 @@ import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
 class BoundedClientTest {
-    private fun exercise(upload: Boolean, limit: Long, action: (WebSocket) -> Unit): Pair<ClientResponse, Throwable?> {
+    private fun exercise(upload: Boolean, limit: Long?, action: (WebSocket) -> Unit): Pair<ClientResponse, Throwable?> {
         val server = MockWebServer()
         val client = OkHttpClient()
         val worker = Executors.newSingleThreadExecutor()
@@ -54,6 +54,12 @@ class BoundedClientTest {
         val (result, error) = exercise(true, 8192) { }
         assertEquals("data_threshold", error?.message)
         assertTrue(result.appInfo.numBytes <= 8192)
+    }
+    @Test fun nullLimitAllowsCleanDownloadPastAnExplicitCap() {
+        val (result, error) = exercise(false, null) {
+            it.send(ByteString.of(*ByteArray(16384))); it.close(1000, null)
+        }
+        assertNull(error); assertEquals(16384.0, result.appInfo.numBytes, 0.0)
     }
     @Test fun abnormalCloseIsNotSuccess() {
         val (_, error) = exercise(false, 10000) { it.close(1008, "test") }

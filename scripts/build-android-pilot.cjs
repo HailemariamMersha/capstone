@@ -34,6 +34,7 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 try {
   const envFile = path.join(root, '.env.skymeasure.local');
   if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+  process.env.SKYMEASURE_PILOT_TEST_ASNS = 'true';
   process.env.SKYMEASURE_REDIRECT_URL =
     'com.labpracticeapp.flightpilot://auth/callback';
   const sourceCommit = run('git', ['rev-parse', 'HEAD']).trim();
@@ -45,6 +46,8 @@ try {
   });
   const configBytes = fs.readFileSync(configFile);
   const config = JSON.parse(configBytes);
+  if (config.pilotTestAsnsEnabled !== true)
+    throw new Error('Pilot test-ASN configuration missing');
   const tasks = [':app:assembleRelease'];
   if (args.includes('--with-tests'))
     tasks.push(':app:assembleReleaseAndroidTest');
@@ -84,6 +87,11 @@ try {
         `APK verification failed: public ${key} is absent from its bundle`,
       );
   }
+  if (
+    !extracted.stdout.includes(Buffer.from('pilotTestAsnsEnabled')) ||
+    !extracted.stdout.includes(Buffer.from('TEST New York University'))
+  )
+    throw new Error('Packaged pilot ASN configuration missing');
   const gradle = fs.readFileSync(
     path.join(root, 'android/app/build.gradle'),
     'utf8',
@@ -106,6 +114,7 @@ try {
     sha256: sha(bytes),
     publicConfigSha256: sha(configBytes),
     packagedPublicConfigVerified: true,
+    pilotTestAsnsEnabled: true,
     signing: 'development key; private pilot only',
   };
   fs.writeFileSync(

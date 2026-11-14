@@ -26,7 +26,7 @@ class AppLaunchTest {
             var rendered = false
             while (!rendered && android.os.SystemClock.elapsedRealtime() < deadline) {
                 scenario.onActivity { activity ->
-                    rendered = containsText(activity.window.decorView, "Continue with Google")
+                    rendered = listOf("Better Wi-Fi. Better journeys.", "Before you begin", "Where are you flying?", "Reconnect to SkyMeasure").any { containsText(activity.window.decorView, it) }
                 }
                 if (!rendered) Thread.sleep(100)
             }

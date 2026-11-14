@@ -2,7 +2,7 @@
 
 Upstream: https://github.com/m-lab/ndt7-client-android
 Commit: `3e831b785bf4086fddb8e700458588e39b493cf0`
-Upstream library version: 0.2.1. SkyMeasure provenance: **0.2.1-skymeasure.1**.
+Upstream library version: 0.2.1. SkyMeasure provenance: **0.2.2-skymeasure.2**.
 License: Apache-2.0, reproduced in LICENSE. This is a source fork maintained by
 SkyMeasure, not an unmodified upstream SDK or an M-Lab-certified client.
 
@@ -13,6 +13,8 @@ Native and binds its OkHttp socket factory **and DNS** to the selected Wi-Fi.
 There is no application-owned raw TCP/ICMP measurement implementation here.
 
 Changes relative to the pinned source:
+
+- Byte limits are nullable. A private pilot may request normal-duration testing without a byte cutoff; bounded builds still retain explicit cap outcomes. Duration, watchdog, memory and control-message guards remain. This change does not imply unlimited test duration.
 
 - Modern Android library Gradle configuration; no deprecated Kotlin extensions
   or publishing plugin. OkHttp 4.12.0 and Gson 2.10.1 pinned.

@@ -14,6 +14,12 @@ export const TRIP_POLICY = {
   altitudeM: 3048,
   speedMps: 128.611,
 } as const;
+export const PILOT_POLICY_VERSION = 'flight-pilot-uncapped-2026-11-14';
+export const PILOT_TRIP_POLICY = {
+  ...TRIP_POLICY,
+  version: PILOT_POLICY_VERSION,
+  transferBytes: 60 * 1048576,
+} as const;
 export const DETECTOR_POLICY = {
   version: 'asn-only-v1',
   confirmationMs: 30000,
@@ -32,7 +38,10 @@ export interface FlightDetails {
   arrival?: string;
   expectedMinutes?: number;
 }
-export function flightDetails(input: FlightDetails): FlightDetails {
+export function flightDetails(
+  input: FlightDetails,
+  required = false,
+): FlightDetails {
   const result: FlightDetails = {};
   for (const key of ['flightNumber', 'departure', 'arrival'] as const) {
     if (input[key]?.trim()) result[key] = input[key]!.trim().slice(0, 120);
@@ -48,6 +57,16 @@ export function flightDetails(input: FlightDetails): FlightDetails {
       );
     result.expectedMinutes = input.expectedMinutes;
   }
+  if (
+    required &&
+    (!result.flightNumber ||
+      !result.departure ||
+      !result.arrival ||
+      result.expectedMinutes == null)
+  )
+    throw new Error(
+      'Enter flight number, departure, arrival and expected flight length.',
+    );
   return result;
 }
 export interface GpsEvidence {
@@ -68,6 +87,7 @@ export interface Signal {
 }
 export interface Evidence {
   detectorPolicyVersion?: string;
+  qualificationSource?: 'provider_asn' | 'ground_test_asn' | null;
   at: number;
   networkKey: string | null;
   asn: Signal;
@@ -78,6 +98,11 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  groundTest?: boolean;
+  mlabUsage?: {
+    downloadClientBytes: number | null;
+    uploadClientBytes: number | null;
+  };
   detectorPolicy?: typeof DETECTOR_POLICY;
   collectorPolicy?: string;
   segmentHealth?: import('./scheduler').SegmentHealth;
@@ -132,6 +157,9 @@ export const PROVIDERS: Record<number, string> = {
   206433: 'SITA',
   40306: 'ViaSat',
 };
+export const PILOT_TEST_PROVIDERS: Readonly<Record<number, string>> = {
+  12: 'TEST New York University',
+};
 const airline =
   /^(QatarWiFi|EmiratesWiFi|FlyFi|EtihadWi-Fi|AirFranceWi-Fi|KLMWiFi)$/i;
 const signal = (
@@ -151,6 +179,7 @@ export function evaluate(input: {
   identityAt: number | null;
   identityReason?: string;
   gps: GpsEvidence | null;
+  allowTestAsns?: boolean;
 }): Evidence {
   const { now, networkKey, gps } = input;
   const identityFresh =
@@ -164,7 +193,11 @@ export function evaluate(input: {
     input.asn > 0 &&
     input.asn <= 4294967295;
   const provider =
-    identityFresh && validAsn ? PROVIDERS[input.asn!] ?? null : null;
+    identityFresh && validAsn
+      ? PROVIDERS[input.asn!] ??
+        (input.allowTestAsns ? PILOT_TEST_PROVIDERS[input.asn!] : null) ??
+        null
+      : null;
   const asn = signal(
     identityFresh && validAsn ? !!provider : null,
     input.identityAt,
@@ -199,6 +232,11 @@ export function evaluate(input: {
   );
   return {
     detectorPolicyVersion: DETECTOR_POLICY.version,
+    qualificationSource: provider
+      ? PROVIDERS[input.asn!]
+        ? 'provider_asn'
+        : 'ground_test_asn'
+      : null,
     at: now,
     networkKey,
     asn,
@@ -214,6 +252,9 @@ export function transition(trip: Trip, evidence: Evidence): Trip {
     ...trip,
     detectorPolicy: trip.detectorPolicy ?? DETECTOR_POLICY,
     evidence,
+    ...(trip.groundTest || evidence.qualificationSource === 'ground_test_asn'
+      ? { groundTest: true }
+      : {}),
   };
   const now = evidence.at;
   if (t.phase === 'finished') return t;

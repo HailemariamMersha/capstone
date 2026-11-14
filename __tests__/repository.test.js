@@ -526,3 +526,35 @@ test('interrupted trip NDT7 attempts retain M-Lab destination and planned bytes'
     errorType: 'interrupted',
   });
 });
+
+test('uncapped pending attempts remain null and local exports join latest trip provenance', async () => {
+  const trip = {
+    id: 'ground-trip',
+    ownerId: 'a',
+    policy: { version: 'flight-pilot-uncapped-2026-11-14' },
+    groundTest: false,
+    flight: { flightNumber: 'TEST' },
+  };
+  await store.saveTrip(trip);
+  const id = await store.createSession(
+    {
+      ...config,
+      tripId: trip.id,
+      referenceByteThreshold: null,
+      maxPayloadBytes: null,
+    },
+    undefined,
+    'a',
+  );
+  const attempt = await store.beginAttempt(
+    id,
+    'ndt7_download',
+    new Date().toISOString(),
+  );
+  expect(attempt.requestedBytes).toBeNull();
+  await store.saveTrip({ ...trip, groundTest: true });
+  const exported = await store.exportSession(id);
+  expect(exported.trip.groundTest).toBe(true);
+  expect(exported.trip.ownerId).toBeUndefined();
+  expect(exported.measurements[0].requestedBytes).toBeNull();
+});

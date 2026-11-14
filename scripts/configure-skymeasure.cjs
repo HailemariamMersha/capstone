@@ -10,6 +10,7 @@ const fields = {
 };
 const target = 'src/config/public.json';
 const config = JSON.parse(fs.readFileSync(target, 'utf8'));
+config.pilotTestAsnsEnabled = process.env.SKYMEASURE_PILOT_TEST_ASNS === 'true';
 for (const [key, env] of Object.entries(fields)) {
   if (!process.env[env])
     throw new Error(`Set ${env} before configuring a participant build`);

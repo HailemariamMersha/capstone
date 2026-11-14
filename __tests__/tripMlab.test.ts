@@ -81,6 +81,7 @@ test('single trip run stores both directions in its segment using receiver-side 
     'ndt7_download',
     MLAB_CONSENT,
     'wifi',
+    false,
   );
   expect(rows[0]).toMatchObject({
     sessionId: 'segment',
@@ -195,4 +196,30 @@ test('server TCP fallback is qualified rather than mislabelled as payload goodpu
     reference: { source: 'server', serverCounterSource: 'tcp_info' },
   });
   expect(rows[1].value).toBeCloseTo(61.4253572, 5);
+});
+
+test('uncapped pilot preserves large counters and null byte thresholds', async () => {
+  native.run.mockResolvedValue(
+    reply([
+      result('download', { clientBytes: 1500000000 }),
+      result('upload', { clientBytes: 1200000000, serverBytes: 1100000000 }),
+    ]),
+  );
+  const rows = await runTripMlab(
+    store,
+    'segment',
+    MLAB_CONSENT,
+    'wifi',
+    snapshot,
+    new AbortController().signal,
+    undefined,
+    true,
+  );
+  expect(rows[0]).toMatchObject({
+    success: true,
+    requestedBytes: null,
+    reference: { byteThreshold: null, clientBytes: 1500000000 },
+  });
+  expect(rows[1].value).toBe(4400);
+  expect(store.addEvent.mock.calls[0][2].reservationBytes).toBeNull();
 });

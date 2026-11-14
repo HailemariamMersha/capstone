@@ -5,7 +5,7 @@ import type { NetworkSnapshot } from '../network/types';
 import { parseReferenceMessage, type ReferenceMessage } from './protocol';
 import { referenceMeasurement } from './session';
 
-export const MLAB_CONSENT = 'skymeasure-flight-mlab-2026-11-02';
+export const MLAB_CONSENT = 'skymeasure-flight-pilot-2026-11-14';
 export const MLAB_RESERVATION = 200 * 1048576;
 export async function requireMlabConsent(owner: string) {
   const raw = await secureStorage.getItem(`profile.${owner}`);
@@ -25,6 +25,7 @@ export async function runTripMlab(
   snapshot: NetworkSnapshot,
   signal: AbortSignal,
   scheduledAt?: number,
+  uncapped = false,
 ) {
   if (consent !== MLAB_CONSENT)
     throw new Error('M-Lab publication consent required.');
@@ -34,6 +35,7 @@ export async function runTripMlab(
           id: string,
           consentVersion: string,
           handle: string,
+          uncapped: boolean,
         ): Promise<string>;
         cancel(id: string): void;
       }
@@ -53,9 +55,9 @@ export async function runTripMlab(
     policyUrl: 'https://www.measurementlab.net/privacy/',
     publicIpAndResultsPublished: true,
     library: 'ndt7-client-android',
-    version: '0.2.1-skymeasure.1',
-    reservationBytes: MLAB_RESERVATION,
-    byteThresholdPerDirection: 90 * 1048576,
+    version: '0.2.2-skymeasure.2',
+    reservationBytes: uncapped ? null : MLAB_RESERVATION,
+    byteThresholdPerDirection: uncapped ? null : 90 * 1048576,
     thresholdMayOvershoot: true,
     automatic: true,
     foregroundService: true,
@@ -73,7 +75,7 @@ export async function runTripMlab(
     if (signal.aborted) response.reason = 'cancelled';
     else if (native)
       response = parseReferenceMessage(
-        await native.run(id, consent, wifiHandle),
+        await native.run(id, consent, wifiHandle, uncapped),
         id,
       );
   } catch (error) {
@@ -81,9 +83,14 @@ export async function runTripMlab(
     // Native errors expose stable codes, never signed Locate URLs or credentials.
     const code = (error as { code?: string })?.code;
     await store.addEvent(sessionId, 'reference_unavailable', {
-      reason: ['QUOTA', 'ROUTE', 'CONSENT', 'STORAGE', 'BUSY'].includes(
-        code ?? '',
-      )
+      reason: [
+        'QUOTA',
+        'ROUTE',
+        'CONSENT',
+        'STORAGE',
+        'BUSY',
+        'POLICY',
+      ].includes(code ?? '')
         ? code
         : 'native_or_response_error',
     });
@@ -101,13 +108,13 @@ export async function runTripMlab(
       response.reason ?? 'invalid_response',
       {
         library: 'ndt7-client-android',
-        version: '0.2.1-skymeasure.1',
+        version: '0.2.2-skymeasure.2',
         method: 'ndt7_android_library',
         source: 'android_library_callbacks',
-        byteThreshold: 90 * 1048576,
+        byteThreshold: uncapped ? null : 90 * 1048576,
       },
     ),
-    requestedBytes: 90 * 1048576,
+    requestedBytes: uncapped ? null : 90 * 1048576,
     networkSnapshot: snapshot,
   }));
   for (const result of results) await store.finishAttempt(result);

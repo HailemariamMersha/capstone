@@ -26,8 +26,9 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
     @Volatile private var active: NDTTest? = null
     @Volatile private var runId: String? = null
     override fun getName() = "CapstoneNdt7"
-    @ReactMethod @Synchronized fun run(id: String, consent: String, networkHandle: String, promise: Promise) {
-        if (consent != "skymeasure-flight-mlab-2026-11-02") { promise.reject("CONSENT", "Review M-Lab publication consent first"); return }
+    @ReactMethod @Synchronized fun run(id: String, consent: String, networkHandle: String, uncapped: Boolean, promise: Promise) {
+        if (consent != "skymeasure-flight-pilot-2026-11-14") { promise.reject("CONSENT", "Review M-Lab publication consent first"); return }
+        if (uncapped && !com.labpracticeapp.BuildConfig.FLIGHT_PILOT) { promise.reject("POLICY", "Uncapped tests require the private pilot build"); return }
         if (runId != null) { promise.reject("BUSY", "A reference test is running"); return }
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = manager.boundNetworkForProcess
@@ -50,7 +51,8 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
             .writeTimeout(10, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build()
         val results = JSONArray()
         val callbacks = mutableMapOf<String, JSONArray>()
-        val servers = mutableMapOf<String, Measurement>()
+        val clients = java.util.concurrent.ConcurrentHashMap<String, ClientResponse>()
+        val servers = java.util.concurrent.ConcurrentHashMap<String, Measurement>()
         val dropped = mutableMapOf<String, Int>()
         var overall = "complete"
         val started = System.nanoTime()
@@ -60,9 +62,9 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
             if (rows.length() >= 100) { dropped[direction] = (dropped[direction] ?: 0) + 1; return }
             rows.put(JSONObject().put("observedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())).put("elapsedMs", (System.nanoTime() - started) / 1e6).put("value", JSONObject(gson.toJson(value))))
         }
-        val test = object : NDTTest(client, 90L * 1024 * 1024) {
-            override fun onDownloadProgress(clientResponse: ClientResponse) = log("download", clientResponse)
-            override fun onUploadProgress(clientResponse: ClientResponse) = log("upload", clientResponse)
+        val test = object : NDTTest(client, if (uncapped) null else 90L * 1024 * 1024) {
+            override fun onDownloadProgress(clientResponse: ClientResponse) { clients["download"] = clientResponse; log("download", clientResponse) }
+            override fun onUploadProgress(clientResponse: ClientResponse) { clients["upload"] = clientResponse; log("upload", clientResponse) }
             override fun onMeasurementDownloadProgress(measurement: Measurement) { servers["download"] = measurement; log("download", measurement) }
             override fun onMeasurementUploadProgress(measurement: Measurement) { servers["upload"] = measurement; log("upload", measurement) }
             override fun onFinished(clientResponse: ClientResponse?, error: Throwable?, testType: TestType) {
@@ -70,10 +72,11 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
                 if (reason != "complete") overall = reason
                 if (host.isEmpty() || testType == TestType.DOWNLOAD_AND_UPLOAD) return
                 val direction = testType.value
+                val observedClient = clientResponse ?: clients[direction]
                 val server = receiverCounters(servers[direction], direction == "upload")
                 results.put(JSONObject().put("direction", direction).put("reason", reason).put("host", host)
-                    .put("clientBytes", clientResponse?.appInfo?.numBytes ?: JSONObject.NULL)
-                    .put("clientSeconds", clientResponse?.appInfo?.elapsedTime?.div(1e6) ?: JSONObject.NULL)
+                    .put("clientBytes", observedClient?.appInfo?.numBytes ?: JSONObject.NULL)
+                    .put("clientSeconds", observedClient?.appInfo?.elapsedTime?.div(1e6) ?: JSONObject.NULL)
                     .put("serverBytes", server?.bytes ?: JSONObject.NULL)
                     .put("serverSeconds", server?.seconds ?: JSONObject.NULL)
                     .put("serverCounterSource", server?.source ?: JSONObject.NULL)

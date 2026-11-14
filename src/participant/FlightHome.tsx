@@ -26,7 +26,9 @@ import {
   tripProgress,
 } from '../trips/runtime';
 import { measurementStore } from '../storage/database';
-import type { FlightDetails, Trip } from '../trips/model';
+import { flightDetails, type FlightDetails, type Trip } from '../trips/model';
+const requireFlightDetails = (details: FlightDetails) =>
+  flightDetails(details, true);
 import { syncAccount } from '../sync/background';
 import { theme } from './theme';
 
@@ -35,15 +37,7 @@ function routeLabel(flight: FlightDetails) {
     return `${flight.departure} → ${flight.arrival}`;
   return flight.departure || flight.arrival || 'Your journey';
 }
-export default function FlightHome({
-  owner,
-  researcher,
-  manual,
-}: {
-  owner: string;
-  researcher: boolean;
-  manual(): void;
-}) {
+export default function FlightHome({ owner }: { owner: string }) {
   const ownedTrip = () => {
     const saved = currentTrip();
     return saved?.ownerId === owner ? saved : null;
@@ -52,8 +46,8 @@ export default function FlightHome({
   const [flight, setFlight] = useState<FlightDetails>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [shadow, setShadow] = useState(false);
-  const [includeMlab, setIncludeMlab] = useState(true);
+  const [hours, setHours] = useState('');
+  const [minutes, setMinutes] = useState('');
   const [batteryExempt, setBatteryExempt] = useState<boolean | null>(null);
   useEffect(() => {
     const refresh = () =>
@@ -84,6 +78,18 @@ export default function FlightHome({
         await stopTrip();
         await syncAccount();
       } else {
+        const h = hours.trim() ? Number(hours) : 0;
+        const m = minutes.trim() ? Number(minutes) : 0;
+        if (
+          !Number.isInteger(h) ||
+          !Number.isInteger(m) ||
+          h < 0 ||
+          m < 0 ||
+          m > 59
+        )
+          throw new Error('Enter expected flight length in hours and minutes.');
+        details = { ...details, expectedMinutes: h * 60 + m };
+        details = requireFlightDetails(details);
         if (Platform.OS !== 'android')
           throw new Error('Trip collection is currently available on Android.');
         if (Platform.Version >= 33) {
@@ -93,8 +99,7 @@ export default function FlightHome({
           if (granted !== PermissionsAndroid.RESULTS.GRANTED)
             throw new Error('Allow notifications to start your trip.');
         }
-        if (shadow) await startTrip(owner, details, true, { includeMlab });
-        else await startTrip(owner, details, false);
+        await startTrip(owner, details, false);
       }
     } catch (e) {
       setError(
@@ -148,7 +153,7 @@ export default function FlightHome({
               : trip.phase === 'paused'
               ? 'Your trip will continue when suitable connectivity returns.'
               : 'SkyMeasure is taking care of the rest.'
-            : 'Add your flight, or skip straight to your trip.'}
+            : 'Enter your flight details to start your trip.'}
         </Text>
       </View>
       {active ? (
@@ -161,7 +166,9 @@ export default function FlightHome({
               <Text variant="bodyLarge">{routeLabel(trip.flight)}</Text>
             )}
             <Chip style={styles.badge} accessibilityLiveRegion="polite">
-              {progress.uploading
+              {trip.groundTest
+                ? 'Ground network test'
+                : progress.uploading
                 ? 'Saving your progress'
                 : trip.shadow
                 ? 'Researcher shadow test'
@@ -188,8 +195,26 @@ export default function FlightHome({
                 Flight details
               </Text>
               <Text variant="bodySmall" style={styles.subtitle}>
-                Optional
+                Required
               </Text>
+            </View>
+            <View style={styles.durationRow}>
+              <TextInput
+                mode="outlined"
+                label="Expected hours"
+                keyboardType="number-pad"
+                value={hours}
+                onChangeText={setHours}
+                style={styles.durationInput}
+              />
+              <TextInput
+                mode="outlined"
+                label="Expected minutes"
+                keyboardType="number-pad"
+                value={minutes}
+                onChangeText={setMinutes}
+                style={styles.durationInput}
+              />
             </View>
             <TextInput
               mode="outlined"
@@ -241,54 +266,24 @@ export default function FlightHome({
         >
           {active ? 'Stop trip' : 'Start trip'}
         </Button>
-        {!active && (
-          <Button
-            disabled={busy}
-            contentStyle={styles.secondaryButton}
-            onPress={() => act({})}
-          >
-            Skip and start
-          </Button>
-        )}
       </View>
       {(error || (active && progress.error)) && (
         <HelperText type="error" accessibilityLiveRegion="polite">
           {error || progress.error}
         </HelperText>
       )}
-      {researcher && !active && (
-        <View style={styles.researchTools}>
-          <Button onPress={() => setShadow(v => !v)}>
-            Detector shadow mode: {shadow ? 'on' : 'off'}
-          </Button>
-          <Button onPress={manual}>Researcher manual collection</Button>
-          {shadow && (
-            <Button onPress={() => setIncludeMlab(value => !value)}>
-              Include M-Lab in shadow test: {includeMlab ? 'on' : 'off'}
-            </Button>
-          )}
-          <Text variant="bodySmall">
-            Background battery access:{' '}
-            {batteryExempt == null
-              ? 'unavailable'
-              : batteryExempt
-              ? 'unrestricted'
-              : 'optimized'}
-            . For the locked-phone test, allow unrestricted battery use for
-            SkyMeasure.
-          </Text>
-          <Button
-            onPress={() =>
-              NativeModules.FlightNetwork?.openBatterySettings?.().catch(() =>
-                setError(
-                  'Open Android Settings → Battery to adjust background access.',
-                ),
-              )
-            }
-          >
-            Background battery settings
-          </Button>
-        </View>
+      {!active && batteryExempt === false && (
+        <Button
+          onPress={() =>
+            NativeModules.FlightNetwork?.openBatterySettings?.().catch(() =>
+              setError(
+                'Open Android battery settings to adjust background access.',
+              ),
+            )
+          }
+        >
+          Background battery settings
+        </Button>
       )}
     </ScrollView>
   );
@@ -340,6 +335,8 @@ export function TripHistory({ owner }: { owner: string }) {
   );
 }
 const styles = StyleSheet.create({
+  durationRow: { flexDirection: 'row', gap: 12 },
+  durationInput: { flex: 1 },
   page: {
     padding: 24,
     paddingTop: 20,

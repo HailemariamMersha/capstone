@@ -503,3 +503,50 @@ def test_mlab_budget_requires_new_policy_and_policy_is_immutable(client):
     body['policyVersion'] = 'flight-mlab-2026-11-02'
     body['used']['transfers'] = 260*1048576 + 1
     assert client.put(path, headers=auth(), json=body).status_code == 422
+
+
+def test_uncapped_pilot_requires_fields_and_new_consent_preserves_legacy_uploads(client):
+    from backend.research.policies import PILOT_POLICY, LEGACY_CONSENT
+    path = '/api/v2/trips/' + 'a'*32
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': False}
+    assert client.put(path, headers=auth(), json=body).status_code == 422
+    body['flight'] = {'flightNumber': 'TEST001', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}
+    assert client.patch('/api/v2/profile', headers=auth(), json={'consentVersion': LEGACY_CONSENT}).status_code == 200
+    # Fresh legacy identity cannot authorize an uncapped pilot.
+    from sqlalchemy.orm import Session
+    with Session(engine()) as db:
+        db.get(Account, 'a').consent_version = LEGACY_CONSENT
+        db.commit()
+    assert client.put(path, headers=auth(), json=body).status_code == 403
+    sid, manifest, records = experiment()
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records': records}).status_code == 200
+    client.patch('/api/v2/profile', headers=auth(), json={'consentVersion': CONSENT_VERSION})
+    body['mlabUsage'] = {'downloadClientBytes': 1500000000, 'uploadClientBytes': None}
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    over = {**body, 'revision': 2, 'used': {'transfers': 61*1048576, 'diagnostics': 0, 'uploads': 0}}
+    assert client.put(path, headers=auth(), json=over).status_code == 422
+
+
+def test_ground_trip_is_sticky_and_excluded_from_default_totals_and_exports(client):
+    from backend.research.policies import PILOT_POLICY
+    trip_id = 'f'*32
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': True,
+            'flight': {'flightNumber': 'TEST001', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
+    path = '/api/v2/trips/' + trip_id
+    assert client.put(path, headers=auth(), json=body).status_code == 200
+    assert client.put(path, headers=auth(), json={**body, 'revision': 2, 'groundTest': False}).status_code == 409
+    sid, manifest, records = experiment()
+    manifest['session']['config'].update(tripId=trip_id, segmentIndex=0)
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records': records}).status_code == 200
+    assert client.get('/api/v2/research/trips', headers=auth('researcher')).json()['total'] == 0
+    assert client.get('/api/v2/research/trips?includeGroundTests=true', headers=auth('researcher')).json()['total'] == 1
+    assert client.get('/api/v2/research/sessions', headers=auth('researcher')).json()['total'] == 0
+    assert client.get('/api/v2/research/sessions?includeGroundTests=true', headers=auth('researcher')).json()['total'] == 1
+    assert client.get('/api/v2/research/overview', headers=auth('researcher')).json()['measurements'] == 0
+    assert client.get('/api/v2/research/overview?includeGroundTests=true', headers=auth('researcher')).json()['measurements'] == 1
+    evidence = client.get(f'/api/v2/research/sessions/{sid}', headers=auth('researcher')).json()
+    assert evidence['trip']['groundTest'] is True
+    assert list(combined_rows(evidence))[0]['trip.groundTest'] is True
+    assert client.get('/api/v2/research/sessions?format=csv', headers=auth('researcher')).text.count(sid) == 0

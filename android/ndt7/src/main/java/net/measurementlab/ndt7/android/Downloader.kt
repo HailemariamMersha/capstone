@@ -35,7 +35,7 @@ class Downloader(private val cbRegistry: CallbackRegistry, executor: ExecutorSer
         if (now - previous >= 250000) {
             cbRegistry.speedtestProgressCbk(generateResponse(startTime, numBytes, NDTTest.TestType.DOWNLOAD)); previous = now
         }
-        if (numBytes >= cbRegistry.byteLimit) finish("data_threshold")
+        if (cbRegistry.byteLimit != null && numBytes >= cbRegistry.byteLimit) finish("data_threshold")
     }
     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
         webSocket.close(1000, null)

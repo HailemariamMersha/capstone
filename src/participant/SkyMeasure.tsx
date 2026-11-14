@@ -49,7 +49,6 @@ import {
   Profile,
   ResearchAccessError,
   secureStorage,
-  signIn,
   enrollParticipant,
 } from '../auth/client';
 import { configureUploads, syncAccount } from '../sync/background';
@@ -76,7 +75,7 @@ import FlightHome, { TripHistory } from './FlightHome';
 import Enrollment from './Enrollment';
 import ParticipationInfo from './ParticipationInfo';
 
-const CONSENT = 'skymeasure-flight-mlab-2026-11-02';
+const CONSENT = 'skymeasure-flight-pilot-2026-11-14';
 
 const Tabs = createBottomTabNavigator();
 type AccountContext = {
@@ -89,7 +88,11 @@ type AccountContext = {
 const Context = createContext<AccountContext | null>(null);
 const useAccount = () => useContext(Context)!;
 const message = (e: unknown) =>
-  e instanceof Error ? e.message : 'Please try again.';
+  e instanceof ResearchAccessError && e.reason === 'sign_in_required'
+    ? 'Connection credentials could not be restored. Retry; saved trips remain available for export.'
+    : e instanceof Error
+    ? e.message
+    : 'Please try again.';
 function Page({ children }: { children: React.ReactNode }) {
   return (
     <ScrollView
@@ -143,28 +146,47 @@ function Toggle({
   );
 }
 
-function Home() {
-  const { session, profile } = useAccount();
-  const [manual, setManual] = useState(false);
-  const researcher = profile.role !== 'participant';
-  if (manual && researcher)
-    return (
-      <>
-        <Button onPress={() => setManual(false)}>
-          Back to trip collection
-        </Button>
-        <ManualHome />
-      </>
-    );
+function RecoveryExports({ owner }: { owner: string }) {
+  const [rows, setRows] = useState<SessionRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    measurementStore
+      .accountSessions(owner)
+      .then(setRows)
+      .catch(e => setError(message(e)));
+  }, [owner]);
   return (
-    <FlightHome
-      owner={session.user.id}
-      researcher={researcher}
-      manual={() => setManual(true)}
-    />
+    <View>
+      <Text>Saved segments remain available for export before resetting.</Text>
+      {rows.map(row => (
+        <Button
+          key={row.id}
+          onPress={async () => {
+            const release = acquireActivity('account');
+            try {
+              if ((await localSession())?.user.id !== owner)
+                throw new Error('Installation identity changed.');
+              await shareSession(row.id, 'json');
+            } catch (e) {
+              setError(message(e));
+            } finally {
+              release();
+            }
+          }}
+        >
+          Export {new Date(row.startedAt).toLocaleString()}
+        </Button>
+      ))}
+      <Failure text={error} />
+    </View>
   );
 }
-function ManualHome() {
+function Home() {
+  const { session } = useAccount();
+  return <FlightHome owner={session.user.id} />;
+}
+/** Historical technical screen; intentionally absent from participant navigation. */
+export function LegacyManualHome() {
   const { session, status, refresh } = useAccount();
   const network = useNetInfo();
   const focused = useIsFocused();
@@ -712,21 +734,15 @@ function Account() {
       release();
     }
   }
-  async function signOut() {
-    await signOutParticipant();
-  }
   return (
     <Page>
       <Heading
-        title="Your account"
+        title="Settings"
         subtitle="You choose when and how to contribute."
       />
       <Card mode="outlined">
         <Card.Content>
-          <Text variant="titleLarge">
-            {session.user.user_metadata.full_name ?? 'Research participant'}
-          </Text>
-          <Text>{session.user.email}</Text>
+          <Text variant="titleLarge">Your contributions</Text>
           <Text style={styles.space}>{totals} trips saved on this phone</Text>
         </Card.Content>
       </Card>
@@ -777,58 +793,14 @@ function Account() {
 
       <Failure text={error} />
       <Button
-        mode="outlined"
-        disabled={busy || status?.state !== 'stopped'}
-        onPress={() =>
-          session.user.is_anonymous
-            ? Alert.alert(
-                'Reset this installation’s identity?',
-                'Pending old records remain on this phone but cannot be uploaded by the new identity. Export them first. This cannot recover records removed by uninstalling.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Reset identity',
-                    style: 'destructive',
-                    onPress: () => operation(signOut),
-                  },
-                ],
-              )
-            : operation(signOut)
-        }
-      >
-        {session.user.is_anonymous ? 'Reset anonymous identity' : 'Sign out'}
-      </Button>
-      <Text>
-        Pending sessions stay on this phone and remain private to your account.
-      </Text>
-      <Button
-        mode="outlined"
-        disabled={busy || status?.state !== 'stopped'}
-        onPress={() =>
-          operation(async () => {
-            if (session.user.is_anonymous)
-              updateProfile(await loadProfile(session.user.id));
-            else await signIn();
-          })
-        }
-      >
-        {session.user.is_anonymous
-          ? 'Retry research access'
-          : 'Confirm Google sign-in'}
-      </Button>
-      <Text>
-        If your login has expired, confirm it to resume uploads. Saved sessions
-        remain available offline.
-      </Text>
-      <Button
         textColor={theme.colors.error}
         disabled={busy || status?.state !== 'stopped'}
         onPress={() =>
           Alert.alert(
-            'Delete your account and research data?',
-            'Uploaded and locally saved sessions for this account will be removed. This cannot be undone. The study team also completes deletion of your sign-in identity.',
+            'Delete your research data?',
+            'Uploaded and locally saved trips for this installation will be removed. This cannot be undone.',
             [
-              { text: 'Keep account', style: 'cancel' },
+              { text: 'Keep data', style: 'cancel' },
               {
                 text: 'Delete my data',
                 style: 'destructive',
@@ -850,7 +822,7 @@ function Account() {
                       `profile.${session.user.id}`,
                     );
                     await secureStorage.removeItem(deletionKey);
-                    await signOut();
+                    await signOutParticipant();
                   }),
               },
             ],
@@ -1060,13 +1032,6 @@ function Root() {
         <Text style={styles.welcomeNote}>
           No account needed. Just bring your phone.
         </Text>
-        <Button
-          onPress={() => perform(signIn)}
-          disabled={busy}
-          textColor={theme.colors.onSurfaceVariant}
-        >
-          Researcher Google sign-in
-        </Button>
         {!configured && (
           <Text>The app can’t connect yet. Please contact the study team.</Text>
         )}
@@ -1078,26 +1043,9 @@ function Root() {
       <Page>
         <Heading
           title="Reconnect to SkyMeasure"
-          subtitle="Retry your connection or choose your Google account again."
+          subtitle="Retry your connection. Your saved trips remain on this phone."
         />
         <Failure text={error} />
-        <Button
-          mode="contained"
-          disabled={busy}
-          loading={busy}
-          onPress={() =>
-            perform(async () => {
-              const release = acquireActivity('account');
-              try {
-                await signIn();
-              } finally {
-                release();
-              }
-            })
-          }
-        >
-          Sign in with Google
-        </Button>
         <Button
           disabled={busy}
           onPress={() =>
@@ -1106,12 +1054,29 @@ function Root() {
         >
           Retry connection
         </Button>
+        <RecoveryExports owner={session.user.id} />
         <Text>
-          Choosing a different account keeps existing recordings with their
-          original identity.
+          Reset only if access cannot be recovered. Existing recordings remain
+          with their original identity and are never reassigned.
         </Text>
-        <Button disabled={busy} onPress={() => perform(signOutParticipant)}>
-          Sign out
+        <Button
+          disabled={busy}
+          onPress={() =>
+            Alert.alert(
+              'Reset this installation?',
+              'Export pending trips first. Old records remain on this phone but cannot be uploaded by a new identity.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Reset installation',
+                  style: 'destructive',
+                  onPress: () => perform(signOutParticipant),
+                },
+              ],
+            )
+          }
+        >
+          Reset installation
         </Button>
       </Page>
     );
@@ -1199,7 +1164,7 @@ function Root() {
             component={Sessions}
             options={{ tabBarLabel: 'Trips' }}
           />
-          <Tabs.Screen name="Account" component={Account} />
+          <Tabs.Screen name="Settings" component={Account} />
         </Tabs.Navigator>
       </NavigationContainer>
     </Context.Provider>

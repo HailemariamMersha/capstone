@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import ResearchTrip, TripSegment, ResearchSession, database, now
 from .auth import account, researcher
+from .policies import PILOT_POLICY, require_consent
 
 router = APIRouter()
 
@@ -21,6 +22,11 @@ class Budget(BaseModel):
     transfers: int = Field(ge=0, le=260*1048576)
     diagnostics: int = Field(ge=0, le=20*1048576)
     uploads: int = Field(ge=0, le=20*1048576)
+
+class MlabUsage(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    downloadClientBytes: int | None = Field(None, ge=0, le=9007199254740991)
+    uploadClientBytes: int | None = Field(None, ge=0, le=9007199254740991)
 
 class TripUpdate(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -39,12 +45,17 @@ class TripUpdate(BaseModel):
     policyVersion: str = Field(max_length=100)
     shadow: bool = False
     detectorPolicyVersion: str | None = Field(None, max_length=80)
+    groundTest: bool | None = None
+    mlabUsage: MlabUsage | None = None
 
 @router.put('/trips/{trip_id}')
 def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database)):
-    from .api import CONSENT_VERSION
-    if a.consent_version != CONSENT_VERSION:
-        raise HTTPException(403, 'Current research consent required')
+    require_consent(a, body.policyVersion)
+    if body.policyVersion == PILOT_POLICY:
+        if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')) or body.flight.expectedMinutes is None:
+            raise HTTPException(422, 'Flight number, route and expected length are required')
+        if body.groundTest is None:
+            raise HTTPException(422, 'Pilot requires explicit test provenance')
     if len(trip_id) != 32 or any(c not in '0123456789abcdef' for c in trip_id):
         raise HTTPException(422, 'Invalid trip identifier')
     if body.shadow and a.role not in ('researcher', 'administrator'):
@@ -58,13 +69,21 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
         raise HTTPException(422, 'Transfer reservation exceeds versioned policy')
     raw = body.model_dump()
     # Preserve the exact legacy manifest shape for unchanged revision retries.
-    if body.detectorPolicyVersion is None:
-        raw.pop('detectorPolicyVersion', None)
+    for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage'):
+        if getattr(body, field) is None:
+            raw.pop(field, None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     if t:
         if t.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
         if body.revision < t.revision or (body.revision == t.revision and raw != t.raw):
             raise HTTPException(409, 'Trip revision conflict')
+        if body.mlabUsage is not None:
+            previous = t.raw.get('mlabUsage') or {}
+            for k, value in body.mlabUsage.model_dump().items():
+                if previous.get(k) is not None and (value is None or value < previous[k]):
+                    raise HTTPException(409, 'M-Lab usage cannot move backwards')
+        if t.raw.get('groundTest') and not body.groundTest:
+            raise HTTPException(409, 'Ground-test provenance cannot be cleared')
         if body.policyVersion != t.raw['policyVersion']:
             raise HTTPException(409, 'Trip policy cannot change')
         if body.detectorPolicyVersion != t.raw.get('detectorPolicyVersion'):
@@ -94,8 +113,9 @@ def describe(db, t, segments=None):
             'missingSegments': missing,
             'segments': [{'index': r.ordinal, 'sessionId': r.id, 'uploaded': bool(r.completed_at)} for r in segments]}
 
-def listing(db, owner, offset, limit, confidence=None, provider=None, include_summary=False):
+def listing(db, owner, offset, limit, confidence=None, provider=None, include_summary=False, include_ground=True):
     query = select(ResearchTrip)
+    if not include_ground: query = query.where(ResearchTrip.raw['groundTest'].as_boolean().is_not(True))
     if owner: query = query.where(ResearchTrip.owner_id == owner)
     if confidence: query = query.where(ResearchTrip.raw['confidence'].as_string() == confidence)
     if provider: query = query.where(ResearchTrip.raw['provider'].as_string() == provider)
@@ -121,5 +141,5 @@ def own_trips(a=Depends(account), db: Session=Depends(database), offset: int=Que
     return listing(db, a.user_id, offset, limit)
 
 @router.get('/research/trips')
-def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None):
-    return listing(db, None, offset, limit, confidence, provider, include_summary=True)
+def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None, includeGroundTests: bool=False):
+    return listing(db, None, offset, limit, confidence, provider, include_summary=True, include_ground=includeGroundTests)

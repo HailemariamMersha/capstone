@@ -1,5 +1,7 @@
 import {
   evaluate,
+  PROVIDERS,
+  PILOT_TEST_PROVIDERS,
   transition,
   reserve,
   reservePair,
@@ -199,3 +201,32 @@ test('historical policy does not silently gain the new M-Lab allowance', () => {
   };
   expect(reserve(t, 'transfers', 200 * 1048576)).toBe(false);
 });
+
+test('production has exactly the six provider ASNs; AS12 needs explicit pilot admission', () => {
+  expect(
+    Object.keys(PROVIDERS)
+      .map(Number)
+      .sort((a, b) => a - b),
+  ).toEqual([14593, 22351, 31515, 40306, 64294, 206433]);
+  expect(PILOT_TEST_PROVIDERS[12]).toBe('TEST New York University');
+  expect(evidence(1, { asn: 12 }).confidence).toBe('unconfirmed');
+  let t = transition(initial(), evidence(0, { asn: 12, allowTestAsns: true }));
+  t = transition(t, evidence(30000, { asn: 12, allowTestAsns: true }));
+  expect(t).toMatchObject({
+    phase: 'collecting',
+    groundTest: true,
+    evidence: { qualificationSource: 'ground_test_asn' },
+  });
+  t = transition(t, evidence(60000, { asn: 64512, allowTestAsns: true }));
+  expect(t.phase).toBe('paused');
+  t = transition(t, evidence(660000, { asn: 64512, allowTestAsns: true }));
+  expect(t.phase).toBe('finished');
+  expect(t.groundTest).toBe(true);
+});
+test.each([
+  {},
+  { flightNumber: ' ', departure: 'A', arrival: 'B', expectedMinutes: 60 },
+  { flightNumber: 'T', departure: 'A', arrival: 'B' },
+])('new trip details must be complete: %j', f =>
+  expect(() => flightDetails(f, true)).toThrow(),
+);

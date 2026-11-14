@@ -23,6 +23,7 @@ class FlightNetworkModule(private val context: ReactApplicationContext) : ReactC
     private val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var selected: Network? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
+    override fun getConstants(): Map<String, Any> = mapOf("pilotBuild" to com.labpracticeapp.BuildConfig.FLIGHT_PILOT)
     override fun getName() = "FlightNetwork"
     @ReactMethod fun addListener(name: String) {}
     @ReactMethod fun removeListeners(count: Int) {}

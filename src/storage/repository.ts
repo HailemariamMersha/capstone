@@ -343,10 +343,33 @@ export function createRepository(
             [sessionId],
           )
         ).rows.map(r => JSON.parse(String(r.payload_json)));
+        const session = toSession(row);
+        const tripRow = session.config.tripId
+          ? (
+              await db.execute(
+                'SELECT payload_json FROM trips WHERE id=? AND owner_id=?',
+                [session.config.tripId, session.ownerId ?? null],
+              )
+            ).rows[0]
+          : null;
+        const savedTrip = tripRow
+          ? JSON.parse(String(tripRow.payload_json))
+          : null;
         return {
+          ...(savedTrip
+            ? {
+                trip: {
+                  id: savedTrip.id,
+                  groundTest: savedTrip.groundTest ?? false,
+                  policyVersion: savedTrip.policy?.version ?? null,
+                  flight: savedTrip.flight,
+                  mlabUsage: savedTrip.mlabUsage ?? null,
+                },
+              }
+            : {}),
           schemaVersion: SCHEMA_VERSION,
           exportedAt: now(),
-          session: toSession(row),
+          session,
           measurements,
           events,
           snapshots,
@@ -615,7 +638,10 @@ export function createRepository(
           errorMessage:
             'Probe attempt began but no result was committed before interruption.',
           httpStatus: null,
-          requestedBytes: requestedPayload(type, config),
+          requestedBytes:
+            type.startsWith('ndt7_') && config.referenceByteThreshold === null
+              ? null
+              : requestedPayload(type, config),
           transferredBytes: null,
           probeServer: type.startsWith('ndt7_')
             ? 'https://locate.measurementlab.net/v2/nearest/ndt/ndt7'
@@ -634,7 +660,8 @@ export function createRepository(
           ).rows[0].total,
         );
         if (
-          config.maxPayloadBytes !== undefined &&
+          config.maxPayloadBytes != null &&
+          result.requestedBytes != null &&
           used + result.requestedBytes > config.maxPayloadBytes
         ) {
           throw new Error('Session payload budget reached.');

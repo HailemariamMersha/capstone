@@ -65,7 +65,7 @@ export interface Measurement {
   errorType: ProbeErrorType | null;
   errorMessage: string | null;
   httpStatus: number | null;
-  requestedBytes: number;
+  requestedBytes: number | null;
   transferredBytes: number | null;
   probeServer: string;
   probeRegion: string | null;
@@ -96,7 +96,7 @@ export interface Measurement {
     version: string;
     source: 'client' | 'server' | null;
     stopReason: string;
-    byteThreshold: number;
+    byteThreshold: number | null;
     clientBytes: number | null;
     serverBytes: number | null;
     elapsedSeconds: number | null;

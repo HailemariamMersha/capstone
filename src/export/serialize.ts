@@ -422,6 +422,9 @@ export function sessionExportFiles(data: Row): ExportFile[] {
   const measurements = rows(data.measurements),
     session = object(data.session);
   return [
+    ...(data.trip
+      ? [{ name: 'trip.json', content: JSON.stringify(data.trip, null, 2) }]
+      : []),
     {
       name: 'session.json',
       content: sessionJson(data),

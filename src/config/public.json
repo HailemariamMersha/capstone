@@ -1,4 +1,5 @@
 {
+  "pilotTestAsnsEnabled": false,
   "supabaseUrl": "",
   "supabasePublishableKey": "",
   "apiUrl": "",

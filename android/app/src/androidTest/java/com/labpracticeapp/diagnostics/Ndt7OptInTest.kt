@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class Ndt7OptInTest {
     @Test fun publicPairOnSelectedWifi() {
-        assumeTrue("Public IP/results publication needs explicit opt-in", InstrumentationRegistry.getArguments().getString("mlabPublicationConsent") == "skymeasure-flight-mlab-2026-11-02")
+        assumeTrue("Public IP/results publication needs explicit opt-in", InstrumentationRegistry.getArguments().getString("mlabPublicationConsent") == "skymeasure-flight-pilot-2026-11-14")
         val context = BridgeReactContext(ApplicationProvider.getApplicationContext())
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         assertFalse("Disable VPN for attribution", manager.allNetworks.any { manager.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true })
@@ -34,7 +34,7 @@ class Ndt7OptInTest {
         var error: Any? = null
         val promise = PromiseImpl(Callback { args -> result = args[0] as String; done.countDown() }, Callback { args -> error = args[0]; done.countDown() })
         try {
-            module.run("opt-in-device-check", "skymeasure-flight-mlab-2026-11-02", wifi!!.networkHandle.toString(), promise)
+            module.run("opt-in-device-check", "skymeasure-flight-pilot-2026-11-14", wifi!!.networkHandle.toString(), com.labpracticeapp.BuildConfig.FLIGHT_PILOT, promise)
             assertTrue("Bounded client callback", done.await(70, TimeUnit.SECONDS))
             assertNull("Native invocation failed", error)
             val data = JSONObject(result!!)

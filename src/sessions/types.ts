@@ -6,11 +6,13 @@ export interface MeasurementConfig extends ProbeConfig {
   flightPolicy?: import('../trips/model').Trip['policy'];
   mlabPolicy?: {
     consentVersion: string;
-    reservationBytes: number;
-    byteThresholdPerDirection: number;
+    reservationBytes: number | null;
+    byteThresholdPerDirection: number | null;
     maximumPairsPerTrip: number;
     maximumPairsPerDay: number;
   };
+  pilotTestAsnsEnabled?: boolean;
+  groundTest?: boolean;
   tripId?: string;
   segmentIndex?: number;
   collectionMode?: 'flight_auto' | 'research_manual' | 'detector_shadow';
@@ -21,9 +23,9 @@ export interface MeasurementConfig extends ProbeConfig {
   /** Absent on historical sessions: retain their HTTP schedule. New UI defaults to false. */
   httpEnabled?: boolean;
   mode?: 'ndt7_reference' | 'speedchecker_reference';
-  referenceByteThreshold?: number;
+  referenceByteThreshold?: number | null;
   maxDurationMs?: number;
-  maxPayloadBytes?: number;
+  maxPayloadBytes?: number | null;
   minimumBatteryPercent?: number;
   icmpHost?: string;
   icmpBurstEnabled?: boolean;

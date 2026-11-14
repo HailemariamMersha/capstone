@@ -20,6 +20,8 @@ export function tripManifest(t: Trip) {
     reason: t.reason,
     policyVersion: t.policy.version,
     shadow: t.shadow,
+    ...(t.groundTest != null ? { groundTest: t.groundTest } : {}),
+    ...(t.mlabUsage ? { mlabUsage: t.mlabUsage } : {}),
     ...(t.detectorPolicy
       ? { detectorPolicyVersion: t.detectorPolicy.version }
       : {}),

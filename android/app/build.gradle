@@ -96,6 +96,7 @@ android {
 
     namespace "com.labpracticeapp"
     defaultConfig {
+        buildConfigField "boolean", "FLIGHT_PILOT", flightPilotBuild.toString()
         buildConfigField "boolean", "SPEEDCHECKER_ENABLED", speedCheckerEnabled.toString()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         applicationId (flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp")
@@ -103,8 +104,8 @@ android {
         manifestPlaceholders["skymeasureAuthScheme"] = flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.1.5"
+        versionCode 8
+        versionName "1.2.0"
     }
     testBuildType "release"
     if (speedCheckerEnabled) {
