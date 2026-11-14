@@ -30,6 +30,8 @@ M-Lab is outside the remaining allocations: 60 MiB controlled transfers, 20 MiB 
 
 M-Lab public-IP/results publication is still disclosed; removing phone sign-in does not make measurements unidentifiable. Existing users must accept the new disclosure before an uncapped trip. Deleting study data does not retract M-Lab publications.
 
+> **Rollout status:** [14 November validation](collector-validation-2026-11-14.md) records the built APK and passed automated checks. Backend deployment is pending restored lab SSH access; do not install it against the old API.
+
 ## Compatibility, build and validation
 
 Old policies, budgets, consent versions and immutable manifests retain their meanings. Backend consent checks allow closed legacy uploads under their original policy, while uncapped trips require current consent, complete flight details and explicit ground-test provenance. Researcher authorization remains enforced for the website and older research clients. Additive JSON fields require no destructive database migration.

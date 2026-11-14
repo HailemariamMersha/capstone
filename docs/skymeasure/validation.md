@@ -1,6 +1,10 @@
 # SkyMeasure implementation and validation history
 
-## 9 November: current ASN-only pilot 1.1.5
+## 14 November: uncapped pilot 1.2.0 — built, backend deployment pending
+
+The new participant-only phone flow, required flight details, AS12 normal admission and uncapped M-Lab implementation are committed and built. Automated checks passed: 282 mobile, 47 backend, 18 browser and seven native library tests; one optional PostgreSQL check was skipped. The configured APK came from a clean source commit. Lab SSH refused port 22 before deployment; the API remains healthy but does not yet support the new fields. The authorized phone retains its old pilot. No new physical experiment or live M-Lab run occurred. See [the dated validation and remaining acceptance](collector-validation-2026-11-14.md) and [pilot policy](uncapped-pilot.md).
+
+## 9 November: ASN-only pilot 1.1.5 (historical)
 
 The current detector is `asn-only-v1`: two fresh provider-ASN evaluations qualify selected Wi-Fi, without GPS/SSID admission or automatic GPS sampling. Earlier `network_only`/`gps_supported` confidence labels keep their historical meanings. Allowance remains 300 MiB and the scheduler/upload segment policy remains unchanged.
 
