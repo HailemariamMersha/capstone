@@ -1,8 +1,14 @@
 # SkyMeasure implementation and validation history
 
-## 14 November: uncapped pilot 1.2.0 — built, backend deployment pending
+## 15 November: ground pilot collected; upload retry fixes
 
-The new participant-only phone flow, required flight details, AS12 normal admission and uncapped M-Lab implementation are committed and built. Automated checks passed: 282 mobile, 47 backend, 18 browser and seven native library tests; one optional PostgreSQL check was skipped. The configured APK came from a clean source commit. Lab SSH refused port 22 before deployment; the API remains healthy but does not yet support the new fields. The authorized phone retains its old pilot. No new physical experiment or live M-Lab run occurred. See [the dated validation and remaining acceptance](collector-validation-2026-11-14.md) and [pilot policy](uncapped-pilot.md).
+The compatible API is deployed and all 435 expected records reconciled with no missing segments or record versions. A consented AS5384 / TEST Etisalat trip qualified through the normal detector and saved 64 measurements across two segments. Both uncapped M-Lab directions completed (108.98 Mbps down / 87.88 Mbps up). The screen was locked through rotation with USB connected; this is not unplugged/deep-Doze validation. One controlled upload timed out, eight UDP probes had no reply, and three busy probe deadlines were explicitly skipped.
+
+Pilot 1.2.2 adds persisted fair upload opportunities after an old backlog prevented this trip from progressing; the API also validates ground provenance once per bounded batch. Mobile TypeScript and 288 tests passed. See [the dated validation](collector-validation-2026-11-15.md) for exact collection results, final reconciliation, artifact checksum and remaining acceptance. The [current pilot policy](uncapped-pilot.md) defines the account-free UI, mandatory details, private test-ASN gates and traffic behavior.
+
+## 14 November: uncapped pilot 1.2.0 — historical initial deployment block
+
+At this dated checkpoint, the participant-only phone flow, required flight details, AS12 normal admission and uncapped M-Lab implementation were committed and built. Automated checks passed: 282 mobile, 47 backend, 18 browser and seven native library tests; one optional PostgreSQL check was skipped. The configured APK came from a clean source commit. Lab SSH refused port 22 before deployment; the API was healthy but did not yet support the new fields. The authorized phone retained its old pilot. No new physical experiment or live M-Lab run occurred. See [the dated validation and remaining acceptance](collector-validation-2026-11-14.md) and [pilot policy](uncapped-pilot.md).
 
 ## 9 November: ASN-only pilot 1.1.5 (historical)
 

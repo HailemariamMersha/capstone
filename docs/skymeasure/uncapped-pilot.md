@@ -1,6 +1,6 @@
 # Account-free phone pilot — 14 November 2026
 
-Pilot 1.2.1 uses trip policy `flight-pilot-uncapped-2026-11-14` and consent `skymeasure-flight-pilot-2026-11-14`. This is a private evaluation build, not public recruitment or validated flight detection.
+Pilot 1.2.2 uses trip policy `flight-pilot-uncapped-2026-11-14` and consent `skymeasure-flight-pilot-2026-11-14`. This is a private evaluation build, not public recruitment or validated flight detection.
 
 ## Participant flow
 
@@ -30,7 +30,11 @@ M-Lab is outside the remaining allocations: 60 MiB controlled transfers, 20 MiB 
 
 M-Lab public-IP/results publication is still disclosed; removing phone sign-in does not make measurements unidentifiable. Existing users must accept the new disclosure before an uncapped trip. Deleting study data does not retract M-Lab publications.
 
-> **Rollout status:** [14 November validation](collector-validation-2026-11-14.md) records the built APK and passed automated checks. That dated record describes the initial SSH block. On 15 November, restored SSH allowed deployment of the compatible backend and installation of v1.2.0. The phone then reported AS5384, prompting the approved v1.2.1 test-provider update. Physical experiment results are recorded separately.
+> **Rollout status:** The compatible backend is deployed and pilot 1.2.2 is installed on the test phone. The consented AS5384 ground run completed both M-Lab directions, rotated a fifteen-minute segment and retained its evidence. See [15 November validation](collector-validation-2026-11-15.md) for upload reconciliation, measured outcomes and limitations. [14 November validation](collector-validation-2026-11-14.md) remains the historical record of the initial SSH block.
+
+## Upload retry fairness
+
+Post-trip upload opportunities remain bounded to 25 seconds. A persisted cursor scoped to the owner rotates between pending trips and the historical standalone-session queue, so an old backlog cannot monopolize every opportunity. Records within each trip remain ordered oldest first. The cursor advances before work, including on timeout or failure; committed records still require exact acknowledgements and server reconciliation. No record is dropped to advance the cursor. A cancelled opportunity leaves evidence saved for retry rather than requiring a new measurement run.
 
 ## Compatibility, build and validation
 
