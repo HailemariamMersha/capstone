@@ -41,6 +41,9 @@ class PilotNetworkTest {
                     .put("asnOrganization", body.opt("asnOrganization")).put("asnUnavailable", body.opt("asnUnavailable"))
                     .put("matchesPilotTestAsn", body.optInt("asn", -1) == 12)
                 File(app.filesDir, "pilot-network-check.json").writeText(report.toString())
+                InstrumentationRegistry.getInstrumentation().sendStatus(2, android.os.Bundle().apply {
+                    putString("pilotNetworkReport", report.toString())
+                })
                 assertTrue("ASN must be available", body.optInt("asn", -1) > 0)
             }
         } finally { client.connectionPool.evictAll(); client.dispatcher.executorService.shutdownNow() }
