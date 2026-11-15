@@ -88,7 +88,9 @@ type AccountContext = {
 const Context = createContext<AccountContext | null>(null);
 const useAccount = () => useContext(Context)!;
 const message = (e: unknown) =>
-  e instanceof ResearchAccessError && e.reason === 'sign_in_required'
+  e instanceof Error && (e.name === 'AbortError' || e.message === 'Aborted')
+    ? 'Upload paused. Records stay saved locally and will retry.'
+    : e instanceof ResearchAccessError && e.reason === 'sign_in_required'
     ? 'Connection credentials could not be restored. Retry; saved trips remain available for export.'
     : e instanceof Error
     ? e.message

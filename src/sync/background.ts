@@ -45,25 +45,58 @@ export const syncAccount = Object.assign(
     }, 25000);
     syncing = (async () => {
       if (isTripArmed()) return;
-      await syncLegacy();
-      if (isTripArmed()) return;
       const session = await localSession();
       const n = await NetInfo.fetch();
       if (!session || !n.isConnected || n.isInternetReachable === false) return;
-      for (const trip of await measurementStore.accountTrips(session.user.id)) {
+      const owner = session.user.id;
+      const trips = (await measurementStore.accountTrips(owner))
+        .filter(t => t.state !== 'active' && t.uploadedRevision !== t.revision)
+        .sort((a, b) => a.startedAt - b.startedAt);
+      const legacyPending = (
+        await measurementStore.accountSessions(owner)
+      ).some(
+        s =>
+          !s.config.tripId &&
+          s.state !== 'active' &&
+          s.uploadStatus !== 'Uploaded',
+      );
+      const tasks: { id: string; run(): Promise<void> }[] = [
+        ...(legacyPending ? [{ id: 'legacy', run: () => syncLegacy() }] : []),
+        ...trips.map(trip => ({
+          id: trip.id,
+          run: () =>
+            uploadTrip(trip, false, n.type === 'wifi', async () => {
+              trip.revision++;
+              await measurementStore.saveTrip(trip);
+            }),
+        })),
+      ];
+      const cursorKey = `upload-opportunity-cursor.${owner}`;
+      const cursor = await secureStorage.getItem(cursorKey);
+      const previous = tasks.findIndex(t => t.id === cursor);
+      const start = previous < 0 ? 0 : (previous + 1) % tasks.length;
+      const ordered = [...tasks.slice(start), ...tasks.slice(0, start)];
+      let firstError: unknown;
+      for (const task of ordered) {
         if (
           isTripArmed() ||
+          currentActivity() ||
           generation !== cancellationGeneration ||
           Date.now() >= deadline
         )
-          return;
-        if (trip.state === 'active' || trip.uploadedRevision === trip.revision)
-          continue;
-        await uploadTrip(trip, false, n.type === 'wifi', async () => {
-          trip.revision++;
-          await measurementStore.saveTrip(trip);
-        });
+          break;
+        // Advance before work: cancellation, process death or a failing old trip
+        // must not monopolize every later 25-second upload opportunity.
+        await secureStorage.setItem(cursorKey, task.id);
+        try {
+          await task.run();
+        } catch (error) {
+          if (generation !== cancellationGeneration || Date.now() >= deadline)
+            break;
+          firstError ??= error;
+        }
       }
+      if (firstError) throw firstError;
     })().finally(() => {
       clearTimeout(timeout);
       syncing = null;
