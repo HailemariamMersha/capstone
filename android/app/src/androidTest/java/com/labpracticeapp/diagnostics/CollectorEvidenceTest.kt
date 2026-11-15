@@ -68,6 +68,27 @@ class CollectorEvidenceTest {
                         .put("localUploadDiagnostics",upload).toString())
                 }
             }
+            val requestedTrip = InstrumentationRegistry.getArguments().getString("diagnosticTrip")
+            if (requestedTrip != null) {
+                val states = JSONArray()
+                db.rawQuery("SELECT payload_json FROM trips WHERE owner_id=(SELECT owner_id FROM trips WHERE id=?)", arrayOf(requestedTrip)).use { rows ->
+                    while (rows.moveToNext()) {
+                        val t = JSONObject(rows.getString(0))
+                        states.put(JSONObject().put("id", t.optString("id")).put("state", t.optString("state"))
+                            .put("revision", t.opt("revision")).put("uploadedRevision", t.opt("uploadedRevision") ?: JSONObject.NULL)
+                            .put("segmentCount", t.opt("segmentCount")).put("policyVersion", t.optJSONObject("policy")?.optString("version")))
+                    }
+                }
+                val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                val caps = manager.getNetworkCapabilities(manager.activeNetwork)
+                val report = JSONObject().put("trips", states)
+                    .put("defaultWifi", caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
+                    .put("defaultCellular", caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR))
+                    .put("validated", caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+                InstrumentationRegistry.getInstrumentation().sendStatus(2, android.os.Bundle().apply {
+                    putString("stoppedSyncState", report.toString())
+                })
+            }
         }
     }
 }
