@@ -12,6 +12,7 @@ export interface MeasurementConfig extends ProbeConfig {
     maximumPairsPerDay: number;
   };
   pilotTestAsnsEnabled?: boolean;
+  pilotTestProviderAsns?: number[];
   groundTest?: boolean;
   tripId?: string;
   segmentIndex?: number;

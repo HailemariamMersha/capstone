@@ -209,6 +209,11 @@ test('production has exactly the six provider ASNs; AS12 needs explicit pilot ad
       .sort((a, b) => a - b),
   ).toEqual([14593, 22351, 31515, 40306, 64294, 206433]);
   expect(PILOT_TEST_PROVIDERS[12]).toBe('TEST New York University');
+  expect(PILOT_TEST_PROVIDERS[5384]).toBe('TEST Etisalat');
+  expect(evidence(1, { asn: 5384 }).confidence).toBe('unconfirmed');
+  expect(
+    evidence(1, { asn: 5384, allowTestAsns: true }).qualificationSource,
+  ).toBe('ground_test_asn');
   expect(evidence(1, { asn: 12 }).confidence).toBe('unconfirmed');
   let t = transition(initial(), evidence(0, { asn: 12, allowTestAsns: true }));
   t = transition(t, evidence(30000, { asn: 12, allowTestAsns: true }));

@@ -107,6 +107,7 @@ export function Trips({
               'SITA',
               'ViaSat',
               'TEST New York University',
+              'TEST Etisalat',
             ].map(p => (
               <option key={p}>{p}</option>
             ))}

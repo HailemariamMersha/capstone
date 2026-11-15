@@ -32,6 +32,7 @@ import {
   TRIP_POLICY,
   PILOT_TRIP_POLICY,
   PILOT_POLICY_VERSION,
+  PILOT_TEST_PROVIDERS,
   DETECTOR_POLICY,
   type Trip,
   type FlightDetails,
@@ -182,6 +183,10 @@ const config = (t = trip!): MeasurementConfig => ({
       }
     : undefined,
   pilotTestAsnsEnabled: t.policy.version === PILOT_POLICY_VERSION,
+  pilotTestProviderAsns:
+    t.policy.version === PILOT_POLICY_VERSION
+      ? Object.keys(PILOT_TEST_PROVIDERS).map(Number)
+      : [],
   groundTest: t.groundTest ?? false,
   collectionMode: t.shadow ? 'detector_shadow' : 'flight_auto',
 });

@@ -550,3 +550,18 @@ def test_ground_trip_is_sticky_and_excluded_from_default_totals_and_exports(clie
     assert evidence['trip']['groundTest'] is True
     assert list(combined_rows(evidence))[0]['trip.groundTest'] is True
     assert client.get('/api/v2/research/sessions?format=csv', headers=auth('researcher')).text.count(sid) == 0
+
+
+def test_any_ground_asn_evidence_requires_sticky_trip_provenance(client):
+    from backend.research.policies import PILOT_POLICY
+    tid = 'a'*32
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': False,
+            'flight': {'flightNumber': 'TEST', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
+    assert client.put('/api/v2/trips/'+tid, headers=auth(), json=body).status_code == 200
+    sid, manifest, records = experiment()
+    manifest['session']['config'].update(tripId=tid, segmentIndex=0)
+    records[1]['payload']['networkSnapshot'] = {'asn': 5384, 'flightEvidence': {'qualificationSource': 'ground_test_asn'}}
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records':records}).status_code == 422
+    assert client.put('/api/v2/trips/'+tid, headers=auth(), json={**body, 'revision':2, 'groundTest':True}).status_code == 200
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records':records}).status_code == 200

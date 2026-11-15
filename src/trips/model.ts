@@ -159,6 +159,7 @@ export const PROVIDERS: Record<number, string> = {
 };
 export const PILOT_TEST_PROVIDERS: Readonly<Record<number, string>> = {
   12: 'TEST New York University',
+  5384: 'TEST Etisalat',
 };
 const airline =
   /^(QatarWiFi|EmiratesWiFi|FlyFi|EtihadWi-Fi|AirFranceWi-Fi|KLMWiFi)$/i;

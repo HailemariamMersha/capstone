@@ -1,6 +1,6 @@
 # SkyMeasure staging setup
 
-> Current phone UX and limits are defined by [pilot 1.2.0](uncapped-pilot.md): no phone Google/researcher controls, required flight details, AS12 normal admission and uncapped M-Lab. Google configuration below applies to the researcher website and historical clients.
+> Current phone UX and limits are defined by [pilot 1.2.1](uncapped-pilot.md): no phone Google/researcher controls, required flight details, pilot test-ASN normal admission and uncapped M-Lab. Google configuration below applies to the researcher website and historical clients.
 
 > Current hosting: isolated SkyMeasure API/UDP services on the shared lab host, Supabase PostgreSQL/Auth, and Vercel dashboard. Region is `lab-location-unconfirmed`. DigitalOcean instructions below document the original deployment and retained rollback host; do not reprovision it for the current pilot. Current qualification is [ASN-only](../measurements/flight-collection.md).
 
@@ -168,7 +168,7 @@ Current participants enroll pseudonymously without an email/password screen, rev
 Use a separate staging installation/project and an approved Google researcher account; participants use internal anonymous authentication. A test involving M-Lab needs its public-data disclosure and permission to spend the reserved traffic. Mocked tests and a built APK do not satisfy these device checks:
 
 1. Enroll a new participant online; review the displayed consent and M-Lab disclosure. Cancel/retry researcher Google sign-in separately. Check TalkBack focus, larger text and touch targets across onboarding, Home, Trips and Settings.
-2. Verify ordinary nonmatching Wi-Fi remains Watching beyond ten minutes. Use AS12 through the normal detector for the current ground pipeline test; no phone researcher role or shadow toggle is needed. Validate real ASN admission on a suitable provider connection; a synthetic match is not flight validation. Start/Stop, locked screen, results and closed-segment upload must agree with saved evidence.
+2. Verify ordinary nonmatching Wi-Fi remains Watching beyond ten minutes. Use AS12 or AS5384 through the normal detector for the current ground pipeline test; no phone researcher role or shadow toggle is needed. Validate real ASN admission on a suitable provider connection; a synthetic match is not flight validation. Start/Stop, locked screen, results and closed-segment upload must agree with saved evidence.
 3. Test optional location denial, hidden SSID, Wi-Fi plus cellular and captive portals per protocol. A missing identifier must not block ASN admission; traffic must not be silently labelled Wi-Fi while routed over cellular.
 4. Exercise a fifteen-minute rotation, upload timeout, connectivity restoration and retained budgets/deadlines. Remove from Recents and reboot separately. BackgroundFetch is opportunistic; exact retry timing is not guaranteed. Interrupted evidence survives; new collection requires Start.
 5. Force-stop separately. Android suppresses retries until reopening. Reopening must reconcile the interrupted trip before uploading saved evidence.

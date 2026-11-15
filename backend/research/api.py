@@ -203,7 +203,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
         raw = item.payload
         context = raw.get('networkSnapshot') if isinstance(raw.get('networkSnapshot'), dict) else raw if item.type == 'snapshot' else {}
         flight_evidence = context.get('flightEvidence')
-        if context.get('asn') == 12 and isinstance(flight_evidence, dict) and flight_evidence.get('qualificationSource') == 'ground_test_asn':
+        if isinstance(flight_evidence, dict) and flight_evidence.get('qualificationSource') == 'ground_test_asn':
             ground_trip = db.scalar(select(ResearchTrip).join(TripSegment, TripSegment.trip_id == ResearchTrip.id).where(TripSegment.session_id == session_id))
             if not ground_trip or not ground_trip.raw.get('groundTest'):
                 raise HTTPException(422, 'Test ASN evidence requires ground-test trip provenance')

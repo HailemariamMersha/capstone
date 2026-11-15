@@ -1,6 +1,6 @@
 # Automatic trip collection: ASN-only qualification
 
-Current detector: `asn-only-v1` (private pilot 1.2.0), with explicit test-ASN provenance. Pilot budget policy is `flight-pilot-uncapped-2026-11-14`; consent is `skymeasure-flight-pilot-2026-11-14`. See [the complete pilot change and compatibility guide](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/uncapped-pilot.md). The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
+Current detector: `asn-only-v1` (private pilot 1.2.1), with explicit test-ASN provenance. Pilot budget policy is `flight-pilot-uncapped-2026-11-14`; consent is `skymeasure-flight-pilot-2026-11-14`. See [the complete pilot change and compatibility guide](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/uncapped-pilot.md). The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
 
 ## What starts collection
 
@@ -12,7 +12,7 @@ The server observes the request's public address through its trusted proxy and l
 
 The control lane evaluates every thirty seconds and on network changes. Two positive evaluations at least thirty seconds apart admit collection on that same Wi-Fi handle. Each observation records ASN state, reason, observation time, `confidence=asn_matched` and `detectorPolicyVersion=asn-only-v1`. Confidence describes the current evidence, not whether the trip ever qualified. A newly enrolled installation needs connectivity; an existing identity can arm monitoring offline, but cannot initially qualify without ASN evidence.
 
-The private pilot additionally accepts AS12 (TEST New York University) only when its build/configuration gates are enabled. It uses the same two-evaluation admission path, without researcher roles or bypass. Any such observation permanently marks the trip as ground-test evidence; dashboard flight totals exclude it by default. ASN identifies a whole provider network, not one Wi-Fi router.
+The private pilot additionally accepts AS12 (TEST New York University) and AS5384 (TEST Etisalat) only when its build/configuration gates are enabled. It uses the same two-evaluation admission path, without researcher roles or bypass. Any such observation permanently marks the trip as ground-test evidence; dashboard flight totals exclude it by default. ASN identifies a whole provider network, not one Wi-Fi router.
 
 SSID is optional context and cannot qualify a connection. Automatic trips no longer request GPS fixes or require location permission. Android location permission and enabled system Location can still be needed for optional Wi-Fi identifiers; missing identifiers remain null and do not prevent binding. The geolocation library/patch remains for legacy diagnostic code and historical interpretation, not automatic trip qualification.
 

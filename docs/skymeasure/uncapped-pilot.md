@@ -1,6 +1,6 @@
 # Account-free phone pilot — 14 November 2026
 
-Pilot 1.2.0 uses trip policy `flight-pilot-uncapped-2026-11-14` and consent `skymeasure-flight-pilot-2026-11-14`. This is a private evaluation build, not public recruitment or validated flight detection.
+Pilot 1.2.1 uses trip policy `flight-pilot-uncapped-2026-11-14` and consent `skymeasure-flight-pilot-2026-11-14`. This is a private evaluation build, not public recruitment or validated flight detection.
 
 ## Participant flow
 
@@ -12,7 +12,7 @@ Settings retains upload preferences, optional Wi-Fi details, study information a
 
 ## AS12 through the normal detector
 
-The pilot builder enables `pilotTestAsnsEnabled` and Android `FLIGHT_PILOT`; both must be true. The normal six provider entries remain unchanged. The extra entry is AS12, **TEST New York University**, as returned by the server for the development Mac on 14 November. A phone must actually use an AS12 egress connection for this test; an ASN covers a provider network, not one Wi-Fi router.
+The pilot builder enables `pilotTestAsnsEnabled` and Android `FLIGHT_PILOT`; both must be true. The normal six provider entries remain unchanged. The extra entries are AS12, **TEST New York University**, observed from the development Mac on 14 November, and AS5384, **TEST Etisalat**, independently observed over the phone’s selected Wi-Fi on 15 November and approved for testing. A phone must actually use one of those egress ASNs for this test; an ASN covers a provider network, not one Wi-Fi router.
 
 No researcher gate or admission bypass is used. Two fresh matches at least thirty seconds apart admit collection. A confirmed nonmatch pauses; loss of qualifying connectivity for ten minutes after first qualification ends the trip. Unknown identity on the same previously qualified Wi-Fi retains outage attempts. Stop, battery safeguard and 24-hour ceiling remain. None of these inferences establishes an airborne aircraft or landing.
 
@@ -30,7 +30,7 @@ M-Lab is outside the remaining allocations: 60 MiB controlled transfers, 20 MiB 
 
 M-Lab public-IP/results publication is still disclosed; removing phone sign-in does not make measurements unidentifiable. Existing users must accept the new disclosure before an uncapped trip. Deleting study data does not retract M-Lab publications.
 
-> **Rollout status:** [14 November validation](collector-validation-2026-11-14.md) records the built APK and passed automated checks. Backend deployment is pending restored lab SSH access; do not install it against the old API.
+> **Rollout status:** [14 November validation](collector-validation-2026-11-14.md) records the built APK and passed automated checks. That dated record describes the initial SSH block. On 15 November, restored SSH allowed deployment of the compatible backend and installation of v1.2.0. The phone then reported AS5384, prompting the approved v1.2.1 test-provider update. Physical experiment results are recorded separately.
 
 ## Compatibility, build and validation
 
