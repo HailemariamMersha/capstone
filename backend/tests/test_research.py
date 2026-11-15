@@ -565,3 +565,29 @@ def test_any_ground_asn_evidence_requires_sticky_trip_provenance(client):
     assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records':records}).status_code == 422
     assert client.put('/api/v2/trips/'+tid, headers=auth(), json={**body, 'revision':2, 'groundTest':True}).status_code == 200
     assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records':records}).status_code == 200
+
+
+def test_ground_provenance_lookup_is_once_per_batch_not_per_record(client):
+    from backend.research.policies import PILOT_POLICY
+    tid = 'c'*32
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': True,
+            'flight': {'flightNumber': 'TEST', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
+    assert client.put('/api/v2/trips/'+tid, headers=auth(), json=body).status_code == 200
+    sid, manifest, records = experiment()
+    manifest['session']['config'].update(tripId=tid, segmentIndex=0)
+    for i in range(40):
+        rid = f'{i+16:032x}'
+        records.append({'id':rid,'type':'snapshot','version':1,'payload':{'id':rid,'sessionId':sid,'asn':5384,'flightEvidence':{'qualificationSource':'ground_test_asn'}}})
+    manifest['expected'] = [{k:r[k] for k in ('id','type','version')} for r in records]
+    assert client.put(f'/api/v2/sessions/{sid}/manifest', headers=auth(), json=manifest).status_code == 200
+    statements = []
+    def count(_conn,_cursor,statement,_parameters,_context,_many):
+        if statement.lstrip().upper().startswith('SELECT') and 'sky_trips' in statement and 'sky_trip_segments' in statement: statements.append(statement)
+    event.listen(engine(),'before_cursor_execute',count)
+    try:
+        result = client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records':records})
+    finally:
+        event.remove(engine(),'before_cursor_execute',count)
+    assert result.status_code == 200
+    assert len(result.json()['acknowledged']) == 42
+    assert len(statements) == 1

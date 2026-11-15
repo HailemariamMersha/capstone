@@ -181,6 +181,18 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
         Record.session_id == session_id,
         tuple_(Record.kind, Record.id).in_([(r.type, r.id) for r in body.records]),
     ))}
+    # Ground provenance belongs to this session's trip. Validate once before
+    # adding records: a SELECT inside the loop would autoflush every object and
+    # turn a bounded batch into dozens of remote database round trips.
+    def has_ground_evidence(item):
+        raw = item.payload
+        context = raw.get('networkSnapshot') if isinstance(raw.get('networkSnapshot'), dict) else raw if item.type == 'snapshot' else {}
+        evidence = context.get('flightEvidence')
+        return isinstance(evidence, dict) and evidence.get('qualificationSource') == 'ground_test_asn'
+    if any(has_ground_evidence(item) for item in body.records):
+        ground_trip = db.scalar(select(ResearchTrip).join(TripSegment, TripSegment.trip_id == ResearchTrip.id).where(TripSegment.session_id == session_id))
+        if not ground_trip or not ground_trip.raw.get('groundTest'):
+            raise HTTPException(422, 'Test ASN evidence requires ground-test trip provenance')
     seen = set()
     for item in body.records:
         key = (item.type, item.id)
@@ -202,11 +214,6 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
             raise HTTPException(409, 'Completed session is immutable')
         raw = item.payload
         context = raw.get('networkSnapshot') if isinstance(raw.get('networkSnapshot'), dict) else raw if item.type == 'snapshot' else {}
-        flight_evidence = context.get('flightEvidence')
-        if isinstance(flight_evidence, dict) and flight_evidence.get('qualificationSource') == 'ground_test_asn':
-            ground_trip = db.scalar(select(ResearchTrip).join(TripSegment, TripSegment.trip_id == ResearchTrip.id).where(TripSegment.session_id == session_id))
-            if not ground_trip or not ground_trip.raw.get('groundTest'):
-                raise HTTPException(422, 'Test ASN evidence requires ground-test trip provenance')
         provenance = raw.get('raw') if isinstance(raw.get('raw'), dict) else {}
         db.add(Record(session_id=session_id, kind=item.type, id=item.id, version=item.version,
                       timestamp=string(raw.get('timestamp'), 40), protocol=string(raw.get('type'), 50) if item.type == 'measurement' else None,
