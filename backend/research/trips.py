@@ -1,12 +1,12 @@
 """A trip is a collection envelope, not a claim that a phone is currently online."""
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
-from .database import ResearchTrip, TripSegment, ResearchSession, database, now
-from .auth import account, researcher
-from .policies import PILOT_POLICY, require_consent
+from .database import ResearchTrip, TripSegment, ResearchSession, TripPayment, database, now
+from .auth import account, researcher, administrator
+from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, require_consent
 
 router = APIRouter()
 
@@ -47,15 +47,18 @@ class TripUpdate(BaseModel):
     detectorPolicyVersion: str | None = Field(None, max_length=80)
     groundTest: bool | None = None
     mlabUsage: MlabUsage | None = None
+    transferSchedule: Literal['hourly-v1'] | None = None
 
 @router.put('/trips/{trip_id}')
 def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database)):
     require_consent(a, body.policyVersion)
-    if body.policyVersion == PILOT_POLICY:
-        if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')) or body.flight.expectedMinutes is None:
-            raise HTTPException(422, 'Flight number, route and expected length are required')
+    if body.policyVersion in (PILOT_POLICY, HISTORICAL_PILOT_POLICY):
+        if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')):
+            raise HTTPException(422, 'Flight number, departure and arrival are required')
         if body.groundTest is None:
             raise HTTPException(422, 'Pilot requires explicit test provenance')
+    if body.policyVersion == PILOT_POLICY and (body.transferSchedule != 'hourly-v1' or body.flight.expectedMinutes is not None):
+        raise HTTPException(422, 'New pilot trips require hourly scheduling without expected duration')
     if len(trip_id) != 32 or any(c not in '0123456789abcdef' for c in trip_id):
         raise HTTPException(422, 'Invalid trip identifier')
     if body.shadow and a.role not in ('researcher', 'administrator'):
@@ -69,9 +72,11 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
         raise HTTPException(422, 'Transfer reservation exceeds versioned policy')
     raw = body.model_dump()
     # Preserve the exact legacy manifest shape for unchanged revision retries.
-    for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage'):
+    for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage', 'transferSchedule'):
         if getattr(body, field) is None:
             raw.pop(field, None)
+    if body.policyVersion == PILOT_POLICY:
+        raw['flight'].pop('expectedMinutes', None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     if t:
         if t.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
@@ -86,6 +91,8 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
             raise HTTPException(409, 'Ground-test provenance cannot be cleared')
         if body.policyVersion != t.raw['policyVersion']:
             raise HTTPException(409, 'Trip policy cannot change')
+        if body.transferSchedule != t.raw.get('transferSchedule'):
+            raise HTTPException(409, 'Trip transfer schedule cannot change')
         if body.detectorPolicyVersion != t.raw.get('detectorPolicyVersion'):
             raise HTTPException(409, 'Trip detector policy cannot change')
         if body.startedAt != t.raw['startedAt'] or body.segmentCount < t.raw['segmentCount']:
@@ -143,3 +150,38 @@ def own_trips(a=Depends(account), db: Session=Depends(database), offset: int=Que
 @router.get('/research/trips')
 def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None, includeGroundTests: bool=False):
     return listing(db, None, offset, limit, confidence, provider, include_summary=True, include_ground=includeGroundTests)
+
+
+class PaymentDetails(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    netId: str = Field(min_length=2, max_length=32)
+
+@router.put('/trips/{trip_id}/payment')
+def save_payment(trip_id: str, body: PaymentDetails, a=Depends(account), db: Session=Depends(database)):
+    import re
+    require_consent(a, PILOT_POLICY)
+    trip = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
+    if not trip or trip.owner_id != a.user_id:
+        raise HTTPException(404, 'Trip not found')
+    netid = body.netId.strip().lower()
+    if not re.fullmatch(r'[a-z][a-z0-9]{1,31}', netid):
+        raise HTTPException(422, 'Enter a NetID without an email domain')
+    previous = db.get(TripPayment, trip_id)
+    if previous and previous.netid != netid:
+        raise HTTPException(409, 'Started-trip payment details cannot change')
+    if not previous:
+        db.add(TripPayment(trip_id=trip_id, owner_id=a.user_id, netid=netid))
+    db.commit()
+    return {'saved': True}
+
+@router.get('/admin/payments')
+def payments(response: Response, offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100),
+             a=Depends(administrator), db: Session=Depends(database)):
+    response.headers['Cache-Control'] = 'no-store'
+    query = select(TripPayment, ResearchTrip).join(ResearchTrip, ResearchTrip.id == TripPayment.trip_id)
+    rows = db.execute(query.order_by(TripPayment.received_at.desc(), TripPayment.trip_id).offset(offset).limit(limit))
+    return {'total': db.scalar(select(func.count()).select_from(TripPayment)), 'items': [
+        {'tripId': trip.id, 'participantId': trip.participant_id, 'netId': payment.netid,
+         'flight': trip.raw['flight'], 'startedAt': trip.raw['startedAt'],
+         'receivedAt': payment.received_at, 'selfReported': True}
+        for payment, trip in rows]}

@@ -1,10 +1,13 @@
-"""Versioned pilot consent and budget semantics; historical evidence stays immutable."""
+"""Versioned consent; historical evidence stays uploadable without rewriting manifests."""
 from fastapi import HTTPException
 LEGACY_CONSENT = 'skymeasure-flight-mlab-2026-11-02'
-CONSENT_VERSION = 'skymeasure-flight-pilot-2026-11-14'
-PILOT_POLICY = 'flight-pilot-uncapped-2026-11-14'
+HISTORICAL_PILOT_CONSENT = 'skymeasure-flight-pilot-2026-11-14'
+CONSENT_VERSION = 'skymeasure-flight-payment-2026-11-20'
+HISTORICAL_PILOT_POLICY = 'flight-pilot-uncapped-2026-11-14'
+PILOT_POLICY = 'flight-pilot-hourly-2026-11-20'
+ACCEPTED_CONSENTS = {LEGACY_CONSENT, HISTORICAL_PILOT_CONSENT, CONSENT_VERSION}
 
 def require_consent(account, policy=None):
-    accepted = {CONSENT_VERSION} if policy == PILOT_POLICY else {LEGACY_CONSENT, CONSENT_VERSION}
+    accepted = {CONSENT_VERSION} if policy == PILOT_POLICY else ACCEPTED_CONSENTS
     if account.consent_version not in accepted:
         raise HTTPException(403, 'Review the required research information before uploading')

@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from sqlalchemy import select, delete, func, or_, case, tuple_
 from sqlalchemy.orm import Session
-from .database import Account, ResearchSession, Record, Sample, ResearchTrip, TripSegment, database, now
+from .database import Account, ResearchSession, Record, Sample, ResearchTrip, TripSegment, TripPayment, database, now
 from .auth import account, researcher, administrator, identity
 from .exports import samples, combined_rows, csv_text
 from .presentation import readable, evidence_response
@@ -27,7 +27,7 @@ def string(value, limit=100):
 
 
 router = APIRouter(prefix='/api/v2')
-from .policies import CONSENT_VERSION, LEGACY_CONSENT, PILOT_POLICY, require_consent
+from .policies import CONSENT_VERSION, ACCEPTED_CONSENTS, require_consent
 
 
 class Strict(BaseModel):
@@ -53,7 +53,7 @@ def get_profile(a=Depends(account)):
 @router.patch('/profile')
 def update_profile(body: ProfileUpdate, a=Depends(account), db: Session = Depends(database)):
     if body.consentVersion is not None:
-        if body.consentVersion not in (LEGACY_CONSENT, CONSENT_VERSION):
+        if body.consentVersion not in ACCEPTED_CONSENTS:
             raise HTTPException(409, 'Please read the current research information')
         if a.consent_version != CONSENT_VERSION or body.consentVersion == CONSENT_VERSION:
             a.consent_version, a.consent_at = body.consentVersion, now()
@@ -68,6 +68,7 @@ def delete_account(user_id=Depends(identity), db: Session = Depends(database)):
     if not a:
         raise HTTPException(404, 'Account not found')
     ids = select(ResearchSession.id).where(ResearchSession.owner_id == a.user_id)
+    db.execute(delete(TripPayment).where(TripPayment.owner_id == a.user_id))
     db.execute(delete(TripSegment).where(TripSegment.trip_id.in_(select(ResearchTrip.id).where(ResearchTrip.owner_id == a.user_id))))
     db.execute(delete(ResearchTrip).where(ResearchTrip.owner_id == a.user_id))
     db.execute(delete(Sample).where(Sample.session_id.in_(ids)))

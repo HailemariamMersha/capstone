@@ -107,3 +107,12 @@ class TripSegment(Base):
     trip_id: Mapped[str] = mapped_column(ForeignKey('sky_trips.id'), primary_key=True)
     ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[str] = mapped_column(ForeignKey('sky_sessions.id'), unique=True)
+
+
+class TripPayment(Base):
+    """Restricted payment mapping; never joined into research evidence/exports."""
+    __tablename__ = 'sky_trip_payments'
+    trip_id: Mapped[str] = mapped_column(ForeignKey('sky_trips.id'), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('sky_accounts.user_id'), index=True)
+    netid: Mapped[str] = mapped_column(String(32))
+    received_at: Mapped[str] = mapped_column(String(40), default=now)

@@ -30,7 +30,7 @@ def client(tmp_path, monkeypatch):
             raise HTTPException(401, 'Invalid token')
         return authorization.split()[1]
     app.dependency_overrides[identity] = user
-    with TestClient(app) as c:
+    with TestClient(app, client=('test-' + tmp_path.name, 50000)) as c:
         for who in ['a', 'b', 'researcher', 'admin']:
             c.patch('/api/v2/profile', headers=auth(who), json={'consentVersion': CONSENT_VERSION})
         with Session(engine()) as db:
@@ -508,9 +508,9 @@ def test_mlab_budget_requires_new_policy_and_policy_is_immutable(client):
 def test_uncapped_pilot_requires_fields_and_new_consent_preserves_legacy_uploads(client):
     from backend.research.policies import PILOT_POLICY, LEGACY_CONSENT
     path = '/api/v2/trips/' + 'a'*32
-    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': False}
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': False, 'transferSchedule': 'hourly-v1'}
     assert client.put(path, headers=auth(), json=body).status_code == 422
-    body['flight'] = {'flightNumber': 'TEST001', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}
+    body['flight'] = {'flightNumber': 'TEST001', 'departure': 'Ground A', 'arrival': 'Ground B'}
     assert client.patch('/api/v2/profile', headers=auth(), json={'consentVersion': LEGACY_CONSENT}).status_code == 200
     # Fresh legacy identity cannot authorize an uncapped pilot.
     from sqlalchemy.orm import Session
@@ -529,7 +529,7 @@ def test_uncapped_pilot_requires_fields_and_new_consent_preserves_legacy_uploads
 
 
 def test_ground_trip_is_sticky_and_excluded_from_default_totals_and_exports(client):
-    from backend.research.policies import PILOT_POLICY
+    from backend.research.policies import HISTORICAL_PILOT_POLICY as PILOT_POLICY
     trip_id = 'f'*32
     body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': True,
             'flight': {'flightNumber': 'TEST001', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
@@ -553,7 +553,7 @@ def test_ground_trip_is_sticky_and_excluded_from_default_totals_and_exports(clie
 
 
 def test_any_ground_asn_evidence_requires_sticky_trip_provenance(client):
-    from backend.research.policies import PILOT_POLICY
+    from backend.research.policies import HISTORICAL_PILOT_POLICY as PILOT_POLICY
     tid = 'a'*32
     body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': False,
             'flight': {'flightNumber': 'TEST', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
@@ -568,7 +568,7 @@ def test_any_ground_asn_evidence_requires_sticky_trip_provenance(client):
 
 
 def test_ground_provenance_lookup_is_once_per_batch_not_per_record(client):
-    from backend.research.policies import PILOT_POLICY
+    from backend.research.policies import HISTORICAL_PILOT_POLICY as PILOT_POLICY
     tid = 'c'*32
     body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': True,
             'flight': {'flightNumber': 'TEST', 'departure': 'Ground A', 'arrival': 'Ground B', 'expectedMinutes': 60}}
@@ -591,3 +591,45 @@ def test_ground_provenance_lookup_is_once_per_batch_not_per_record(client):
     assert result.status_code == 200
     assert len(result.json()['acknowledged']) == 42
     assert len(statements) == 1
+
+
+def new_hourly_trip(client, trip_id='d'*32):
+    from backend.research.policies import PILOT_POLICY
+    body = {**trip_body(), 'policyVersion': PILOT_POLICY, 'groundTest': True, 'transferSchedule': 'hourly-v1',
+            'flight': {'flightNumber': 'TEST001', 'departure': 'A', 'arrival': 'B'}}
+    assert client.put('/api/v2/trips/'+trip_id, headers=auth(), json=body).status_code == 200
+    return trip_id, body
+
+
+def test_hourly_policy_and_research_consent_are_versioned(client):
+    tid, body = new_hourly_trip(client)
+    assert 'expectedMinutes' not in client.get('/api/v2/trips', headers=auth()).json()['items'][0]['flight']
+    assert client.put('/api/v2/trips/'+tid, headers=auth(), json={**body, 'revision':2, 'transferSchedule':None}).status_code == 422
+    assert client.put('/api/v2/trips/'+tid, headers=auth(), json={**body, 'revision':2, 'flight':{**body['flight'], 'expectedMinutes':60}}).status_code == 422
+    from backend.research.policies import HISTORICAL_PILOT_CONSENT, HISTORICAL_PILOT_POLICY
+    with Session(engine()) as db:
+        db.get(Account, 'a').consent_version = HISTORICAL_PILOT_CONSENT
+        db.commit()
+    old = {**body, 'policyVersion': HISTORICAL_PILOT_POLICY, 'flight':{**body['flight'], 'expectedMinutes':840}}
+    old.pop('transferSchedule')
+    assert client.put('/api/v2/trips/'+'e'*32, headers=auth(), json=old).status_code == 200
+    assert client.put('/api/v2/trips/'+'f'*32, headers=auth(), json=body).status_code == 403
+
+
+def test_payment_is_owner_written_admin_read_only_and_not_in_research_data(client):
+    tid, body = new_hourly_trip(client)
+    path = '/api/v2/trips/'+tid+'/payment'
+    assert client.put(path, headers=auth('b'), json={'netId':'abc123'}).status_code == 404
+    assert client.put(path, headers=auth(), json={'netId':'abc@nyu.edu'}).status_code == 422
+    for _ in range(2):
+        assert client.put(path, headers=auth(), json={'netId':' ABC123 '}).status_code == 200
+    assert client.put(path, headers=auth(), json={'netId':'def123'}).status_code == 409
+    for who in ('a', 'b', 'researcher'):
+        assert client.get('/api/v2/admin/payments', headers=auth(who)).status_code == 403
+    result = client.get('/api/v2/admin/payments', headers=auth('admin'))
+    assert result.headers['cache-control'] == 'no-store'
+    assert result.json()['items'][0]['netId'] == 'abc123'
+    for url in ('/profile', '/trips', '/research/trips?includeGroundTests=true', '/research/participants'):
+        assert 'abc123' not in client.get('/api/v2'+url, headers=auth('researcher')).text
+    assert client.delete('/api/v2/account', headers=auth()).status_code == 200
+    assert client.get('/api/v2/admin/payments', headers=auth('admin')).json()['total'] == 0

@@ -59,7 +59,7 @@ def combined_rows(data):
         parent = flatten({k: v for k, v in measurement.items() if k not in ('raw', 'packet', 'details', 'route')}, 'measurement.')
         config = data['session'].get('config') or {}
         if config.get('tripId'):
-            parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight') if k in config}, 'session.'))
+            parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight', 'transferSchedule') if k in config}, 'session.'))
             if isinstance(config.get('detectorPolicy'), dict):
                 parent['session.detectorPolicyVersion'] = config['detectorPolicy'].get('version')
         trip = data.get('trip') or {}
