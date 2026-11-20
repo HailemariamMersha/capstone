@@ -1,18 +1,18 @@
-# Account-free phone pilot — 14 November 2026
+# Account-free phone pilot — updated 20 November 2026
 
-Pilot 1.2.2 uses trip policy `flight-pilot-uncapped-2026-11-14` and consent `skymeasure-flight-pilot-2026-11-14`. This is a private evaluation build, not public recruitment or validated flight detection.
+Pilot 1.2.3 uses trip policy `flight-pilot-hourly-2026-11-20` and consent `skymeasure-flight-payment-2026-11-20`. This is a private evaluation build, not public recruitment or validated flight detection.
 
 ## Participant flow
 
 Get started enrolls an invisible Supabase anonymous identity. No Google sign-in, email, account selection, researcher role, shadow toggle or manual collection control appears on the phone. The researcher website retains protected Google sign-in and role enforcement. Existing identities and records remain owned as before; no data is silently assigned to a replacement identity.
 
-After reviewing research/M-Lab disclosure, enter flight number, departure, arrival and expected duration (hours/minutes, total 1–1440 minutes), then Start. There is no Skip. Duration controls controlled-transfer spacing only; it does not stop collection. Ground-test details may be explicitly synthetic, such as TEST001 / Test origin / Test destination / 1 hour. Entries are participant reports, not booking verification. Notifications are requested before Start; Wi-Fi-detail location permission remains optional. Automatic trips do not collect GPS.
+After reviewing research/M-Lab disclosure, enter NYU NetID, flight number, departure and arrival, then Start. There is no Skip. NetIDs are participant-reported payment details, accessible only to administrators and stored separately from measurement exports. New trips use fixed hourly controlled transfers after the first pair at five minutes; no duration is collected. Ground-test details may be explicitly synthetic, such as TEST001 / Test origin / Test destination. Entries are participant reports, not booking verification. Notifications are requested before Start; Wi-Fi-detail location permission remains optional. Automatic trips do not collect GPS.
 
 Settings retains upload preferences, optional Wi-Fi details, study information and data deletion. Credential refresh stays internal. A failed refresh offers retry and local segment exports before an explicit installation reset; old pending evidence is never reassigned. First enrollment needs internet. Existing enrolled installations can arm offline and await a fresh ASN lookup.
 
-## AS12 through the normal detector
+## Etisalat through the normal detector
 
-The pilot builder enables `pilotTestAsnsEnabled` and Android `FLIGHT_PILOT`; both must be true. The normal six provider entries remain unchanged. The extra entries are AS12, **TEST New York University**, observed from the development Mac on 14 November, and AS5384, **TEST Etisalat**, independently observed over the phone’s selected Wi-Fi on 15 November and approved for testing. A phone must actually use one of those egress ASNs for this test; an ASN covers a provider network, not one Wi-Fi router.
+The pilot builder enables `pilotTestAsnsEnabled` and Android `FLIGHT_PILOT`; both must be true. The normal six provider entries remain unchanged. The sole extra entry is AS5384, **TEST Etisalat**. AS12 (NYU) no longer qualifies in new builds; historical NYU trips remain valid ground-test evidence. A phone must actually use one of those egress ASNs for this test; an ASN covers a provider network, not one Wi-Fi router.
 
 No researcher gate or admission bypass is used. Two fresh matches at least thirty seconds apart admit collection. A confirmed nonmatch pauses; loss of qualifying connectivity for ten minutes after first qualification ends the trip. Unknown identity on the same previously qualified Wi-Fi retains outage attempts. Stop, battery safeguard and 24-hour ceiling remain. None of these inferences establishes an airborne aircraft or landing.
 
@@ -30,7 +30,7 @@ M-Lab is outside the remaining allocations: 60 MiB controlled transfers, 20 MiB 
 
 M-Lab public-IP/results publication is still disclosed; removing phone sign-in does not make measurements unidentifiable. Existing users must accept the new disclosure before an uncapped trip. Deleting study data does not retract M-Lab publications.
 
-> **Rollout status:** The compatible backend is deployed and pilot 1.2.2 is installed on the test phone. The consented AS5384 ground run completed both M-Lab directions, rotated a fifteen-minute segment and retained its evidence. See [15 November validation](collector-validation-2026-11-15.md) for upload reconciliation, measured outcomes and limitations. [14 November validation](collector-validation-2026-11-14.md) remains the historical record of the initial SSH block.
+> **Rollout status:** The compatible backend and additive payment-table migration were deployed to the isolated lab API on 20 November. Pilot 1.2.3 passed the [21 November physical ground check](collector-validation-2026-11-21.md), including final reconciliation of 225/225 records. New installations of the backend still require the migration below. The dashboard payment view requires deployment of the updated dashboard. The earlier 1.2.2 checkpoint is historical. The consented AS5384 ground run completed both M-Lab directions, rotated a fifteen-minute segment and retained its evidence. See [15 November validation](collector-validation-2026-11-15.md) for upload reconciliation, measured outcomes and limitations. [14 November validation](collector-validation-2026-11-14.md) remains the historical record of the initial SSH block.
 
 ## Upload retry fairness
 
@@ -43,3 +43,11 @@ Old policies, budgets, consent versions and immutable manifests retain their mea
 `npm run android:pilot` builds the configured ARM64 development-key APK, verifies packaged service/test-ASN settings and restores the sanitized tracked configuration. Review source commit, dirty-state flag and checksum in its manifest. Share the APK, not private datasets or environment files. See [CONTRIBUTING](../../CONTRIBUTING.md) for setup.
 
 Automated checks cover admission, production-registry isolation, mandatory details, account-free UI, ownership, legacy ingestion, uncapped counters, nullable limits, ground filtering and exports. Physical tests must separately establish the phone's actual ASN, permission behavior, normal qualification, one live full-duration M-Lab pair with accepted disclosure, fifteen-minute rotation/reconciliation, nonmatching-network pause and the ten-minute ending rule. Record the exact build/device/power conditions. No unplugged endurance or real-flight accuracy is claimed by a successful build or a ground-ASN test.
+
+## Administrator-only payment mapping and upgrade
+
+Deploy the backend before installing 1.2.3. Run `python -m backend.research.manage migrate` with the protected migration database configuration; this additively creates `sky_trip_payments`, enables RLS and revokes Supabase browser-role access. Ensure the dedicated API database identity has SELECT/INSERT/UPDATE/DELETE on that new table using the existing runtime-grant procedure. Restart only SkyMeasure's isolated API service. Historical trips, manifests, consent and AS12 test evidence are retained without rewrites.
+
+New trips send a separate idempotent `PUT /api/v2/trips/{id}/payment` after trip registration. Ownership comes from the verified token. The phone keeps this record in a separate SQLite table until acknowledged; account deletion removes it. `GET /api/v2/admin/payments` is administrator-only, paginated and marked no-store. Administrators see payment mappings under Participants → Payment reconciliation. NetIDs are not proof of flight, identity or payment eligibility. They are excluded from ordinary researcher routes, measurement JSON/CSV, M-Lab inputs and logs. Approved research text must describe this identifiable payment mapping before recruitment.
+
+Consent is now `skymeasure-flight-payment-2026-11-20`; the M-Lab publication authorization retains its existing identifier because its publication terms have not changed. Previous consent versions remain valid for historical uploads. Existing users review the new payment disclosure before starting new trips.

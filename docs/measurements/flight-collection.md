@@ -1,10 +1,10 @@
 # Automatic trip collection: ASN-only qualification
 
-Current detector: `asn-only-v1` (private pilot 1.2.1), with explicit test-ASN provenance. Pilot budget policy is `flight-pilot-uncapped-2026-11-14`; consent is `skymeasure-flight-pilot-2026-11-14`. See [the complete pilot change and compatibility guide](../skymeasure/uncapped-pilot.md). The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
+Current detector: `asn-only-v1` (private pilot 1.2.3), with explicit test-ASN provenance. Pilot budget policy is `flight-pilot-hourly-2026-11-20`; consent is `skymeasure-flight-payment-2026-11-20`. See [the complete pilot change and compatibility guide](../skymeasure/uncapped-pilot.md). The detector version is separate from the allowance and consent versions. Historical records keep their original meaning.
 
 ## What starts collection
 
-Start trip arms monitoring on the selected, process-bound Android Wi-Fi network. Flight number, departure, arrival and expected length are required participant reports for new pilot trips, not verified flight information. Historical optional fields remain valid. Expected length changes transfer spacing, never the stop time.
+Start trip arms monitoring on the selected, process-bound Android Wi-Fi network. Flight number, departure and arrival are required participant reports, not verified flight information. A required NYU NetID is kept in a separate administrator-only payment mapping and never in measurement exports. New trips do not ask for or collect an expected duration. Historical fields remain readable.
 
 Only a fresh provider ASN match can qualify a connection. The configured registry is Starlink AS14593, Inmarsat AS31515, Intelsat AS22351, Panasonic AS64294, SITA AS206433 and ViaSat AS40306. This is an incomplete provider allowlist, not an authoritative list of aircraft networks. A positive match means **provider-matched connectivity**, including possible ground use; it does not establish that a phone is airborne.
 
@@ -12,7 +12,7 @@ The server observes the request's public address through its trusted proxy and l
 
 The control lane evaluates every thirty seconds and on network changes. Two positive evaluations at least thirty seconds apart admit collection on that same Wi-Fi handle. Each observation records ASN state, reason, observation time, `confidence=asn_matched` and `detectorPolicyVersion=asn-only-v1`. Confidence describes the current evidence, not whether the trip ever qualified. A newly enrolled installation needs connectivity; an existing identity can arm monitoring offline, but cannot initially qualify without ASN evidence.
 
-The private pilot additionally accepts AS12 (TEST New York University) and AS5384 (TEST Etisalat) only when its build/configuration gates are enabled. It uses the same two-evaluation admission path, without researcher roles or bypass. Any such observation permanently marks the trip as ground-test evidence; dashboard flight totals exclude it by default. ASN identifies a whole provider network, not one Wi-Fi router.
+The private pilot additionally accepts AS5384 (TEST Etisalat) only when its build/configuration gates are enabled. It uses the same two-evaluation admission path, without researcher roles or bypass. Any such observation permanently marks the trip as ground-test evidence; dashboard flight totals exclude it by default. ASN identifies a whole provider network, not one Wi-Fi router.
 
 SSID is optional context and cannot qualify a connection. Automatic trips no longer request GPS fixes or require location permission. Android location permission and enabled system Location can still be needed for optional Wi-Fi identifiers; missing identifiers remain null and do not prevent binding. The geolocation library/patch remains for legacy diagnostic code and historical interpretation, not automatic trip qualification.
 
@@ -22,13 +22,13 @@ After qualification, an unknown/stale ASN on the **same** selected Wi-Fi retains
 
 The ten-minute disconnection grace starts only after first qualification and covers loss of qualifying connectivity. Watching at home does not end after ten minutes. Stop, battery at or below 15% while not charging, or the 24-hour safety ceiling also end collection. GPS speed no longer ends an ASN-only trip. No ending claims a verified landing. Reopening after process loss preserves interrupted evidence and requires Start for new collection; force-stop/reboot does not promise automatic rearming.
 
-The new phone interface exposes neither shadow mode nor manual researcher controls. Their old API authorization remains for historical clients; the current AS12 pilot exercises normal admission and retains explicit ground-test labels.
+The new phone interface exposes neither shadow mode nor manual researcher controls. Their old API authorization remains for historical clients; the current Etisalat pilot exercises normal admission and retains explicit ground-test labels.
 
 ## Schedule and allowance
 
 Measurements remain serial: ten ICMP probes, twenty 128-byte UDP probes and one TCP connection approximately every minute; a twenty-hop, three-probe-per-hop traceroute first after one minute and then every fifteen minutes. The independent control lane continues detection and snapshots during long measurements. Actual execution and callback times, planned deadlines, gaps, cancellations and segment health remain observable; this is not a guaranteed wall-clock cadence. See [collector reliability](../skymeasure/collector-reliability.md).
 
-Controlled HTTP pairs use decimal 5,000,000-byte download and 1,000,000-byte upload. First pair: five minutes after qualification; later spacing: max(five minutes, expected length / ten), default expected length twenty-four hours. At most ten pair reservations. Late opportunities are skipped, with no catch-up burst. Failed/cancelled reservations are not refunded; two consecutive failures disable that controlled direction. An underestimated flight can exhaust throughput sampling early. These short transfers are not Ookla or a comprehensive link-capacity test.
+Controlled HTTP pairs use decimal 5,000,000-byte download and 1,000,000-byte upload. First pair: five minutes after qualification; later spacing: one hour under `transferSchedule=hourly-v1`. Historical trips retain max(five minutes, expected length / ten), with a twenty-four-hour default. At most ten pair reservations. Late opportunities are skipped, with no catch-up burst. Failed/cancelled reservations are not refunded; two consecutive failures disable that controlled direction. The ten-pair maximum can leave late-flight controlled transfers unavailable on long flights. These short transfers are not Ookla or a comprehensive link-capacity test.
 
 One automatic M-Lab NDT7 pair is scheduled with a saved one-to-three-minute delay after qualification, waiting for validated selected Wi-Fi. The private pilot has no byte cutoff and does not reserve 200 MiB. Normal protocol duration, the 60-second pair watchdog, Stop, one pair per trip and four attempts per 24 hours remain. Completed speed still requires valid clean completion; interrupted/failed runs retain evidence with `value=null`. Controlled transfers are spaced away from M-Lab's actual finish. See [the current uncapped pilot](../skymeasure/uncapped-pilot.md) for payload-counter semantics and public-data disclosure.
 
@@ -47,3 +47,9 @@ Raw JSON preserves configuration, original library responses, snapshots and even
 ## Limits of the evidence
 
 ASN matching cannot establish a flight, airline, exclusive provider or aircraft movement. Provider registry coverage needs real-flight validation. A Starlink reverse-DNS/PoP change is an observed egress-name change, not a proven satellite or gateway handover. No coordinates or raw location objects may enter persisted/exported records. App/library callbacks are not kernel timestamps or complete packet capture. Ground shadow tests and synthetic signals test software behavior, not detection accuracy or comparative reliability.
+
+## ASN service limits and retry behavior
+
+`/api/v1/context` uses the server's local GeoLite2-ASN MMDB, not a paid per-request WHOIS or MaxMind web API. The daily updater checks/downloads the database independently of participant requests. GeoLite accounts allow 30 database downloads per 24 hours; checks for updates do not count ([MaxMind](https://support.maxmind.com/knowledge-base/articles/download-and-update-maxmind-databases), checked 20 November 2026). The current API middleware limits all endpoints together to 300 requests per transport source IP per minute per process. Participants behind one cabin NAT share that limit. HTTP 429, timeout, stale/missing database and unavailable ASN remain unknown evidence, with a recorded reason; none is a provider non-match.
+
+Post-trip uploads retry without button presses after Stop, app open/resume, eligible connectivity restoration and Android background opportunities. While visible, a coordinator wakes at the persisted retry deadline and yields between bounded 25-second opportunities. Record/session backoff survives restart; a separate owner-scoped backoff covers manifest/network failures. Collection and uploads remain mutually exclusive. Android background opportunities are not exact timers; force-stopped apps require reopening. The Retry uploads button remains available and uses the same ownership, preferences and acknowledgement checks.

@@ -107,3 +107,7 @@ Start with the [measurement guide](docs/measurements/guide.md), [column dictiona
 Automated checks and dated physical ground tests support implementation behavior. They do not establish airborne detection accuracy, captive-Wi-Fi routing for every protocol, unplugged endurance across manufacturers, or iOS support. Public recruitment still requires protected enrollment, approved study text and completed identity-deletion operations. See [validation](docs/skymeasure/validation.md) and dated [experiment records](docs/experiments/).
 
 Private runtime configuration, raw participant datasets, generated APKs and local presentation outputs stay outside source control. See [SECURITY.md](SECURITY.md) before sharing logs or evidence. Historical documents preserve prior policies and custom-engine experiments; the current policy and dependency manifests take precedence for new builds.
+
+### Current pilot update (20 November 2026)
+
+Pilot 1.2.3 requires NYU NetID and flight/route details, omits expected duration, and uses hourly controlled transfers after the first pair at five minutes. NetIDs live in a separate administrator-only payment mapping, excluded from research measurement exports. AS5384 (TEST Etisalat) is the sole pilot test ASN; the six satellite providers remain unchanged and AS12 no longer qualifies. Uploads retry automatically, including while the app stays open, and the manual Retry button remains. See [upgrade and payment access](docs/skymeasure/uncapped-pilot.md) before installing the new APK; deploy the additive backend migration first.

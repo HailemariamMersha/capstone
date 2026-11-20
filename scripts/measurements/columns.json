@@ -2159,6 +2159,15 @@
     "icmpChecksum": ["response.icmpChecksum"]
   },
   "tripColumns": {
+  "session.transferSchedule": {
+    "meaning": "Controlled-transfer scheduling policy; hourly-v1 means the first pair at five minutes after qualification, then hourly, with missed opportunities skipped.",
+    "datatype": "string",
+    "units": "none",
+    "source": "session.config.transferSchedule",
+    "calculation": "Recorded policy, not inferred from observed intervals.",
+    "blank": "Historical duration-based scheduling; consult the recorded policy.",
+    "example": "hourly-v1"
+  },
   "measurement.networkSnapshot.flightEvidence.qualificationSource": {
     "datatype": "string or null",
     "units": "none",
@@ -2234,7 +2243,7 @@
   "session.flight.flightNumber": {
     "datatype": "string",
     "units": "none",
-    "meaning": "Optional participant-reported flightNumber; not independently verified.",
+    "meaning": "Participant-reported flightNumber; required for current trips, optional historically; not independently verified.",
     "source": "session.config.flight.flightNumber",
     "calculation": "Copied from recorded evidence unless described otherwise.",
     "blank": "Unavailable, not applicable, or historical; never substitute zero."
@@ -2242,7 +2251,7 @@
   "session.flight.departure": {
     "datatype": "string",
     "units": "none",
-    "meaning": "Optional participant-reported departure; not independently verified.",
+    "meaning": "Participant-reported departure; required for current trips, optional historically; not independently verified.",
     "source": "session.config.flight.departure",
     "calculation": "Copied from recorded evidence unless described otherwise.",
     "blank": "Unavailable, not applicable, or historical; never substitute zero."
@@ -2250,7 +2259,7 @@
   "session.flight.arrival": {
     "datatype": "string",
     "units": "none",
-    "meaning": "Optional participant-reported arrival; not independently verified.",
+    "meaning": "Participant-reported arrival; required for current trips, optional historically; not independently verified.",
     "source": "session.config.flight.arrival",
     "calculation": "Copied from recorded evidence unless described otherwise.",
     "blank": "Unavailable, not applicable, or historical; never substitute zero."
@@ -2258,7 +2267,7 @@
   "session.flight.expectedMinutes": {
     "datatype": "number",
     "units": "minutes",
-    "meaning": "Scheduling estimate, not a stop duration; absent uses 1440 minutes.",
+    "meaning": "Historical participant-reported scheduling estimate, not a stop duration; absent historically used 1440 minutes. Not collected for new hourly-v1 trips.",
     "source": "session.config.flight.expectedMinutes",
     "calculation": "Copied from recorded evidence unless described otherwise.",
     "blank": "Unavailable, not applicable, or historical; never substitute zero."
