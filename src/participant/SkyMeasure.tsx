@@ -52,7 +52,11 @@ import {
   secureStorage,
   enrollParticipant,
 } from '../auth/client';
-import { configureUploads, syncAccount } from '../sync/background';
+import {
+  configureUploads,
+  syncAccount,
+  startAutomaticUploads,
+} from '../sync/background';
 import { acquireActivity, currentActivity } from '../services/activityGate';
 import {
   getServiceStatus,
@@ -929,6 +933,7 @@ function Root() {
     const removeParticipant = subscribeParticipant(next => {
       apply(next);
     });
+    const stopAutomaticUploads = startAutomaticUploads();
     const links = Linking.addEventListener('url', e =>
       handleAuthCallback(e.url).catch(err => setError(message(err))),
     );
@@ -960,6 +965,7 @@ function Root() {
       alive = false;
       listener.subscription.unsubscribe();
       removeParticipant();
+      stopAutomaticUploads();
       links.remove();
       unsubscribe();
       state.remove();

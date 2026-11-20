@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+import { createRetryScheduler } from './retryScheduler';
 import BackgroundFetch from 'react-native-background-fetch';
 import NetInfo from '@react-native-community/netinfo';
 import { localSession, api, secureStorage, Profile } from '../auth/client';
@@ -141,4 +143,77 @@ export async function configureUploads() {
       BackgroundFetch.finish(taskId);
     },
   );
+}
+
+/** Runs only while the app is visible; headless jobs retain their existing bounds. */
+export function startAutomaticUploads() {
+  let cooldown = 0;
+  const scheduler = createRetryScheduler({
+    now: Date.now,
+    async nextAttempt() {
+      const session = await localSession();
+      if (!session) return null;
+      if (isTripArmed() || currentActivity()) return Date.now() + 30000;
+      const n = await NetInfo.fetch();
+      if (!n.isConnected || n.isInternetReachable === false) return null;
+      const raw = await secureStorage.getItem(`profile.${session.user.id}`);
+      const profile: Profile | null = raw ? JSON.parse(raw) : null;
+      if (
+        !profile?.consentVersion ||
+        (n.type !== 'wifi' && !profile.mobileUploads)
+      )
+        return null;
+      const next = await measurementStore.nextUploadAttempt(session.user.id);
+      const trips = await measurementStore.accountTrips(session.user.id);
+      if (
+        next == null &&
+        !trips.some(
+          t => t.state !== 'active' && t.uploadedRevision !== t.revision,
+        )
+      )
+        return null;
+      const saved = await secureStorage.getItem(
+        `automatic-upload-retry.${session.user.id}`,
+      );
+      const backoff = saved ? JSON.parse(saved).nextAt : 0;
+      return Math.max(next ?? 0, cooldown, backoff);
+    },
+    async run() {
+      const session = await localSession();
+      if (!session || isTripArmed() || currentActivity()) return;
+      const owner = session.user.id;
+      const key = `automatic-upload-retry.${owner}`;
+      try {
+        await syncAccount();
+        await secureStorage.setItem(
+          key,
+          JSON.stringify({ attempts: 0, nextAt: 0 }),
+        );
+      } catch {
+        const raw = await secureStorage.getItem(key);
+        const attempts = (raw ? Number(JSON.parse(raw).attempts) : 0) + 1;
+        await secureStorage.setItem(
+          key,
+          JSON.stringify({
+            attempts,
+            nextAt:
+              Date.now() +
+              Math.min(3600000, 15000 * 2 ** Math.min(attempts - 1, 8)),
+          }),
+        );
+      } finally {
+        cooldown = Date.now() + 30000;
+      }
+    },
+  });
+  scheduler.setActive(AppState.currentState === 'active');
+  const app = AppState.addEventListener('change', state =>
+    scheduler.setActive(state === 'active'),
+  );
+  const network = NetInfo.addEventListener(() => scheduler.wake());
+  return () => {
+    scheduler.setActive(false);
+    app.remove();
+    network();
+  };
 }

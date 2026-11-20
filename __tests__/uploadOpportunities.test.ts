@@ -14,6 +14,7 @@ jest.mock('react-native-background-actions', () => ({
   isRunning: () => false,
 }));
 jest.mock('@react-native-community/netinfo', () => ({
+  addEventListener: jest.fn(() => () => {}),
   fetch: async () => ({
     isConnected: true,
     isInternetReachable: true,
@@ -35,6 +36,7 @@ jest.mock('../src/storage/database', () => ({
     accountTrips: async () => mockTrips,
     accountSessions: async () => mockSessions,
     saveTrip: jest.fn(),
+    nextUploadAttempt: jest.fn(async () => null),
   },
 }));
 jest.mock('../src/trips/runtime', () => ({ recoverTrips: jest.fn() }));
@@ -124,4 +126,57 @@ test('completed acknowledgements skip tasks and cursors are scoped to the initia
   await syncAccount();
   expect(mockUpload.mock.calls.map(c => c[0].id)).toEqual(['new']);
   expect(mockStorage.get('upload-opportunity-cursor.owner-a')).toBe('new');
+});
+
+test('visible app automatically retries a pending trip without a Retry button or connection event', async () => {
+  const { AppState } = require('react-native');
+  const old = AppState.currentState;
+  AppState.currentState = 'active';
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('pending', 1));
+  mockUpload.mockImplementation(async (t: any) => {
+    t.uploadedRevision = t.revision;
+  });
+  const stop = require('../src/sync/background').startAutomaticUploads();
+  try {
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+  } finally {
+    stop();
+    AppState.currentState = old;
+  }
+});
+test('automatic manifest failure backoff survives foreground scheduler recreation', async () => {
+  const { AppState } = require('react-native');
+  const old = AppState.currentState;
+  AppState.currentState = 'active';
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('pending', 1));
+  mockUpload.mockRejectedValueOnce(new Error('temporary'));
+  let stop = require('../src/sync/background').startAutomaticUploads();
+  try {
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse(
+      mockStorage.get('automatic-upload-retry.owner-a')!,
+    );
+    expect(saved.nextAt).toBeGreaterThan(Date.now());
+    stop();
+    stop = require('../src/sync/background').startAutomaticUploads();
+    await jest.advanceTimersByTimeAsync(14999);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(mockUpload).toHaveBeenCalledTimes(2);
+  } finally {
+    stop();
+    AppState.currentState = old;
+  }
 });
