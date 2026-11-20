@@ -19,6 +19,8 @@ jest.mock('../src/storage/database', () => ({
     hasActiveSession: jest.fn(async () => false),
     accountSessions: jest.fn(async () => []),
     saveTrip: jest.fn(),
+    tripPayment: jest.fn(async () => null),
+    acknowledgeTripPayment: jest.fn(),
   },
 }));
 function trip(): Trip {
@@ -112,4 +114,23 @@ test('foreign identities and mobile connections without preference cannot upload
   expect(api).not.toHaveBeenCalled();
   expect(measurementStore.initialize).not.toHaveBeenCalled();
   expect(t.used.uploads).toBe(0);
+});
+
+test('payment metadata is uploaded once through its separate owner endpoint, never the manifest', async () => {
+  const t = trip();
+  (measurementStore.tripPayment as jest.Mock).mockResolvedValueOnce({
+    netId: 'abc123',
+    uploaded: false,
+  });
+  await uploadTrip(t, false, true, jest.fn());
+  expect(api).toHaveBeenCalledWith(
+    `/trips/${t.id}/payment`,
+    expect.objectContaining({ method: 'PUT', body: '{"netId":"abc123"}' }),
+    'owner',
+  );
+  expect(measurementStore.acknowledgeTripPayment).toHaveBeenCalledWith(
+    'owner',
+    t.id,
+  );
+  expect(JSON.stringify(tripManifest(t))).not.toContain('abc123');
 });

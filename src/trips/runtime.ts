@@ -41,9 +41,12 @@ import {
   transition,
   reserve,
   reservePair,
+  transferInterval,
+  HOURLY_TRANSFER_POLICY,
 } from './model';
 import { uploadTrip, cancelTripUpload } from './sync';
 import publicConfig from '../config/public.json';
+import { normalizeNetId } from './payment';
 
 interface Wifi {
   networkKey: string;
@@ -115,11 +118,13 @@ function withSegment<T>(
   segmentLane = work.catch(() => {});
   return work;
 }
-async function persist() {
+async function persist(paymentNetId?: string) {
   if (!trip) return;
   trip.revision++;
   const snapshot = JSON.parse(JSON.stringify(trip)) as Trip;
-  const work = persistenceLane.then(() => store.saveTrip(snapshot));
+  const work = persistenceLane.then(() =>
+    store.saveTrip(snapshot, paymentNetId),
+  );
   persistenceLane = work.catch(() => {});
   await work;
   publish();
@@ -170,6 +175,7 @@ const config = (t = trip!): MeasurementConfig => ({
   tripId: t.id,
   segmentIndex: t.segmentCount,
   flight: t.flight,
+  transferSchedule: t.transferSchedule,
   flightPolicy: t.policy,
   mlabPolicy: t.mlab
     ? {
@@ -300,10 +306,12 @@ export async function startTrip(
   owner: string,
   flight: FlightDetails,
   shadow = false,
-  options: { includeMlab?: boolean } = {},
+  options: { includeMlab?: boolean; netId?: string } = {},
 ) {
   if (tripRunning()) throw new Error('A trip is already running.');
   const details = flightDetails(flight, true);
+  delete details.expectedMinutes;
+  const netId = normalizeNetId(options.netId ?? '');
   starting = true;
   try {
     release = acquireActivity('measurement');
@@ -360,6 +368,7 @@ export async function startTrip(
       due: {},
       shadow,
       collectorPolicy: COLLECTOR_POLICY.version,
+      transferSchedule: HOURLY_TRANSFER_POLICY,
       pendingControlEvents: [],
       transferFailures: { download: 0, upload: 0 },
       mlab:
@@ -376,7 +385,7 @@ export async function startTrip(
     latest = null;
     lastError = null;
     abort = new AbortController();
-    await persist();
+    await persist(netId);
     await openSegment();
     await executor.start(
       () => {
@@ -564,10 +573,7 @@ async function loop(signal: AbortSignal) {
           trip!.nextTransferAt = advance(
             trip!.nextTransferAt,
             now,
-            Math.max(
-              300000,
-              ((trip!.flight.expectedMinutes ?? 1440) * 60000) / 10,
-            ),
+            transferInterval(trip!),
           );
         if (
           trip!.mlab &&

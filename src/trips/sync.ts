@@ -20,6 +20,7 @@ export function tripManifest(t: Trip) {
     reason: t.reason,
     policyVersion: t.policy.version,
     shadow: t.shadow,
+    ...(t.transferSchedule ? { transferSchedule: t.transferSchedule } : {}),
     ...(t.groundTest != null ? { groundTest: t.groundTest } : {}),
     ...(t.mlabUsage ? { mlabUsage: t.mlabUsage } : {}),
     ...(t.detectorPolicy
@@ -121,6 +122,17 @@ export async function uploadTrip(
         'PUT',
         signal,
       );
+      const payment = await store.tripPayment(t.ownerId, t.id);
+      if (payment && !payment.uploaded) {
+        await request(
+          `/trips/${t.id}/payment`,
+          { netId: payment.netId },
+          t.ownerId,
+          'PUT',
+          signal,
+        );
+        await store.acknowledgeTripPayment(t.ownerId, t.id);
+      }
       if (!live && result.uploadComplete) {
         t.uploadedRevision = t.revision;
         await store.saveTrip(t);

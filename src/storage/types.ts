@@ -20,7 +20,17 @@ export interface SessionEvent {
   details: Record<string, unknown>;
 }
 export interface MeasurementStore {
-  saveTrip(trip: import('../trips/model').Trip): Promise<void>;
+  saveTripPayment(owner: string, tripId: string, netId: string): Promise<void>;
+  tripPayment(
+    owner: string,
+    tripId: string,
+  ): Promise<{ netId: string; uploaded: boolean } | null>;
+  acknowledgeTripPayment(owner: string, tripId: string): Promise<void>;
+  nextUploadAttempt(owner: string): Promise<number | null>;
+  saveTrip(
+    trip: import('../trips/model').Trip,
+    paymentNetId?: string,
+  ): Promise<void>;
   accountTrips(ownerId: string): Promise<import('../trips/model').Trip[]>;
   saveSnapshot(
     sessionId: string,

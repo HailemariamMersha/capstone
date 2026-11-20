@@ -1,5 +1,5 @@
 /** Version 1. Future schema upgrades must be additive migrations, never database resets. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const SCHEMA = [
   `CREATE TABLE sessions (
     id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT,
@@ -42,4 +42,11 @@ export const MIGRATION_3 = [
 export const MIGRATION_4 = [
   `CREATE TABLE trips (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, payload_json TEXT NOT NULL)`,
   `CREATE INDEX trips_owner ON trips(owner_id)`,
+];
+
+/** Payment details are deliberately excluded from measurement/session exports. */
+export const MIGRATION_5 = [
+  `CREATE TABLE trip_payments (trip_id TEXT PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL, netid TEXT NOT NULL, uploaded INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX trip_payments_owner ON trip_payments(owner_id)`,
 ];

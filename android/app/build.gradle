@@ -104,8 +104,8 @@ android {
         manifestPlaceholders["skymeasureAuthScheme"] = flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.2.2"
+        versionCode 11
+        versionName "1.2.3"
     }
     testBuildType "release"
     if (speedCheckerEnabled) {

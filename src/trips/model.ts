@@ -14,7 +14,9 @@ export const TRIP_POLICY = {
   altitudeM: 3048,
   speedMps: 128.611,
 } as const;
-export const PILOT_POLICY_VERSION = 'flight-pilot-uncapped-2026-11-14';
+export const HISTORICAL_PILOT_POLICY = 'flight-pilot-uncapped-2026-11-14';
+export const PILOT_POLICY_VERSION = 'flight-pilot-hourly-2026-11-20';
+export const HOURLY_TRANSFER_POLICY = 'hourly-v1';
 export const PILOT_TRIP_POLICY = {
   ...TRIP_POLICY,
   version: PILOT_POLICY_VERSION,
@@ -59,14 +61,9 @@ export function flightDetails(
   }
   if (
     required &&
-    (!result.flightNumber ||
-      !result.departure ||
-      !result.arrival ||
-      result.expectedMinutes == null)
+    (!result.flightNumber || !result.departure || !result.arrival)
   )
-    throw new Error(
-      'Enter flight number, departure, arrival and expected flight length.',
-    );
+    throw new Error('Enter flight number, departure and arrival.');
   return result;
 }
 export interface GpsEvidence {
@@ -105,6 +102,7 @@ export interface Trip {
   };
   detectorPolicy?: typeof DETECTOR_POLICY;
   collectorPolicy?: string;
+  transferSchedule?: typeof HOURLY_TRANSFER_POLICY;
   segmentHealth?: import('./scheduler').SegmentHealth;
   pendingControlEvents?: { kind: string; details: Record<string, unknown> }[];
   transferFailures?: { download: number; upload: number };
@@ -158,7 +156,6 @@ export const PROVIDERS: Record<number, string> = {
   40306: 'ViaSat',
 };
 export const PILOT_TEST_PROVIDERS: Readonly<Record<number, string>> = {
-  12: 'TEST New York University',
   5384: 'TEST Etisalat',
 };
 const airline =
@@ -330,10 +327,7 @@ export function reservePair(
     trip.transferPairs >= 10
   )
     return false;
-  const interval = Math.max(
-    300000,
-    ((trip.flight.expectedMinutes ?? 1440) * 60000) / 10,
-  );
+  const interval = transferInterval(trip);
   trip.nextTransferAt +=
     (Math.floor((now - trip.nextTransferAt) / interval) + 1) * interval;
   if (
@@ -354,4 +348,11 @@ export function reservePair(
     return false;
   trip.transferPairs++;
   return true;
+}
+
+/** Historical trips retain their original duration-based spacing. */
+export function transferInterval(trip: Trip): number {
+  return trip.transferSchedule === HOURLY_TRANSFER_POLICY
+    ? 3600000
+    : Math.max(300000, ((trip.flight.expectedMinutes ?? 1440) * 60000) / 10);
 }

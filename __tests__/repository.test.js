@@ -69,7 +69,7 @@ test('diagnostic payload is reserved atomically and raw samples survive export a
 test('enables WAL, migrations and durable result/queue records', async () => {
   const id = await store.createSession(config);
   expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal');
-  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(4);
+  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(5);
   const attempt = await store.beginAttempt(
     id,
     'http_rtt',
@@ -224,7 +224,7 @@ test('version-one migration preserves existing records and recovers an open sess
   );
   await store.finishAttempt(success(attempt));
   db.exec(
-    'DROP TABLE trips; DROP INDEX sessions_owner; ALTER TABLE sessions DROP COLUMN owner_id; ALTER TABLE sessions DROP COLUMN upload_status; ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
+    'DROP TABLE trip_payments; DROP TABLE trips; DROP INDEX sessions_owner; ALTER TABLE sessions DROP COLUMN owner_id; ALTER TABLE sessions DROP COLUMN upload_status; ALTER TABLE sync_queue DROP COLUMN version; ALTER TABLE sync_queue DROP COLUMN next_attempt_at; ALTER TABLE sync_queue DROP COLUMN last_error; PRAGMA user_version=1',
   );
   db.close();
   open();
@@ -557,4 +557,70 @@ test('uncapped pending attempts remain null and local exports join latest trip p
   expect(exported.trip.groundTest).toBe(true);
   expect(exported.trip.ownerId).toBeUndefined();
   expect(exported.measurements[0].requestedBytes).toBeNull();
+});
+
+test('payment identifiers survive restart, remain owner-scoped and never enter evidence exports', async () => {
+  const trip = { id: 'c'.repeat(32), ownerId: 'a', state: 'completed' };
+  await store.saveTrip(trip);
+  await store.saveTripPayment('a', trip.id, ' ABC123 ');
+  expect(await store.tripPayment('b', trip.id)).toBeNull();
+  await expect(store.saveTripPayment('b', trip.id, 'def123')).rejects.toThrow(
+    'ownership',
+  );
+  await expect(store.saveTripPayment('a', trip.id, 'def123')).rejects.toThrow(
+    'immutable',
+  );
+  const sid = await store.createSession(config, undefined, 'a');
+  await store.endSession(sid, 'completed', 'test');
+  expect(JSON.stringify(await store.exportSession(sid))).not.toContain(
+    'abc123',
+  );
+  expect(JSON.stringify(await store.accountTrips('a'))).not.toContain('abc123');
+  db.close();
+  open();
+  expect(await store.tripPayment('a', trip.id)).toEqual({
+    netId: 'abc123',
+    uploaded: false,
+  });
+  await store.acknowledgeTripPayment('a', trip.id);
+  expect((await store.tripPayment('a', trip.id)).uploaded).toBe(true);
+  await store.deleteAccountRecords('a');
+  expect(await store.tripPayment('a', trip.id)).toBeNull();
+});
+test('schema four upgrades add payment storage without changing evidence', async () => {
+  const sid = await store.createSession(config);
+  db.exec('DROP TABLE trip_payments; PRAGMA user_version=4');
+  db.close();
+  open();
+  await store.initialize(false);
+  expect((await store.getSession(sid)).id).toBe(sid);
+  expect(db.prepare('PRAGMA user_version').get().user_version).toBe(5);
+});
+test('retry deadline respects both record and session backoff', async () => {
+  const sid = await store.createSession(config, undefined, 'owner');
+  await store.endSession(sid, 'completed', 'test');
+  expect(await store.nextUploadAttempt('other')).toBeNull();
+  expect(await store.nextUploadAttempt('owner')).toBe(0);
+  const batch = await store.getSyncBatch(50, 'owner', sid);
+  await store.failSync(batch.records, 'temporary');
+  expect(await store.nextUploadAttempt('owner')).toBeGreaterThan(Date.now());
+  await store.deferUpload('owner', sid);
+  const retry = JSON.parse(
+    db
+      .prepare('SELECT value_json FROM app_settings WHERE key=?')
+      .get(`upload-retry:owner:${sid}`).value_json,
+  );
+  expect(await store.nextUploadAttempt('owner')).toBe(retry.nextAt);
+});
+
+test('new trip and payment mapping commit atomically without embedding the NetID in the trip', async () => {
+  const trip = { id: 'e'.repeat(32), ownerId: 'a' };
+  await expect(store.saveTrip(trip, 'invalid@email')).rejects.toThrow('NetID');
+  expect(await store.accountTrips('a')).toEqual([]);
+  await store.saveTrip(trip, 'abc123');
+  expect(await store.accountTrips('a')).toEqual([trip]);
+  expect(await store.tripPayment('a', trip.id)).toEqual({
+    netId: 'abc123',
+    uploaded: false,
+  });
 });

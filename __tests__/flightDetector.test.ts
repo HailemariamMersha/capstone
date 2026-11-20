@@ -202,21 +202,27 @@ test('historical policy does not silently gain the new M-Lab allowance', () => {
   expect(reserve(t, 'transfers', 200 * 1048576)).toBe(false);
 });
 
-test('production has exactly the six provider ASNs; AS12 needs explicit pilot admission', () => {
+test('production has exactly six provider ASNs; only Etisalat has pilot admission', () => {
   expect(
     Object.keys(PROVIDERS)
       .map(Number)
       .sort((a, b) => a - b),
   ).toEqual([14593, 22351, 31515, 40306, 64294, 206433]);
-  expect(PILOT_TEST_PROVIDERS[12]).toBe('TEST New York University');
+  expect(Object.keys(PILOT_TEST_PROVIDERS)).toEqual(['5384']);
+  expect(evidence(1, { asn: 12, allowTestAsns: true }).confidence).toBe(
+    'unconfirmed',
+  );
   expect(PILOT_TEST_PROVIDERS[5384]).toBe('TEST Etisalat');
   expect(evidence(1, { asn: 5384 }).confidence).toBe('unconfirmed');
   expect(
     evidence(1, { asn: 5384, allowTestAsns: true }).qualificationSource,
   ).toBe('ground_test_asn');
   expect(evidence(1, { asn: 12 }).confidence).toBe('unconfirmed');
-  let t = transition(initial(), evidence(0, { asn: 12, allowTestAsns: true }));
-  t = transition(t, evidence(30000, { asn: 12, allowTestAsns: true }));
+  let t = transition(
+    initial(),
+    evidence(0, { asn: 5384, allowTestAsns: true }),
+  );
+  t = transition(t, evidence(30000, { asn: 5384, allowTestAsns: true }));
   expect(t).toMatchObject({
     phase: 'collecting',
     groundTest: true,
@@ -231,7 +237,29 @@ test('production has exactly the six provider ASNs; AS12 needs explicit pilot ad
 test.each([
   {},
   { flightNumber: ' ', departure: 'A', arrival: 'B', expectedMinutes: 60 },
-  { flightNumber: 'T', departure: 'A', arrival: 'B' },
 ])('new trip details must be complete: %j', f =>
   expect(() => flightDetails(f, true)).toThrow(),
 );
+
+test.each([60, 840, 1440])(
+  'hourly schedules ignore reported duration %s, retain limits and skip catch-up',
+  minutes => {
+    const t = initial();
+    t.transferSchedule = 'hourly-v1';
+    t.flight.expectedMinutes = minutes;
+    t.nextTransferAt = 300000;
+    expect(reservePair(t, 300000)).toBe(true);
+    expect(t.nextTransferAt).toBe(3900000);
+    expect(reservePair(t, 86400000)).toBe(true);
+    expect(t.nextTransferAt).toBeGreaterThan(86400000);
+    expect(reservePair(t, 86400000)).toBe(false);
+    expect(t.transferPairs).toBe(2);
+    for (let i = 0; i < 10; i++) reservePair(t, t.nextTransferAt!);
+    expect(t.transferPairs).toBeLessThanOrEqual(10);
+  },
+);
+test('new flight details do not require an expected duration', () => {
+  expect(
+    flightDetails({ flightNumber: 'TEST', departure: 'A', arrival: 'B' }, true),
+  ).toEqual({ flightNumber: 'TEST', departure: 'A', arrival: 'B' });
+});

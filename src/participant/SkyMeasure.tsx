@@ -1,3 +1,4 @@
+import { RESEARCH_CONSENT } from './consent';
 import React, {
   createContext,
   useCallback,
@@ -75,7 +76,7 @@ import FlightHome, { TripHistory } from './FlightHome';
 import Enrollment from './Enrollment';
 import ParticipationInfo from './ParticipationInfo';
 
-const CONSENT = 'skymeasure-flight-pilot-2026-11-14';
+const CONSENT = RESEARCH_CONSENT;
 
 const Tabs = createBottomTabNavigator();
 type AccountContext = {

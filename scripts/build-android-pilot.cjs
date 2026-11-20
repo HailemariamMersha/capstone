@@ -89,10 +89,11 @@ try {
   }
   if (
     !extracted.stdout.includes(Buffer.from('pilotTestAsnsEnabled')) ||
-    !extracted.stdout.includes(Buffer.from('TEST New York University')) ||
     !extracted.stdout.includes(Buffer.from('TEST Etisalat'))
   )
     throw new Error('Packaged pilot ASN configuration missing');
+  if (extracted.stdout.includes(Buffer.from('TEST New York University')))
+    throw new Error('Removed NYU test ASN remains in packaged pilot registry');
   const gradle = fs.readFileSync(
     path.join(root, 'android/app/build.gradle'),
     'utf8',

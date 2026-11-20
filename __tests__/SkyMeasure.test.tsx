@@ -26,8 +26,8 @@ const mockSession = {
 const mockProfile = {
   participantId: 'p',
   role: 'participant',
-  consentVersion: 'skymeasure-flight-pilot-2026-11-14',
-  requiredConsentVersion: 'skymeasure-flight-pilot-2026-11-14',
+  consentVersion: 'skymeasure-flight-payment-2026-11-20',
+  requiredConsentVersion: 'skymeasure-flight-payment-2026-11-20',
   mobileUploads: false,
 };
 jest.mock('../src/auth/client', () => ({
@@ -62,6 +62,7 @@ jest.mock('../src/auth/client', () => ({
 jest.mock('../src/sync/background', () => ({
   syncAccount: jest.fn().mockResolvedValue(undefined),
   configureUploads: jest.fn().mockResolvedValue(undefined),
+  startAutomaticUploads: jest.fn(() => () => {}),
 }));
 jest.mock('../src/services/measurement', () => ({
   getServiceStatus: jest
@@ -276,7 +277,7 @@ test('Start needs notification permission but does not request GPS access', asyn
         ['Flight number', 'QR123'],
         ['From', 'Doha'],
         ['To', 'London'],
-        ['Expected hours', '8'],
+        ['NYU NetID', 'abc123'],
       ])
         renderer.root
           .findAllByType(TextInput)
@@ -294,9 +295,9 @@ test('Start needs notification permission but does not request GPS access', asyn
         flightNumber: 'QR123',
         departure: 'Doha',
         arrival: 'London',
-        expectedMinutes: 480,
       },
       false,
+      { netId: 'abc123' },
     );
   } finally {
     jest.restoreAllMocks();
@@ -313,7 +314,7 @@ test('incomplete flight details cannot start and there is no Skip button', async
     ).toBe(false);
     await press('Start trip');
     expect(require('../src/trips/runtime').startTrip).not.toHaveBeenCalled();
-    expect(contains('Expected flight length')).toBe(true);
+    expect(contains('Enter flight number')).toBe(true);
   } finally {
     jest.restoreAllMocks();
   }
@@ -367,4 +368,30 @@ test('a deleted account response replaces cached Home with explicit recovery', a
       .findAllByType(Button)
       .some(b => b.props.title === 'Start trip'),
   ).toBe(false);
+});
+
+test('new Home requires NetID without collecting expected duration', async () => {
+  jest.replaceProperty(Platform, 'OS', 'android');
+  try {
+    await render();
+    expect(
+      renderer.root.findAllByType(TextInput).map(i => i.props.label),
+    ).not.toContain('Expected hours');
+    await act(async () => {
+      for (const [label, value] of [
+        ['Flight number', 'TEST123'],
+        ['From', 'A'],
+        ['To', 'B'],
+      ])
+        renderer.root
+          .findAllByType(TextInput)
+          .find(i => i.props.label === label)!
+          .props.onChangeText(value);
+    });
+    await press('Start trip');
+    expect(require('../src/trips/runtime').startTrip).not.toHaveBeenCalled();
+    expect(contains('Enter your NYU NetID')).toBe(true);
+  } finally {
+    jest.restoreAllMocks();
+  }
 });

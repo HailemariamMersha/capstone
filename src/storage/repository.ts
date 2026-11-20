@@ -5,7 +5,9 @@ import {
   MIGRATION_2,
   MIGRATION_3,
   MIGRATION_4,
+  MIGRATION_5,
 } from './schema';
+import { normalizeNetId } from '../trips/payment';
 import { requestedPayload } from '../measurements/diagnosticConfig';
 import type { Measurement } from '../measurements/types';
 import type { MeasurementConfig, SessionRecord } from '../sessions/types';
@@ -106,6 +108,7 @@ export function createRepository(
             for (const sql of MIGRATION_3) await db.execute(sql);
           }
           if (version < 4) for (const sql of MIGRATION_4) await db.execute(sql);
+          if (version < 5) for (const sql of MIGRATION_5) await db.execute(sql);
           await db.execute(`PRAGMA user_version=${SCHEMA_VERSION}`);
           if (!recover) return;
           // Run once per JS process, before any new session can be started.
@@ -180,9 +183,88 @@ export function createRepository(
     measurementCount: Number(row.measurement_count),
   });
   const sessionSelect = `SELECT s.*, (SELECT COUNT(*) FROM measurements m WHERE m.session_id=s.id AND m.state='complete') AS measurement_count FROM sessions s`;
+  async function savePayment(owner: string, tripId: string, value: string) {
+    const netId = normalizeNetId(value);
+    const trip = (
+      await db.execute('SELECT owner_id FROM trips WHERE id=?', [tripId])
+    ).rows[0];
+    if (!trip || trip.owner_id !== owner)
+      throw new Error('Trip ownership mismatch');
+    const existing = (
+      await db.execute('SELECT netid FROM trip_payments WHERE trip_id=?', [
+        tripId,
+      ])
+    ).rows[0];
+    if (existing && existing.netid !== netId)
+      throw new Error('Payment details are immutable for a started trip.');
+    await db.execute(
+      'INSERT OR IGNORE INTO trip_payments(trip_id,owner_id,netid) VALUES (?,?,?)',
+      [tripId, owner, netId],
+    );
+  }
   return {
     initialize,
-    saveTrip: trip =>
+    saveTripPayment: (owner, tripId, value) =>
+      write(() => savePayment(owner, tripId, value)),
+    tripPayment: (owner, tripId) =>
+      read(async () => {
+        const row = (
+          await db.execute(
+            'SELECT netid,uploaded FROM trip_payments WHERE owner_id=? AND trip_id=?',
+            [owner, tripId],
+          )
+        ).rows[0];
+        return row
+          ? { netId: String(row.netid), uploaded: Boolean(row.uploaded) }
+          : null;
+      }),
+    acknowledgeTripPayment: (owner, tripId) =>
+      write(async () => {
+        await db.execute(
+          'UPDATE trip_payments SET uploaded=1 WHERE owner_id=? AND trip_id=?',
+          [owner, tripId],
+        );
+      }),
+    nextUploadAttempt: owner =>
+      read(async () => {
+        const sessions = (
+          await db.execute(
+            "SELECT id FROM sessions WHERE owner_id=? AND state!='active' AND upload_status!='Uploaded'",
+            [owner],
+          )
+        ).rows;
+        if (!sessions.length) return null;
+        let next = Infinity;
+        for (const session of sessions) {
+          const retry = (
+            await db.execute(
+              'SELECT value_json FROM app_settings WHERE key=?',
+              [`upload-retry:${owner}:${session.id}`],
+            )
+          ).rows[0];
+          const deferred = retry
+            ? Number(JSON.parse(String(retry.value_json)).nextAt)
+            : 0;
+          const queued = (
+            await db.execute(
+              `SELECT MIN(next_attempt_at) AS next FROM sync_queue
+          WHERE state='pending' AND ((entity_type='session' AND entity_id=?)
+          OR (entity_type='measurement' AND entity_id IN (SELECT id FROM measurements WHERE session_id=?))
+          OR (entity_type='event' AND entity_id IN (SELECT id FROM connectivity_events WHERE session_id=?))
+          OR (entity_type='snapshot' AND entity_id IN (SELECT id FROM network_snapshots WHERE session_id=?)))`,
+              [
+                session.id as string,
+                session.id as string,
+                session.id as string,
+                session.id as string,
+              ],
+            )
+          ).rows[0];
+          next = Math.min(next, Math.max(deferred, Number(queued?.next ?? 0)));
+        }
+        return next;
+      }),
+    saveTrip: (trip, paymentNetId) =>
       write(async () => {
         const existing = (
           await db.execute('SELECT owner_id FROM trips WHERE id=?', [trip.id])
@@ -193,6 +275,8 @@ export function createRepository(
           'INSERT INTO trips(id,owner_id,payload_json) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json',
           [trip.id, trip.ownerId, JSON.stringify(trip)],
         );
+        if (paymentNetId !== undefined)
+          await savePayment(trip.ownerId, trip.id, paymentNetId);
       }),
     accountTrips: owner =>
       read(async () =>
@@ -256,6 +340,9 @@ export function createRepository(
       }),
     deleteAccountRecords: ownerId =>
       write(async () => {
+        await db.execute('DELETE FROM trip_payments WHERE owner_id=?', [
+          ownerId,
+        ]);
         await db.execute('DELETE FROM trips WHERE owner_id=?', [ownerId]);
         if (
           (

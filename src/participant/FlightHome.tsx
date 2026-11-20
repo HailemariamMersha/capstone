@@ -29,6 +29,7 @@ import { measurementStore } from '../storage/database';
 import { flightDetails, type FlightDetails, type Trip } from '../trips/model';
 const requireFlightDetails = (details: FlightDetails) =>
   flightDetails(details, true);
+import { normalizeNetId } from '../trips/payment';
 import { syncAccount } from '../sync/background';
 import { theme } from './theme';
 
@@ -46,8 +47,11 @@ export default function FlightHome({ owner }: { owner: string }) {
   const [flight, setFlight] = useState<FlightDetails>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hours, setHours] = useState('');
-  const [minutes, setMinutes] = useState('');
+  const [netId, setNetId] = useState('');
+  useEffect(() => {
+    setNetId('');
+    setFlight({});
+  }, [owner]);
   const [batteryExempt, setBatteryExempt] = useState<boolean | null>(null);
   useEffect(() => {
     const refresh = () =>
@@ -78,18 +82,8 @@ export default function FlightHome({ owner }: { owner: string }) {
         await stopTrip();
         await syncAccount();
       } else {
-        const h = hours.trim() ? Number(hours) : 0;
-        const m = minutes.trim() ? Number(minutes) : 0;
-        if (
-          !Number.isInteger(h) ||
-          !Number.isInteger(m) ||
-          h < 0 ||
-          m < 0 ||
-          m > 59
-        )
-          throw new Error('Enter expected flight length in hours and minutes.');
-        details = { ...details, expectedMinutes: h * 60 + m };
         details = requireFlightDetails(details);
+        const paymentNetId = normalizeNetId(netId);
         if (Platform.OS !== 'android')
           throw new Error('Trip collection is currently available on Android.');
         if (Platform.Version >= 33) {
@@ -99,7 +93,7 @@ export default function FlightHome({ owner }: { owner: string }) {
           if (granted !== PermissionsAndroid.RESULTS.GRANTED)
             throw new Error('Allow notifications to start your trip.');
         }
-        await startTrip(owner, details, false);
+        await startTrip(owner, details, false, { netId: paymentNetId });
       }
     } catch (e) {
       setError(
@@ -198,24 +192,20 @@ export default function FlightHome({ owner }: { owner: string }) {
                 Required
               </Text>
             </View>
-            <View style={styles.durationRow}>
-              <TextInput
-                mode="outlined"
-                label="Expected hours"
-                keyboardType="number-pad"
-                value={hours}
-                onChangeText={setHours}
-                style={styles.durationInput}
-              />
-              <TextInput
-                mode="outlined"
-                label="Expected minutes"
-                keyboardType="number-pad"
-                value={minutes}
-                onChangeText={setMinutes}
-                style={styles.durationInput}
-              />
-            </View>
+            <TextInput
+              mode="outlined"
+              label="NYU NetID"
+              placeholder="e.g. abc123"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={32}
+              value={netId}
+              onChangeText={setNetId}
+              style={styles.input}
+            />
+            <Text variant="bodySmall" style={styles.subtitle}>
+              Only study administrators can access your NetID for payment.
+            </Text>
             <TextInput
               mode="outlined"
               label="Flight number"
@@ -335,8 +325,6 @@ export function TripHistory({ owner }: { owner: string }) {
   );
 }
 const styles = StyleSheet.create({
-  durationRow: { flexDirection: 'row', gap: 12 },
-  durationInput: { flex: 1 },
   page: {
     padding: 24,
     paddingTop: 20,

@@ -12,6 +12,7 @@ const mockTrips: any[] = [];
 const mockSessions: any[] = [];
 const mockStore = {
   initialize: jest.fn(),
+  saveTripPayment: jest.fn(),
   accountTrips: jest.fn(async () => mockTrips),
   accountSessions: jest.fn(async () => mockSessions),
   saveTrip: jest.fn(async (t: any) => {
@@ -106,7 +107,10 @@ const fullFlight = {
   expectedMinutes: 1440,
 };
 const startTrip = (owner: string, flight: any, shadow = false, options?: any) =>
-  startTripImpl(owner, { ...fullFlight, ...flight }, shadow, options);
+  startTripImpl(owner, { ...fullFlight, ...flight }, shadow, {
+    netId: 'abc123',
+    ...options,
+  });
 import { uploadTrip } from '../src/trips/sync';
 import { currentActivity, isTripArmed } from '../src/services/activityGate';
 beforeEach(() => {
@@ -375,7 +379,7 @@ test('two failures disable each controlled direction without spending later pair
   await startTrip('researcher', { expectedMinutes: 10 }, true, {
     includeMlab: false,
   });
-  await jest.advanceTimersByTimeAsync(1200000);
+  await jest.advanceTimersByTimeAsync(7500000);
   expect(runTripMlab).not.toHaveBeenCalled();
   expect(runProbe).toHaveBeenCalledTimes(4);
   expect(currentTrip()!.transferFailures).toEqual({ download: 2, upload: 2 });
@@ -449,7 +453,7 @@ test('a discontinuous callback clock invalidates the headline value while retain
   });
 });
 
-test.each([12, 5384])(
+test.each([5384])(
   'pilot AS%i uses normal admission and uncapped M-Lab without consuming controlled reservations',
   async asn => {
     const { NativeModules } = require('react-native');
@@ -500,5 +504,36 @@ test.each([12, 5384])(
       config.pilotTestAsnsEnabled = false;
       NativeModules.FlightNetwork.pilotBuild = false;
     }
+  },
+);
+
+test.each([
+  [429, null, 'http_429'],
+  [503, null, 'http_503'],
+  [200, 'database_stale', 'database_stale'],
+  [200, 'database_not_configured', 'database_not_configured'],
+])(
+  'ASN lookup %s/%s records unknown evidence, not a negative match',
+  async (status, unavailable, reason) => {
+    globalThis.fetch = jest.fn(async () => ({
+      ok: status === 200,
+      status,
+      headers: { get: () => '1' },
+      text: async () =>
+        JSON.stringify({ asn: null, asnUnavailable: unavailable }),
+    })) as any;
+    await startTrip('owner', {});
+    await jest.advanceTimersByTimeAsync(16000);
+    expect(currentTrip()!.phase).toBe('watching');
+    expect(currentTrip()!.evidence!.asn.state).toBe('unknown');
+    expect(
+      mockEvents.some(
+        (r: any) =>
+          r[1] === 'collector_identity' &&
+          r[2].reason === (unavailable ? 'received' : reason),
+      ),
+    ).toBe(true);
+    if (unavailable)
+      expect(currentTrip()!.evidence!.asn.reason).toBe(unavailable);
   },
 );

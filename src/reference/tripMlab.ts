@@ -1,4 +1,5 @@
 import { NativeModules } from 'react-native';
+import { RESEARCH_CONSENT } from '../participant/consent';
 import { secureStorage } from '../auth/client';
 import type { MeasurementStore } from '../storage/types';
 import type { NetworkSnapshot } from '../network/types';
@@ -10,7 +11,7 @@ export const MLAB_RESERVATION = 200 * 1048576;
 export async function requireMlabConsent(owner: string) {
   const raw = await secureStorage.getItem(`profile.${owner}`);
   const profile = raw ? JSON.parse(raw) : null;
-  if (!owner || profile?.consentVersion !== MLAB_CONSENT)
+  if (!owner || profile?.consentVersion !== RESEARCH_CONSENT)
     throw new Error(
       'Review the updated research and M-Lab publication information before starting.',
     );
