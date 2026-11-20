@@ -9,6 +9,7 @@ import {
 import { type ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table';
 import { SessionEvidence } from '@/components/session-evidence';
+import { PaymentReconciliation } from '@/components/payment-reconciliation';
 import { Trips } from '@/components/trips';
 import { MeasurementGuide } from '@/components/measurement-guide';
 import { sampleRows } from '@/lib/evidence';
@@ -739,6 +740,7 @@ function Workspace({ profile }: { profile: Profile }) {
                 {participants.error && (
                   <Notice error>{participants.error.message}</Notice>
                 )}
+                {profile.role === 'administrator' && <PaymentReconciliation />}
                 {profile.role === 'administrator' && (
                   <section className="panel p-6">
                     <h2 className="text-xl font-semibold mb-4">

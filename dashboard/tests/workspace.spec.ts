@@ -57,6 +57,26 @@ async function signedIn(
         status: 403,
         json: { detail: 'Researcher access required' },
       });
+    if (path.endsWith('/admin/payments'))
+      return route.fulfill(
+        role === 'administrator'
+          ? {
+              json: {
+                total: 1,
+                items: [
+                  {
+                    tripId: 'd'.repeat(32),
+                    participantId: 'b'.repeat(32),
+                    netId: 'abc123',
+                    flight: { flightNumber: 'TEST123' },
+                    startedAt: 1793534400000,
+                    receivedAt: '2026-11-01T12:30:00Z',
+                  },
+                ],
+              },
+            }
+          : { status: 403, json: { detail: 'Administrator access required' } },
+      );
     if (path.endsWith('/overview'))
       return route.fulfill({
         json: {
@@ -1037,4 +1057,34 @@ test('ground-test toggle reaches backend filters and marks trip provenance', asy
   await expect(page.getByText(/M-Lab client-reported payload/)).toContainText(
     '1430.51 MiB',
   );
+});
+
+test('administrator sees payment reconciliation separately from measurement evidence', async ({
+  page,
+}) => {
+  await signedIn(page, 'administrator');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Participants', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Payment reconciliation' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: 'abc123', exact: true }),
+  ).toBeVisible();
+});
+test('researchers neither request nor see restricted NetIDs', async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on('request', r => {
+    if (r.url().includes('/admin/payments')) requests.push(r.url());
+  });
+  await signedIn(page, 'researcher');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Participants', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Payment reconciliation' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('abc123', { exact: true })).toHaveCount(0);
+  expect(requests).toEqual([]);
 });
