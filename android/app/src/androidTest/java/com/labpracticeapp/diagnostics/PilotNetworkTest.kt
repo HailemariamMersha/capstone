@@ -39,7 +39,7 @@ class PilotNetworkTest {
                 val body = JSONObject(response.body!!.string())
                 val report = JSONObject().put("pilotBuild", true).put("asn", body.opt("asn"))
                     .put("asnOrganization", body.opt("asnOrganization")).put("asnUnavailable", body.opt("asnUnavailable"))
-                    .put("matchesPilotTestAsn", body.optInt("asn", -1) in setOf(12, 5384))
+                    .put("matchesPilotTestAsn", body.optInt("asn", -1) == 5384)
                 File(app.filesDir, "pilot-network-check.json").writeText(report.toString())
                 InstrumentationRegistry.getInstrumentation().sendStatus(2, android.os.Bundle().apply {
                     putString("pilotNetworkReport", report.toString())
