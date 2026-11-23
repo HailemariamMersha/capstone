@@ -1,0 +1,20 @@
+{
+  "evidenceCutoff": "2026-11-16",
+  "exportedAt": "2026-11-16T17:23:12.563310+00:00",
+  "scope": "Received portion of one ground trip; not the complete declared trip",
+  "declaredSegments": 58,
+  "registeredSegments": 9,
+  "completeSegments": 8,
+  "expectedRegisteredRecords": 2666,
+  "receivedRecords": 2625,
+  "parentMeasurements": 414,
+  "failedParents": 4,
+  "liveUploadReservedBytes": 20824718,
+  "liveUploadAllocationBytes": 20971520,
+  "gapEvents": 0,
+  "inputSha256": {
+    "privateTripBundle": "251fe26f8e885e230a7875a133c0b70707587375798b76e5939c28a5dcf028a3",
+    "privateBenchmarkSummary": "b3f617823d31eaf9199f946204999158ef258db68a0f8b29d3a17af1eef754ca"
+  },
+  "deidentification": "Omitted account/record IDs, addresses, flight text, identifiers and absolute probe timestamps; relative time retained."
+}

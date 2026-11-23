@@ -1,0 +1,126 @@
+\section{Implementation and Evidence Inventory}
+\label{app:implementation}
+Table~\ref{tab:stack} lists reviewed dependencies. Libraries contain native code;
+reusing them differs from owning a socket engine. NDT7 additionally requires
+substantive client modifications.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\caption{Current implementation inventory. Versions describe the reviewed source;
+presence does not establish validation on every platform or network.}
+\label{tab:stack}
+\begin{tabularx}{\textwidth}{@{}p{.18\textwidth}p{.36\textwidth}Y@{}}
+\toprule
+Responsibility & Library / component & Retained evidence or boundary\\
+\midrule
+Shared application & React Native 0.84.1; React 19.2.3; TypeScript & Android tested; iOS remains a scaffold without background/measurement acceptance.\\
+Participant interface & React Native Paper 5.15.3; React Navigation & Consent, required details, Start/Stop, local history and upload status.\\
+ICMP / traceroute & \code{icmpenguin} 1.0.0-rc.3; Android adapters & Actual echo bytes and available hop results; no full IP capture or complete error-code provenance.\\
+TCP & \code{react-native-tcp-socket} 6.4.3 & Connection callback, endpoint metadata and failures; no handset TCPInfo.\\
+UDP & \code{react-native-udp} 4.1.7 & Matching datagrams, send/reply callbacks, duplicates and reordering.\\
+Controlled transfers & RNFS 2.40.3; React Native fetch & Download file bytes; acknowledged upload bytes; partial results when observable.\\
+Public benchmark & \code{ndt7-client-android} fork 0.2.2-skymeasure.2 & Upstream pin \code{3e831b7}; owned lifecycle/budget changes; public M-Lab publication.\\
+Context / credentials & NetInfo 12.0.1; device-info 15.0.2; Keychain 10.0.0 & Available network/power context; protected saved identity and tokens.\\
+Collection / retries & background-actions 4.1.0; background-fetch 4.4.2 & Visible foreground task and opportunistic Headless JS uploads; no force-stop guarantee.\\
+Local evidence & OP-SQLite 18.2.3 & Owned records, durable queue, acknowledgements and persisted trip deadlines.\\
+Server / web & FastAPI; PostgreSQL JSONB; Next.js, TanStack, Recharts & Verified ownership, researcher authorization, grouped evidence, plots and exports.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The non-Android ICMP fallback \code{ping-react-native} remains installed but is
+not the evaluated Android path. The older browser NDT7 integration and optional
+SpeedChecker bridge remain outside current automatic-trip collection. Ookla,
+DNS/CDN experiments and congestion-control selection are not implemented in this
+pilot. No installed-dependency inventory should imply that these tests ran.
+
+\subsection{Row and field semantics}
+\begin{table}[!htbp]
+\centering\footnotesize
+\caption{Primary evidence entities and join scope.}
+\begin{tabularx}{\columnwidth}{@{}lY@{}}
+\toprule
+Entity & Meaning and principal join\\
+\midrule
+Trip & Pseudonymous owner, reported flight, policy, budgets, confidence and expected segment count.\\
+Segment & Closed collection interval; \code{tripId} and \code{segmentIndex}. Historical ownerless sessions remain local/exportable.\\
+Measurement & One burst, connection, trace or transfer; unique measurement and session IDs.\\
+Sample & One probe/hop/baseline/callback; parent ID, phase and sequence/ordinal.\\
+Context & Timestamped network/power snapshot; repeated export context is not a new packet-time reading.\\
+Event & Detection, scheduling, failures, pause, health and lifecycle evidence.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Values retain method, target, library, outcome, units and timing. ICMP hex/base64
+contains returned ICMP bytes; UDP callbacks contain application payloads. Neither
+is full IP capture. JSON preserves limitations and dropped counts. The artifact's
+machine-readable dictionary supplies complete column definitions. Historical
+nanosecond strings retain precision; clock domains remain separate.
+
+\subsection{Provider and policy configuration}
+The configured mapping is AS14593 Starlink, AS31515 Inmarsat, AS22351 Intelsat,
+AS64294 Panasonic, AS206433 SITA and AS40306 ViaSat; coverage is not independently
+validated. Private AS12/AS5384 entries are TEST-labelled. Missing or over-35-day-old
+ASN databases return unknown. Cached Starlink PTR names indicate egress PoPs only.
+
+Controlled payloads use decimal bytes; allocations use MiB ($2^{20}$ bytes).
+Ten 5 MB / 1 MB pairs fit inside 60 MiB. Live synchronization reserves request
+bytes plus 64 KiB per response, including failures; post-trip sync is additional.
+The 512 KiB batch target differs from the API's 8 MiB body limit. Separate
+allocations protect probes but can leave dashboard state stale.
+
+\section{Independent Validation Matrix and Planned Plots}
+\label{app:validation}
+\begin{table}[!htbp]
+\centering\footnotesize
+\caption{Planned validation, not completed results. Actual packet counters and
+independently observed conditions determine acceptance; simulations never become
+flight observations.}
+\label{tab:plan}
+\begin{tabularx}{\textwidth}{@{}p{.14\textwidth}p{.27\textwidth}p{.25\textwidth}Y@{}}
+\toprule
+Question & Independent reference / manipulation & Proposed figure & Acceptance evidence\\
+\midrule
+Probe accounting & Controlled UDP echo and phone-facing capture; at least 50 bursts & Matched send/reply counts; loss by condition & Exact sequence/payload correlation; explicit duplicate, timeout and unmatched counts.\\
+Timing accuracy & Gateway timestamps and matched phone observations; calibrated RTT & Paired scatter, signed errors and limits of agreement & Report timing scopes and clock alignment; pre-register accuracy tolerance before campaign.\\
+Impairment response & Added RTT 0/40/150/300/600 ms; separate loss/rate sweeps & RTT and nonresponse against verified impairment & Verify actual gateway impairment; do not equate injected one-way loss to round-trip nonresponse.\\
+Transfer interpretation & Matching-size curl; sequential reference NDT7; server counters & First-byte/total times and observed bytes by endpoint & Exact payload accounting; retain failures; distinguish protocol, server and path.\\
+Background endurance & One-hour unplugged locked screen; ordinary versus unrestricted battery; later overnight & Control-gap CDF, job lateness, battery/context timeline & No unexplained control spacing above 120 s for the stated test; preserve interruptions and device conditions.\\
+Delivery correctness & Offline/reconnect, interrupted requests, retries and process restarts & Receipt lag and reconciled fraction over time & All expected versions present once logically; correct ownership; explicit partial sessions.\\
+Flight qualification & Consented actual flights and documented ground controls & Qualification confusion matrix and coverage by flight & Independent flight labels; unknown handling and false positives reported separately.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Compare matched observations and timing scopes. Gateway timestamps do not
+isolate handset callback latency. Report signed/absolute errors, run-level
+summaries and missing coverage; correlated packets are not independent flights.
+Keep throughput tests sequential unless studying interference.
+
+For added RTT $d$, apply and verify approximately $d/2$ per direction. Independent
+one-way loss $p$ can yield echo nonresponse $1-(1-p)^2$; correlated loss needs
+empirical treatment. Emulation is not satellite-service validation.
+
+\section{Reproduction and Current Deliverable}
+\label{app:reproduction}
+APK 1.2.2/code 10 uses clean source \code{9874f99} and development signing.
+The short trip collected with 1.2.1 and retried saved evidence with 1.2.2.
+The 8.27 MB private long-trip bundle yields de-identified CSVs; provenance retains
+input hashes and cutoff. These CSVs regenerate all five figures without private
+raw records.
+
+The main artifact source map is:
+\begin{itemize}
+\item \code{src/trips/}: detection, lifecycle, scheduler and trip synchronization.
+\item \code{src/measurements/}: library execution, payloads and statistics.
+\item \code{src/storage/}, \code{src/sync/}: persistence, batches and retries.
+\item \code{android/ndt7/}: pinned fork, licensing and patch inventory.
+\item \code{backend/research/}, \code{dashboard/}: owned ingestion, queries and views.
+\item \code{scripts/measurements/}: analysis and shared column dictionary.
+\end{itemize}
+
+The independent UDP checker passed twenty loopback echoes using server-valid
+payloads, not live accuracy validation. Priorities are pending-evidence recovery,
+upload diagnosis, timestamp-validator compatibility and independent validation
+before public recruitment or flight-performance claims.

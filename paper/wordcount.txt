@@ -1,0 +1,75 @@
+File: main.tex
+Encoding: ascii
+Sum count: 226
+Words in text: 214
+Words in headers: 12
+Words outside text (captions, etc.): 0
+Number of headers: 2
+Number of floats/tables/figures: 0
+Number of math inlines: 0
+Number of math displayed: 0
+
+Included file: ./sections/body.tex
+Encoding: ascii
+Sum count: 3276
+Words in text: 3002
+Words in headers: 66
+Words outside text (captions, etc.): 201
+Number of headers: 16
+Number of floats/tables/figures: 5
+Number of math inlines: 7
+Number of math displayed: 0
+Subcounts:
+  text+headers+captions (#headers/#floats/#inlines/#displayed)
+  243+1+0 (1/0/0/0) Section: Introduction
+  246+4+0 (1/0/0/0) Section: Background and Related Work
+  0+2+0 (1/0/0/0) Section: System Design
+  183+5+26 (1/1/0/0) Subsection: Participant, service and researcher boundaries
+  197+4+0 (1/0/0/0) Subsection: ASN qualification and lifecycle
+  0+3+0 (1/0/0/0) Section: Measurements and Scheduling
+  363+5+0 (1/0/0/0) Subsection: Library evidence and timing scope
+  248+4+0 (1/0/7/0) Subsection: Statistics, deadlines and budgets
+  85+9+0 (1/0/0/0) Subsection: Why retain libraries rather than our earlier packet engine?
+  250+4+0 (1/0/0/0) Section: Durability, Uploads and Interpretation
+  0+2+0 (1/0/0/0) Section: Ground Evaluation
+  192+5+0 (1/0/0/0) Subsection: Evidence and completed integration checks
+  321+7+175 (1/4/0/0) Subsection: Received portion of the newest long trip
+  219+4+0 (1/0/0/0) Subsection: Scheduling and delivery findings
+  273+3+0 (1/0/0/0) Section: Planned Independent Validation
+  182+4+0 (1/0/0/0) Section: Limitations, Ethics and Conclusion
+
+Included file: ./sections/appendices.tex
+Encoding: ascii
+Sum count: 486
+Words in text: 416
+Words in headers: 22
+Words outside text (captions, etc.): 43
+Number of headers: 5
+Number of floats/tables/figures: 3
+Number of math inlines: 5
+Number of math displayed: 0
+Subcounts:
+  text+headers+captions (#headers/#floats/#inlines/#displayed)
+  72+4+18 (1/1/0/0) Section: Implementation and Evidence Inventory
+  49+4+6 (1/1/0/0) Subsection: Row and field semantics
+  101+4+0 (1/0/1/0) Subsection: Provider and policy configuration
+  62+6+19 (1/1/4/0) Section: Independent Validation Matrix and Planned Plots
+  132+4+0 (1/0/0/0) Section: Reproduction and Current Deliverable
+
+Sum of files: main.tex
+File(s) total: main.tex
+Sum count: 3988
+Words in text: 3632
+Words in headers: 100
+Words outside text (captions, etc.): 244
+Number of headers: 23
+Number of floats/tables/figures: 8
+Number of math inlines: 12
+Number of math displayed: 0
+Files: 3
+Subcounts:
+  text+headers+captions (#headers/#floats/#inlines/#displayed)
+  214+12+0 (2/0/0/0) File: main.tex
+  3002+66+201 (16/5/7/0) Included file: ./sections/body.tex
+  416+22+43 (5/3/5/0) Included file: ./sections/appendices.tex
+

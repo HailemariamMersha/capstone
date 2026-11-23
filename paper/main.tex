@@ -1,0 +1,63 @@
+\RequirePackage[T1]{fontenc}
+\documentclass[10pt,conference]{IEEEtran}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx,booktabs,tabularx,array}
+\usepackage{xcolor,microtype,xurl}
+\usepackage[hidelinks]{hyperref}
+\usepackage{balance}
+\graphicspath{{figures/}}
+\newcommand{\system}{SkyMeasure}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mib}{\,\mathrm{MiB}}
+\newcommand{\ms}{\,\mathrm{ms}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setcounter{dbltopnumber}{2}
+\renewcommand{\dbltopfraction}{.92}
+\renewcommand{\textfraction}{.06}
+\title{SkyMeasure: Network Measurement on Unrooted Android Phones\protect\\for In-Flight Connectivity Research}
+\author{\IEEEauthorblockN{Hailemariam Mersha}
+\IEEEauthorblockA{Computer Science, New York University Abu Dhabi\\
+CS-UH 4001 Capstone Research Report\\
+Evidence through 16 November 2026}}
+
+\begin{document}
+\pagestyle{plain}
+\maketitle
+\thispagestyle{plain}
+\begin{abstract}
+In-flight connectivity studies can collect rich network evidence using rooted,
+researcher-controlled phones, but that instrumentation complicates participation
+on passengers' devices. We investigate how far a library-based application on
+unrooted Android can support an interpretable measurement campaign. SkyMeasure
+combines React Native orchestration, selected-Wi-Fi routing, individual probe
+evidence, durable local storage, versioned uploads and a researcher dashboard.
+It implements ICMP, TCP connection timing, UDP echo, traceroute, controlled HTTP
+transfers and one consented M-Lab NDT7 pair per trip. Autonomous system number (ASN) matching identifies
+eligible provider networks; it does not establish that a device is airborne.
+Ground experiments demonstrate useful reply and payload evidence, including
+three completed NDT7 pairs requiring 251.4--305.6 MiB of client-reported payload.
+A short trip reconciled all 435 expected records. A subsequent long trip exposed
+a delivery limitation: only nine of 58 declared segment manifests reached the
+server at the evaluation snapshot. Its received portion contains 414 measurements,
+including 1,305/1,320 ICMP replies and 2,524/2,640 UDP replies. We distinguish these
+observations from accuracy validation and specify independent terminal,
+gateway-capture, network-emulation and real-flight experiments. The contribution
+is an operational research prototype and an auditable account of its present
+capabilities and limitations, rather than a completed satellite-performance study.
+\end{abstract}
+\begin{IEEEkeywords}
+Network measurement, unrooted Android, in-flight connectivity, satellite Internet,
+mobile crowdsourcing, measurement validity
+\end{IEEEkeywords}
+
+\input{sections/body}
+\clearpage
+\balance
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\clearpage
+\onecolumn
+\appendices
+\input{sections/appendices}
+\end{document}
