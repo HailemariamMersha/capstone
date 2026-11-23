@@ -53,6 +53,7 @@ export function createServiceCoordinator(executor: BackgroundExecutor) {
         }
         return false;
       }
+      const work = drain;
       const mine = ++generation;
       const abort = new AbortController();
       controller = abort;
@@ -66,7 +67,6 @@ export function createServiceCoordinator(executor: BackgroundExecutor) {
         await executor.stop().catch(() => {});
         return false;
       }
-      const work = drain;
       const progress = (message: string) => {
         void serial(async () => {
           if (mine === generation && phase === 'upload')

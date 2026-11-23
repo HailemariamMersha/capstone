@@ -99,3 +99,16 @@ test('an automatic retry queued behind collection startup cannot take its servic
   expect(executor.setPhase).not.toHaveBeenCalledWith('upload');
   await coordinator.stop();
 });
+
+test('a handoff retains its selected drain through asynchronous phase changes', async () => {
+  const { executor, coordinator } = fixture();
+  const drain = jest.fn(async () => {});
+  const unregister = coordinator.registerDrain(drain);
+  await coordinator.startCollection(jest.fn(), jest.fn());
+  executor.setPhase.mockImplementationOnce(async () => {
+    unregister();
+  });
+  expect(await coordinator.handoffToUploads()).toBe(true);
+  await flush();
+  expect(drain).toHaveBeenCalledTimes(1);
+});

@@ -153,6 +153,12 @@ Connectivity/backoff waits do not reset that no-progress timer. Pending evidence
 stays local. Headless OS opportunities remain bounded to 25 seconds and cannot
 cancel a service-owned drain.
 
+The drain handler is registered for the JavaScript process lifetime, rather than
+by a screen. Its own network listener enforces the Wi-Fi/mobile-data preference
+even after the activity is removed. UI teardown stops only the visible retry
+scheduler, not service-owned uploading. New acknowledgements returned by an
+already-running shared upload pass still reset the drain's progress timer.
+
 V2 transport gzip-compresses bodies of at least 1 KiB when compression saves
 bytes. The server limits both encoded and decoded bodies to 8 MiB. Record batches
 target at most 200 records and 512 KiB decoded; an individually larger record

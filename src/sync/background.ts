@@ -265,7 +265,7 @@ export async function configureUploads() {
 }
 const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>(resolve => {
-    if (signal.aborted) {
+    if (signal.aborted || ms <= 0) {
       resolve();
       return;
     }
@@ -315,100 +315,138 @@ export async function drainPostTrip(
   signal: AbortSignal,
   progress: (message: string) => void,
 ) {
-  let lastProgress = Date.now();
-  const stalledMs = 10 * 60000;
-  let sent = 0;
-  while (
-    !signal.aborted &&
-    !isTripArmed() &&
-    Date.now() - lastProgress < stalledMs
-  ) {
-    const identity = await localSession();
-    if (!identity) return;
-    const raw = await secureStorage.getItem(`profile.${identity.user.id}`);
-    const profile: Profile | null = raw ? JSON.parse(raw) : null;
-    if (!profile?.consentVersion) return;
-    const next = await retryTime(identity.user.id);
-    const network = await NetInfo.fetch();
-    if (
-      !network.isConnected ||
-      network.isInternetReachable === false ||
-      (network.type !== 'wifi' && !profile.mobileUploads) ||
-      next > Date.now()
-    ) {
-      progress(
-        network.type !== 'wifi' && !profile.mobileUploads
-          ? 'Saved on this phone. Waiting for Wi-Fi.'
-          : 'Saved on this phone. Waiting to retry.',
-      );
-      await wait(
-        Math.min(10000, Math.max(1, stalledMs - (Date.now() - lastProgress))),
-        signal,
-      );
-      continue;
+  const removeNetwork = NetInfo.addEventListener(network => {
+    const request = activeMode === 'service' ? activeController : null;
+    if (!request) return;
+    if (!network.isConnected || network.isInternetReachable === false) {
+      request.abort();
+    } else if (network.type !== 'wifi') {
+      localSession()
+        .then(async identity => {
+          const raw = identity
+            ? await secureStorage.getItem(`profile.${identity.user.id}`)
+            : null;
+          if (!raw || !JSON.parse(raw).mobileUploads) request.abort();
+        })
+        .catch(() => request.abort());
     }
-    let result: SyncResult;
-    try {
-      result = await syncAccount({
-        mode: 'service',
-        budgetMs: Math.min(
-          180000,
+  });
+  try {
+    let lastProgress = Date.now();
+    const stalledMs = 10 * 60000;
+    let sent = 0;
+    while (
+      !signal.aborted &&
+      !isTripArmed() &&
+      Date.now() - lastProgress < stalledMs
+    ) {
+      const identity = await localSession();
+      if (!identity) return;
+      const raw = await secureStorage.getItem(`profile.${identity.user.id}`);
+      const profile: Profile | null = raw ? JSON.parse(raw) : null;
+      if (!profile?.consentVersion) return;
+      const next = await retryTime(identity.user.id);
+      const network = await NetInfo.fetch();
+      if (
+        !network.isConnected ||
+        network.isInternetReachable === false ||
+        (network.type !== 'wifi' && !profile.mobileUploads) ||
+        next > Date.now()
+      ) {
+        progress(
+          network.type !== 'wifi' && !profile.mobileUploads
+            ? 'Saved on this phone. Waiting for Wi-Fi.'
+            : 'Saved on this phone. Waiting to retry.',
+        );
+        await wait(
+          Math.min(10000, Math.max(1, stalledMs - (Date.now() - lastProgress))),
+          signal,
+        );
+        continue;
+      }
+      let result: SyncResult;
+      let progressObserved = false;
+      try {
+        result = await syncAccount({
+          mode: 'service',
+          budgetMs: Math.min(
+            180000,
+            Math.max(0, stalledMs - (Date.now() - lastProgress)),
+          ),
+          signal,
+          onProgress: (records, segments) => {
+            if (records || segments) {
+              progressObserved = true;
+              lastProgress = Date.now();
+              sent += records;
+              progress(`Sending saved results. ${sent} records acknowledged.`);
+            }
+          },
+        });
+      } catch (error) {
+        result = {
+          ...emptySyncResult(),
+          pending: true,
+          outcome: 'failed',
+          error,
+        };
+      }
+      // A service can join a visible pass already in progress. Its callback
+      // belongs to that caller; returned new ACKs still establish progress.
+      if (!progressObserved && (result.acknowledged || result.completed)) {
+        lastProgress = Date.now();
+        sent += result.acknowledged;
+        progress(`Sending saved results. ${sent} records acknowledged.`);
+      }
+      await recordRetry(identity.user.id, result);
+      if (
+        !result.pending ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 409
+      )
+        return;
+      await wait(
+        Math.min(
+          result.acknowledged || result.completed ? 1000 : 15000,
           Math.max(0, stalledMs - (Date.now() - lastProgress)),
         ),
         signal,
-        onProgress: (records, segments) => {
-          if (records || segments) {
-            lastProgress = Date.now();
-            sent += records;
-            progress(`Sending saved results. ${sent} records acknowledged.`);
-          }
-        },
-      });
-    } catch (error) {
-      result = {
-        ...emptySyncResult(),
-        pending: true,
-        outcome: 'failed',
-        error,
-      };
-    }
-    await recordRetry(identity.user.id, result);
-    if (
-      !result.pending ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 409
-    )
-      return;
-    await wait(result.acknowledged || result.completed ? 1000 : 15000, signal);
-  }
-  if (
-    !signal.aborted &&
-    !isTripArmed() &&
-    Date.now() - lastProgress >= stalledMs
-  ) {
-    const identity = await localSession();
-    if (identity) {
-      const key = `automatic-upload-retry.${identity.user.id}`;
-      const raw = await secureStorage.getItem(key);
-      const previous = raw ? JSON.parse(raw) : { attempts: 0, nextAt: 0 };
-      // Ending the service must not let the visible-app scheduler immediately
-      // create another ten-minute stalled service. Keep the queue for later.
-      await secureStorage.setItem(
-        key,
-        JSON.stringify({
-          ...previous,
-          nextAt: Math.max(previous.nextAt ?? 0, Date.now() + 15 * 60000),
-        }),
       );
     }
+    if (
+      !signal.aborted &&
+      !isTripArmed() &&
+      Date.now() - lastProgress >= stalledMs
+    ) {
+      const identity = await localSession();
+      if (identity) {
+        const key = `automatic-upload-retry.${identity.user.id}`;
+        const raw = await secureStorage.getItem(key);
+        const previous = raw ? JSON.parse(raw) : { attempts: 0, nextAt: 0 };
+        // Ending the service must not let the visible-app scheduler immediately
+        // create another ten-minute stalled service. Keep the queue for later.
+        await secureStorage.setItem(
+          key,
+          JSON.stringify({
+            ...previous,
+            nextAt: Math.max(previous.nextAt ?? 0, Date.now() + 15 * 60000),
+          }),
+        );
+      }
+    }
+  } finally {
+    removeNetwork();
   }
 }
+
+// Process-owned registration outlives the activity. Screen teardown must not
+// prevent a running collector's automatic ending from handing off its service.
+foregroundService.registerDrain(drainPostTrip);
 
 /** Visible wake-ups plus an explicit service handoff at trip completion. */
 export function startAutomaticUploads() {
   let cooldown = 0;
-  const removeDrain = foregroundService.registerDrain(drainPostTrip);
   const scheduler = createRetryScheduler({
     now: Date.now,
     async nextAttempt() {
@@ -510,7 +548,6 @@ export function startAutomaticUploads() {
     scheduler.setActive(false);
     app.remove();
     network();
-    removeDrain();
     syncAccount.cancelForeground();
   };
 }

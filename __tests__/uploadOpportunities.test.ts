@@ -1,5 +1,7 @@
 const mockStorage = new Map<string, string>();
 let mockCursorHook: (() => void) | null = null;
+let mockDrainHandler: unknown;
+const mockNetworkListeners = new Set<(network: any) => void>();
 const mockLegacy = Object.assign(
   jest.fn(async () => {}),
   { cancel: jest.fn() },
@@ -15,7 +17,10 @@ jest.mock('react-native-background-actions', () => ({
   isRunning: () => false,
 }));
 jest.mock('@react-native-community/netinfo', () => ({
-  addEventListener: jest.fn(() => () => {}),
+  addEventListener: jest.fn(listener => {
+    mockNetworkListeners.add(listener);
+    return () => mockNetworkListeners.delete(listener);
+  }),
   fetch: async () => ({
     isConnected: true,
     isInternetReachable: true,
@@ -53,7 +58,12 @@ jest.mock('../src/sync/accountSync', () => ({
 jest.mock('../src/background/serviceCoordinator', () => ({
   foregroundService: {
     uploading: () => false,
-    registerDrain: () => () => {},
+    registerDrain: (handler: unknown) => {
+      mockDrainHandler = handler;
+      return () => {
+        mockDrainHandler = null;
+      };
+    },
     startUploads: async () => false,
   },
 }));
@@ -64,6 +74,7 @@ beforeEach(() => {
   jest.setSystemTime(1000000);
   jest.clearAllMocks();
   mockStorage.clear();
+  mockNetworkListeners.clear();
   mockCursorHook = null;
   mockTrips.length = 0;
   mockSessions.length = 0;
@@ -224,6 +235,138 @@ test('service drain stops after ten minutes without new acknowledgements', async
     JSON.parse(mockStorage.get('automatic-upload-retry.owner-a')!).nextAt,
   ).toBeGreaterThanOrEqual(Date.now() + 15 * 60000);
 });
+
+test('slow failed passes do not extend the ten-minute no-progress deadline', async () => {
+  const { drainPostTrip } = require('../src/sync/background');
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('stalled', 1));
+  mockUpload.mockImplementation(
+    async (_trip, _live, _wifi, _persist, _observe, options) =>
+      new Promise(resolve => {
+        const finish = () => {
+          clearTimeout(timer);
+          resolve(undefined);
+        };
+        const timer = setTimeout(finish, 7000);
+        options.signal.addEventListener('abort', finish, { once: true });
+      }),
+  );
+  let finished = false;
+  const work = drainPostTrip(new AbortController().signal, jest.fn()).then(
+    () => {
+      finished = true;
+    },
+  );
+  await jest.advanceTimersByTimeAsync(600000);
+  expect(finished).toBe(true);
+  await work;
+});
+
+test('a service joining an existing visible pass retains its new acknowledgement progress', async () => {
+  const { drainPostTrip } = require('../src/sync/background');
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('shared', 1));
+  let finish!: () => void;
+  mockUpload
+    .mockImplementationOnce(
+      async () =>
+        new Promise(resolve => {
+          finish = () =>
+            resolve({
+              acknowledged: 7,
+              completed: 0,
+              pending: true,
+              outcome: 'pending',
+            } as any);
+        }),
+    )
+    .mockImplementation(
+      async (t, _live, _wifi, _persist, _observe, options) => {
+        options.onProgress(3, 1);
+        t.uploadedRevision = t.revision;
+        return {
+          acknowledged: 3,
+          completed: 1,
+          pending: false,
+          outcome: 'complete',
+        } as any;
+      },
+    );
+  const visible = syncAccount();
+  await jest.advanceTimersByTimeAsync(1);
+  const progress = jest.fn();
+  const work = drainPostTrip(new AbortController().signal, progress);
+  await jest.advanceTimersByTimeAsync(1);
+  finish();
+  await jest.advanceTimersByTimeAsync(1001);
+  await Promise.all([visible, work]);
+  expect(progress).toHaveBeenCalledWith(
+    'Sending saved results. 7 records acknowledged.',
+  );
+  expect(progress).toHaveBeenLastCalledWith(
+    'Sending saved results. 10 records acknowledged.',
+  );
+});
+
+test('activity teardown preserves the process-owned upload handoff', () => {
+  const {
+    startAutomaticUploads,
+    drainPostTrip,
+  } = require('../src/sync/background');
+  const stop = startAutomaticUploads();
+  expect(mockDrainHandler).toBe(drainPostTrip);
+  stop();
+  expect(mockDrainHandler).toBe(drainPostTrip);
+});
+
+test.each([false, true])(
+  'service-owned network checks survive screen teardown (mobileUploads=%s)',
+  async mobileUploads => {
+    const { drainPostTrip } = require('../src/sync/background');
+    mockStorage.set(
+      'profile.owner-a',
+      JSON.stringify({ consentVersion: 'current', mobileUploads }),
+    );
+    mockTrips.push(trip('pending', 1));
+    let requestSignal!: AbortSignal;
+    mockUpload.mockImplementation(
+      async (_trip, _live, _wifi, _persist, _observe, options) =>
+        new Promise(resolve => {
+          requestSignal = options.signal;
+          options.signal.addEventListener('abort', () =>
+            resolve({
+              acknowledged: 0,
+              completed: 0,
+              pending: true,
+              outcome: 'cancelled',
+            } as any),
+          );
+        }),
+    );
+    const abort = new AbortController();
+    const work = drainPostTrip(abort.signal, jest.fn());
+    await jest.advanceTimersByTimeAsync(1);
+    expect(requestSignal).toBeDefined();
+    for (const listener of mockNetworkListeners)
+      listener({
+        type: 'cellular',
+        isConnected: true,
+        isInternetReachable: true,
+      });
+    await jest.advanceTimersByTimeAsync(1);
+    expect(requestSignal.aborted).toBe(!mobileUploads);
+    expect(mockTrips[0].uploadedRevision).toBeUndefined();
+    abort.abort();
+    await work;
+    expect(mockNetworkListeners.size).toBe(0);
+  },
+);
 
 test('service drain keeps collecting acknowledgements across passes and finishes without an OS job', async () => {
   const { drainPostTrip } = require('../src/sync/background');
