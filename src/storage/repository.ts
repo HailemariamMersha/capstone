@@ -202,6 +202,20 @@ export function createRepository(
       [tripId, owner, netId],
     );
   }
+  async function retireSession(sessionId: string) {
+    await db.execute(
+      "UPDATE sessions SET upload_status='Removed from study' WHERE id=?",
+      [sessionId],
+    );
+    await db.execute(
+      `UPDATE sync_queue SET state='retired',last_error=NULL WHERE
+      (entity_type='session' AND entity_id=?) OR
+      (entity_type='measurement' AND entity_id IN (SELECT id FROM measurements WHERE session_id=?)) OR
+      (entity_type='event' AND entity_id IN (SELECT id FROM connectivity_events WHERE session_id=?)) OR
+      (entity_type='snapshot' AND entity_id IN (SELECT id FROM network_snapshots WHERE session_id=?))`,
+      [sessionId, sessionId, sessionId, sessionId],
+    );
+  }
   return {
     initialize,
     saveTripPayment: (owner, tripId, value) =>
@@ -225,11 +239,20 @@ export function createRepository(
           [owner, tripId],
         );
       }),
+    historyResetAt: () =>
+      read(async () => {
+        const row = (
+          await db.execute(
+            "SELECT value_json FROM app_settings WHERE key='history-reset'",
+          )
+        ).rows[0];
+        return row ? Number(JSON.parse(String(row.value_json))) : null;
+      }),
     nextUploadAttempt: owner =>
       read(async () => {
         const sessions = (
           await db.execute(
-            "SELECT id FROM sessions WHERE owner_id=? AND state!='active' AND upload_status!='Uploaded'",
+            "SELECT id FROM sessions WHERE owner_id=? AND state!='active' AND upload_status NOT IN ('Uploaded','Removed from study')",
             [owner],
           )
         ).rows;
@@ -286,6 +309,53 @@ export function createRepository(
           ])
         ).rows.map(r => JSON.parse(String(r.payload_json))),
       ),
+    listTripHistory: (owner, limit = 20, offset = 0) =>
+      read(async () =>
+        (
+          await db.execute(
+            "SELECT payload_json FROM trips WHERE owner_id=? AND COALESCE(json_extract(payload_json,'$.removedFromStudy'),0)=0 ORDER BY json_extract(payload_json,'$.startedAt') DESC,id LIMIT ? OFFSET ?",
+            [
+              owner,
+              Math.max(1, Math.min(100, Math.floor(limit))),
+              Math.max(0, Math.floor(offset)),
+            ],
+          )
+        ).rows.map(r => JSON.parse(String(r.payload_json))),
+      ),
+    retireSessionData: (owner, sessionId) =>
+      write(async () => {
+        const row = (
+          await db.execute('SELECT owner_id FROM sessions WHERE id=?', [
+            sessionId,
+          ])
+        ).rows[0];
+        if (!row || row.owner_id !== owner)
+          throw new Error('Recording ownership mismatch');
+        await retireSession(sessionId);
+      }),
+    retireTripData: (owner, tripId) =>
+      write(async () => {
+        const row = (
+          await db.execute(
+            'SELECT payload_json FROM trips WHERE id=? AND owner_id=?',
+            [tripId, owner],
+          )
+        ).rows[0];
+        if (!row) throw new Error('Trip ownership mismatch');
+        const saved = JSON.parse(String(row.payload_json));
+        saved.removedFromStudy = true;
+        await db.execute(
+          'UPDATE trips SET payload_json=? WHERE id=? AND owner_id=?',
+          [JSON.stringify(saved), tripId, owner],
+        );
+        const sessions = (
+          await db.execute(
+            "SELECT id FROM sessions WHERE owner_id=? AND json_extract(config_json,'$.tripId')=?",
+            [owner, tripId],
+          )
+        ).rows;
+        for (const session of sessions) await retireSession(String(session.id));
+      }),
     hasActiveSession: () =>
       read(async () =>
         Boolean(

@@ -253,3 +253,15 @@ test('cancelled trip registration settles quietly and releases the upload gate',
   expect(f.request).not.toHaveBeenCalled();
   release();
 });
+
+test('an archived server recording retires its queue without authentication failure', async () => {
+  const f = fixture();
+  f.store.retireSessionData = jest.fn();
+  f.request.mockRejectedValue(
+    Object.assign(new Error('removed'), { status: 410, code: 'DATA_REMOVED' }),
+  );
+  await f.run();
+  expect(f.store.retireSessionData).toHaveBeenCalledWith('a', 's');
+  expect(f.store.failSync).not.toHaveBeenCalled();
+  expect(f.store.deferUpload).not.toHaveBeenCalled();
+});

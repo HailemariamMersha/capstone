@@ -52,6 +52,7 @@ export function createAccountSync(deps: SyncDependencies) {
           s =>
             s.state !== 'active' &&
             s.uploadStatus !== 'Uploaded' &&
+            s.uploadStatus !== 'Removed from study' &&
             (deps.sessionFilter?.(s) ?? true),
         );
       if (signal.aborted) return;
@@ -161,6 +162,10 @@ export function createAccountSync(deps: SyncDependencies) {
             break;
           }
           const failure = (error ?? {}) as { code?: string; status?: number };
+          if (failure.status === 410 && failure.code === 'DATA_REMOVED') {
+            await deps.store.retireSessionData(owner, s.id);
+            continue;
+          }
           const timeout = failure.code === 'REQUEST_TIMEOUT';
           if (
             stage === 'records' &&

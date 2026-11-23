@@ -76,6 +76,7 @@ jest.mock('../src/storage/database', () => ({
   measurementStore: {
     accountSessions: jest.fn().mockResolvedValue([]),
     accountTrips: jest.fn().mockResolvedValue([]),
+    listTripHistory: jest.fn().mockResolvedValue([]),
   },
 }));
 jest.mock('../src/export/shareSession', () => ({ shareSession: jest.fn() }));

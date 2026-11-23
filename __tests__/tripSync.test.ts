@@ -19,6 +19,7 @@ jest.mock('../src/storage/database', () => ({
     hasActiveSession: jest.fn(async () => false),
     accountSessions: jest.fn(async () => []),
     saveTrip: jest.fn(),
+    retireTripData: jest.fn(),
     tripPayment: jest.fn(async () => null),
     acknowledgeTripPayment: jest.fn(),
   },
@@ -133,4 +134,16 @@ test('payment metadata is uploaded once through its separate owner endpoint, nev
     t.id,
   );
   expect(JSON.stringify(tripManifest(t))).not.toContain('abc123');
+});
+
+test('a history reset retires the old trip without replacing its identity', async () => {
+  const t = trip();
+  (api as jest.Mock).mockRejectedValue(
+    Object.assign(new Error('removed'), { status: 410, code: 'DATA_REMOVED' }),
+  );
+  await uploadTrip(t, false, true, async () => {});
+  expect(t.removedFromStudy).toBe(true);
+  expect(t.state).toBe('interrupted');
+  expect(measurementStore.retireTripData).toHaveBeenCalledWith('owner', t.id);
+  expect(currentActivity()).toBeNull();
 });

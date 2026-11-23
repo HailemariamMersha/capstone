@@ -656,3 +656,45 @@ test('timeout batch limits survive restart, remain owner scoped and never split 
   await store.deleteAccountRecords('a');
   expect(await store.uploadBatchLimit('a', 's')).toBe(50);
 });
+
+test('history pagination is owner scoped and retired evidence stays exportable without retrying', async () => {
+  await store.initialize();
+  for (let i = 0; i < 25; i++)
+    await store.saveTrip({
+      id: `trip-${i}`,
+      ownerId: 'a',
+      startedAt: i,
+      state: 'completed',
+      flight: {},
+      revision: 1,
+    });
+  await store.saveTrip({
+    id: 'other',
+    ownerId: 'b',
+    startedAt: 999,
+    state: 'completed',
+    flight: {},
+    revision: 1,
+  });
+  const rows = await store.listTripHistory('a', 20, 0);
+  expect(rows).toHaveLength(20);
+  expect(rows[0].id).toBe('trip-24');
+  expect((await store.listTripHistory('a', 20, 20)).map(t => t.id)).toEqual([
+    'trip-4',
+    'trip-3',
+    'trip-2',
+    'trip-1',
+    'trip-0',
+  ]);
+  const sid = await store.createSession(
+    { ...config, tripId: 'trip-24' },
+    undefined,
+    'a',
+  );
+  await store.endSession(sid, 'completed', 'test');
+  await store.retireTripData('a', 'trip-24');
+  expect((await store.listTripHistory('a', 20, 0))[0].id).toBe('trip-23');
+  expect((await store.getSyncBatch(50, 'a', sid)).records).toHaveLength(0);
+  expect((await store.exportSession(sid)).session.id).toBe(sid);
+  await expect(store.retireSessionData('b', sid)).rejects.toThrow('ownership');
+});

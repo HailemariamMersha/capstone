@@ -142,6 +142,17 @@ export async function uploadTrip(
   cancelCurrent = upload.cancel;
   try {
     await upload();
+  } catch (error) {
+    if ((error as { code?: string })?.code !== 'DATA_REMOVED') throw error;
+    t.removedFromStudy = true;
+    if (t.state === 'active') {
+      t.state = 'interrupted';
+      t.phase = 'finished';
+      t.endedAt = Date.now();
+      t.reason = 'study_history_reset';
+      await store.saveTrip(t);
+    }
+    await store.retireTripData(t.ownerId, t.id);
   } finally {
     cancelCurrent = null;
   }

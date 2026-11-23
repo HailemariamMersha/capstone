@@ -32,11 +32,19 @@ export interface MeasurementStore {
   ): Promise<{ netId: string; uploaded: boolean } | null>;
   acknowledgeTripPayment(owner: string, tripId: string): Promise<void>;
   nextUploadAttempt(owner: string): Promise<number | null>;
+  historyResetAt(): Promise<number | null>;
   saveTrip(
     trip: import('../trips/model').Trip,
     paymentNetId?: string,
   ): Promise<void>;
   accountTrips(ownerId: string): Promise<import('../trips/model').Trip[]>;
+  listTripHistory(
+    ownerId: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<import('../trips/model').Trip[]>;
+  retireSessionData(ownerId: string, sessionId: string): Promise<void>;
+  retireTripData(ownerId: string, tripId: string): Promise<void>;
   saveSnapshot(
     sessionId: string,
     snapshot: NetworkSnapshot,

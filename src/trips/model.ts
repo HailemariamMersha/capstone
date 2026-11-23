@@ -95,6 +95,8 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  /** Retired evidence stays exportable locally and never enters automatic sync. */
+  removedFromStudy?: boolean;
   groundTest?: boolean;
   mlabUsage?: {
     downloadClientBytes: number | null;

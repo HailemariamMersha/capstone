@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import {
   PermissionsAndroid,
   Platform,
@@ -287,26 +288,44 @@ export default function FlightHome({ owner }: { owner: string }) {
   );
 }
 export function TripHistory({ owner }: { owner: string }) {
+  const focused = useIsFocused();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  useEffect(() => {
+    setPage(0);
+    setTrips([]);
+  }, [owner]);
   useEffect(() => {
     let alive = true;
-    setTrips([]);
-    const update = () =>
+    const update = () => {
+      if (!focused || AppState.currentState !== 'active') return;
       measurementStore
-        .accountTrips(owner)
+        .listTripHistory(owner, 21, page * 20)
         .then(rows => {
-          if (alive) setTrips(rows.sort((a, b) => b.startedAt - a.startedAt));
+          if (alive) {
+            setHasMore(rows.length > 20);
+            setTrips(rows.slice(0, 20));
+          }
         })
         .catch(() => {});
+    };
     update();
-    const timer = setInterval(update, 5000);
+    const timer = setInterval(update, 15000);
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active') update();
+    });
     return () => {
       alive = false;
       clearInterval(timer);
+      listener.remove();
     };
-  }, [owner]);
+  }, [owner, page, focused]);
   return (
     <View style={styles.history}>
+      {!trips.length && (
+        <Text>No trips saved yet. Start a trip from Home.</Text>
+      )}
       {trips.map(t => (
         <Card key={t.id} style={styles.card} mode="contained">
           <Card.Content style={styles.historyContent}>
@@ -320,6 +339,7 @@ export function TripHistory({ owner }: { owner: string }) {
               {new Date(t.startedAt).toLocaleString()}
             </Text>
             <Chip style={styles.badge}>
+              {t.groundTest ? 'Ground test · ' : ''}
               {t.state === 'active'
                 ? 'In progress'
                 : t.state === 'interrupted'
@@ -329,6 +349,14 @@ export function TripHistory({ owner }: { owner: string }) {
           </Card.Content>
         </Card>
       ))}
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <Button disabled={!page} onPress={() => setPage(p => p - 1)}>
+          Previous trips
+        </Button>
+        <Button disabled={!hasMore} onPress={() => setPage(p => p + 1)}>
+          Next trips
+        </Button>
+      </View>
     </View>
   );
 }

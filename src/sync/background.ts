@@ -52,7 +52,12 @@ export const syncAccount = Object.assign(
       if (!session || !n.isConnected || n.isInternetReachable === false) return;
       const owner = session.user.id;
       const trips = (await measurementStore.accountTrips(owner))
-        .filter(t => t.state !== 'active' && t.uploadedRevision !== t.revision)
+        .filter(
+          t =>
+            !t.removedFromStudy &&
+            t.state !== 'active' &&
+            t.uploadedRevision !== t.revision,
+        )
         .sort((a, b) => a.startedAt - b.startedAt);
       const legacyPending = (
         await measurementStore.accountSessions(owner)
@@ -60,7 +65,8 @@ export const syncAccount = Object.assign(
         s =>
           !s.config.tripId &&
           s.state !== 'active' &&
-          s.uploadStatus !== 'Uploaded',
+          s.uploadStatus !== 'Uploaded' &&
+          s.uploadStatus !== 'Removed from study',
       );
       const tasks: { id: string; run(): Promise<void> }[] = [
         ...(legacyPending ? [{ id: 'legacy', run: () => syncLegacy() }] : []),
@@ -159,6 +165,19 @@ export function startAutomaticUploads() {
     async nextAttempt() {
       const session = await localSession();
       if (!session) return null;
+      const resetAt = await measurementStore.historyResetAt?.();
+      if (resetAt) {
+        const owner = session.user.id;
+        const seen = await secureStorage.getItem(`history-reset-seen.${owner}`);
+        if (Number(seen ?? 0) < resetAt) {
+          await secureStorage.removeItem(`automatic-upload-retry.${owner}`);
+          await secureStorage.removeItem(`upload-opportunity-cursor.${owner}`);
+          await secureStorage.setItem(
+            `history-reset-seen.${owner}`,
+            String(resetAt),
+          );
+        }
+      }
       if (isTripArmed() || currentActivity()) return Date.now() + 30000;
       const n = await NetInfo.fetch();
       if (!n.isConnected || n.isInternetReachable === false) return null;
@@ -174,7 +193,10 @@ export function startAutomaticUploads() {
       if (
         next == null &&
         !trips.some(
-          t => t.state !== 'active' && t.uploadedRevision !== t.revision,
+          t =>
+            !t.removedFromStudy &&
+            t.state !== 'active' &&
+            t.uploadedRevision !== t.revision,
         )
       )
         return null;

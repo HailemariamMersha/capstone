@@ -273,6 +273,14 @@ export async function api<T>(
       response = await request(refreshed.access_token);
     }
     if (!response.ok) {
+      if (response.status === 410) {
+        const body = await response.json().catch(() => ({}));
+        if (body.detail?.code === 'DATA_REMOVED')
+          throw Object.assign(
+            new Error('This test was archived and removed from study history.'),
+            { status: 410, code: 'DATA_REMOVED' },
+          );
+      }
       if (response.status === 401) throw signInRequired();
       if (response.status === 403) {
         let detail = '';
