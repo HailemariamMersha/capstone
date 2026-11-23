@@ -112,7 +112,7 @@ export function DataTable<T>({
         <div className="panel p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm muted" role="status">
-              {rows.length} matching rows · {visible.length} columns shown
+              {rows.length} rows loaded · {visible.length} columns shown
             </p>
             <Button
               variant="outline"
@@ -124,7 +124,7 @@ export function DataTable<T>({
           </div>
           <details>
             <summary className="cursor-pointer font-medium py-2">
-              Choose columns
+              Customize columns
             </summary>
             <label className="block mt-3">
               Find a column
@@ -184,8 +184,8 @@ export function DataTable<T>({
             </div>
           </details>
           <p className="text-xs muted">
-            CSV includes all matching rows across pages, using the shown columns
-            and sort order. Empty cells mean unavailable.
+            CSV includes the rows loaded into this table, using the shown
+            columns and sort order. A dash means missing or not applicable.
           </p>
         </div>
       )}
@@ -259,6 +259,31 @@ export function DataTable<T>({
                         </button>
                       ) : (
                         flexRender(h.column.columnDef.header, h.getContext())
+                      )}
+                      {(
+                        h.column.columnDef.meta as
+                          | { description?: string }
+                          | undefined
+                      )?.description && (
+                        <details className="inline-block ml-2 normal-case tracking-normal align-middle">
+                          <summary
+                            className="cursor-pointer inline-flex items-center justify-center rounded-full border border-slate-300 w-6 h-6 text-xs"
+                            aria-label={`About ${String(
+                              h.column.columnDef.header,
+                            )}`}
+                          >
+                            ?
+                          </summary>
+                          <p className="absolute z-20 max-w-sm whitespace-normal bg-white border border-slate-200 shadow-lg rounded-xl p-4 text-xs font-normal text-slate-700">
+                            {
+                              (
+                                h.column.columnDef.meta as {
+                                  description: string;
+                                }
+                              ).description
+                            }
+                          </p>
+                        </details>
                       )}
                     </th>
                   ))}

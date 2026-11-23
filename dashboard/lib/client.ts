@@ -46,6 +46,10 @@ async function request<T>(
         },
       },
     );
+    if (response.status === 404 && path.startsWith('/research/trips/'))
+      throw new Error(
+        'This trip is not available. It may have been removed from test history. Return to Trips to see current uploads.',
+      );
     if (!response.ok)
       throw new Error(
         response.status === 403
@@ -71,7 +75,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   );
 }
 export async function download(path: string, name: string) {
-  const blob = await request(path, {}, response => response.blob(), 120000);
+  const blob = await request(path, {}, response => response.blob(), 600000);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

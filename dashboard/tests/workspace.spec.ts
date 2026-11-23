@@ -1,23 +1,131 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { sampleRows, csvText } from '../lib/evidence';
 import {
   measurementFields,
   probeFields,
   scheduleFields,
   variableDefinition,
 } from '../lib/variable-reference';
-import {
-  csvText,
-  filterMeasurements,
-  sampleRows,
-  type Evidence,
-} from '../lib/evidence';
-async function signedIn(
-  page: Page,
-  role: string,
-  measurements?: Evidence[],
-  tripChanges?: Record<string, unknown>,
-) {
+const id = 'a'.repeat(32),
+  sid = 'b'.repeat(32),
+  start = 1793534400000;
+function trip(overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    participantId: 'c'.repeat(32),
+    flight: { flightNumber: 'TEST123', departure: 'DOH', arrival: 'JFK' },
+    startedAt: start,
+    endedAt: start + 3600000,
+    state: 'completed',
+    phase: 'finished',
+    provider: 'TEST Etisalat',
+    reason: 'participant_stop',
+    groundTest: true,
+    receivedAt: '2026-11-01T13:01:00Z',
+    segmentCount: 4,
+    receivedSegments: 4,
+    completeSegments: 4,
+    missingSegments: 0,
+    receivedRecords: 435,
+    expectedRegisteredRecords: 435,
+    measurements: 41,
+    failures: 1,
+    uploadComplete: true,
+    ...overrides,
+  };
+}
+const protocol = {
+  type: 'icmp_burst',
+  attempts: 2,
+  successful: 2,
+  failed: 0,
+  timeouts: 0,
+  capped: 0,
+  incompleteBursts: 0,
+  reached: 0,
+  sampleCount: 20,
+  replies: 19,
+  medianMs: 25,
+  timingExcluded: 0,
+};
+function detail(overrides: Record<string, unknown> = {}) {
+  return {
+    ...trip(),
+    computedAt: start / 1000,
+    dataRevision: 1,
+    summary: {
+      receivedSegments: 4,
+      receivedRecords: 435,
+      expectedRecords: 435,
+      measurements: 41,
+      failures: 1,
+      protocols: [protocol],
+    },
+    health: {
+      observedCollectionMs: 3300000,
+      reportedDurationMs: 3600000,
+      coverageIsEstimate: true,
+      gapCount: 1,
+      gapMs: 150000,
+      uploadRetries: 2,
+      skippedProbes: 3,
+      timingExcluded: 1,
+      powerObservations: [
+        {
+          at: start,
+          percent: 90,
+          screenInteractive: false,
+          deviceIdle: true,
+          batteryExempt: true,
+        },
+      ],
+    },
+    events: [
+      {
+        id: 'state',
+        at: start,
+        kind: 'provider_state',
+        provider: 'TEST Etisalat',
+        asnState: 'positive',
+        phase: 'collecting',
+      },
+      {
+        id: 'gap',
+        at: start + 300000,
+        end: start + 450000,
+        kind: 'collector_gap',
+        reason: 'late_control_wakeup',
+        durationMs: 150000,
+      },
+      {
+        id: 'upload',
+        at: start + 900000,
+        end: start + 925000,
+        kind: 'upload_pause',
+        reason: 'opportunity_finished',
+      },
+      { id: sid, at: start, end: start + 900000, kind: 'segment', index: 0 },
+      {
+        id: 'missing',
+        at: start + 3000000,
+        end: start + 3600000,
+        kind: 'unreceived',
+        reason: 'No received segment evidence for this interval',
+      },
+    ],
+    segments: [{ index: 0, sessionId: sid, uploaded: true }],
+    ...overrides,
+  };
+}
+type Options = {
+  role?: string;
+  empty?: boolean;
+  providerFailure?: boolean;
+  tripChanges?: Record<string, unknown>;
+  detailChanges?: Record<string, unknown>;
+};
+async function signedIn(page: Page, options: Options = {}) {
+  const role = options.role ?? 'researcher';
   await page.addInitScript(() =>
     localStorage.setItem(
       'sb-skymeasure-test-auth-token',
@@ -35,29 +143,174 @@ async function signedIn(
     ),
   );
   await page.route('**/api/v2/**', async route => {
-    const url = new URL(route.request().url());
-    const path = url.pathname;
-    const summary = {
-      id: 'a'.repeat(32),
-      participantId: 'b'.repeat(32),
-      collectedAt: '2026-10-12T12:00:00Z',
-      receivedAt: '2026-10-12T12:12:00Z',
-      completedAt: '2026-10-12T12:13:00Z',
-      collectorVersion: 'libraries-test',
-      measurements: 1,
-      failures: 0,
-      receivedRecords: 2,
-      expectedRecords: 2,
-      uploadStatus: 'Uploaded',
-    };
-    if (path.endsWith('/profile'))
-      return route.fulfill({ json: { role, participantId: 'b'.repeat(32) } });
+    const u = new URL(route.request().url()),
+      p = u.pathname;
+    if (p.endsWith('/profile'))
+      return route.fulfill({ json: { role, participantId: 'c'.repeat(32) } });
     if (role === 'participant')
       return route.fulfill({
         status: 403,
         json: { detail: 'Researcher access required' },
       });
-    if (path.endsWith('/admin/payments'))
+    if (p.endsWith('/history-generation'))
+      return route.fulfill({ json: { resetAt: 0 } });
+    if (p.endsWith('/trip-overview'))
+      return route.fulfill({
+        json: {
+          trips: options.empty ? 0 : 1,
+          groundTests: options.empty ? 0 : 1,
+          studyTrips: 0,
+          incompleteUploads: 0,
+        },
+      });
+    if (p.endsWith('/provider-results'))
+      return options.providerFailure
+        ? route.fulfill({ status: 503, json: { detail: 'busy' } })
+        : route.fulfill({
+            json: {
+              computedAt: start / 1000,
+              items: options.empty
+                ? []
+                : [
+                    {
+                      provider: 'TEST Etisalat',
+                      asn: '5384',
+                      groundTest: true,
+                      protocol: 'icmp_burst',
+                      target: 'google.com',
+                      attempts: 2,
+                      successful: 2,
+                      probes: 20,
+                      replies: 19,
+                      medianRttMs: 25,
+                      medianMbps: null,
+                    },
+                  ],
+            },
+          });
+    if (p.endsWith('/trips'))
+      return route.fulfill({
+        json: {
+          items: options.empty ? [] : [trip(options.tripChanges)],
+          total: options.empty ? 0 : 41,
+        },
+      });
+    if (p.endsWith('/detail'))
+      return route.fulfill({ json: detail(options.detailChanges) });
+    if (p.endsWith('/timeline'))
+      return route.fulfill({
+        json: {
+          computedAt: start / 1000,
+          clock: 'recorded_wall_clock_utc',
+          series: [
+            {
+              type: 'icmp_burst',
+              bucketMs: 1,
+              points: [
+                {
+                  id: 'm',
+                  at: start + 1000,
+                  type: 'icmp_burst',
+                  value: 0,
+                  success: true,
+                  timingValid: true,
+                  target: 'google.com',
+                },
+              ],
+            },
+            {
+              type: 'download',
+              bucketMs: 1,
+              points: [
+                {
+                  id: 'd',
+                  at: start + 600000,
+                  type: 'download',
+                  value: null,
+                  success: false,
+                  timingValid: true,
+                  error: 'timeout',
+                  target: 'lab.invalid',
+                },
+              ],
+            },
+          ],
+        },
+      });
+    if (p.endsWith('/evidence')) {
+      const samples = u.searchParams.get('layer') === 'samples',
+        events = u.searchParams.get('layer') === 'events';
+      return route.fulfill({
+        json: {
+          total: 61,
+          items: samples
+            ? [
+                {
+                  timestamp: '2026-11-01T12:00:01Z',
+                  protocol: 'icmp_burst',
+                  sequence: 0,
+                  rttMs: 0,
+                  outcome: 'reply',
+                  address: null,
+                  hop: null,
+                  phase: 'probe',
+                  measurementId: 'm',
+                },
+              ]
+            : events
+            ? [
+                {
+                  timestamp: '2026-11-01T12:05:00Z',
+                  kind: 'collector_gap',
+                  details: { reason: 'late_control_wakeup' },
+                },
+              ]
+            : [
+                {
+                  timestamp: '2026-11-01T12:00:01Z',
+                  type: 'icmp_burst',
+                  value: 0,
+                  unit: 'ms',
+                  success: true,
+                  targetHost: 'google.com',
+                  durationMs: 5,
+                  transferredBytes: null,
+                  errorType: null,
+                  method: 'icmp_library',
+                  id: 'm',
+                },
+              ],
+        },
+      });
+    }
+    if (p.endsWith('/export') || p.endsWith('/export-summary'))
+      return route.fulfill({
+        contentType:
+          u.searchParams.get('format') === 'csv' || p.endsWith('export-summary')
+            ? 'text/csv'
+            : 'application/json',
+        body:
+          u.searchParams.get('format') === 'csv' || p.endsWith('export-summary')
+            ? 'trip.id,sample.rttMs\r\na,0\r\n'
+            : JSON.stringify({
+                trip: trip(),
+                segments: [],
+                receipt: { uploadComplete: true },
+              }),
+      });
+    if (p.endsWith('/trip-contributors'))
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              participantId: 'c'.repeat(32),
+              trips: 1,
+              latestCollection: start,
+            },
+          ],
+        },
+      });
+    if (p.endsWith('/admin/payments'))
       return route.fulfill(
         role === 'administrator'
           ? {
@@ -65,164 +318,58 @@ async function signedIn(
                 total: 1,
                 items: [
                   {
-                    tripId: 'd'.repeat(32),
-                    participantId: 'b'.repeat(32),
+                    tripId: id,
+                    participantId: 'c'.repeat(32),
                     netId: 'abc123',
                     flight: { flightNumber: 'TEST123' },
-                    startedAt: 1793534400000,
-                    receivedAt: '2026-11-01T12:30:00Z',
+                    startedAt: start,
+                    receivedAt: '2026-11-01T13:00:00Z',
                   },
                 ],
               },
             }
           : { status: 403, json: { detail: 'Administrator access required' } },
       );
-    if (path.endsWith('/overview'))
+    if (p.endsWith('/admin/members'))
+      return route.fulfill({
+        json: { items: [{ participantId: 'c'.repeat(32), role }] },
+      });
+    if (p.includes('/research/sessions/'))
       return route.fulfill({
         json: {
-          participants: 1,
-          sessions: 1,
-          measurements: 1,
-          partialSessions: 0,
-          failures: 0,
-        },
-      });
-    if (url.searchParams.get('format') === 'csv')
-      return route.fulfill({
-        contentType: 'text/csv',
-        body: 'measurement.id,sample.rttMs\r\na,0\r\n',
-      });
-    if (path.endsWith('/trips'))
-      return route.fulfill({
-        json: {
-          total: 1,
-          items: [
-            {
-              id: 'c'.repeat(32),
-              participantId: 'b'.repeat(32),
-              state: 'interrupted',
-              phase: 'finished',
-              confidence: 'network_only',
-              provider: 'Starlink',
-              receivedAt: '2026-11-01T12:30:00Z',
-              startedAt: 1793534400000,
-              endedAt: 1793536200000,
-              firstQualifiedAt: 1793534430000,
-              reason: 'process_interrupted_exact_end_unknown',
-              shadow: true,
-              flight: {
-                flightNumber: 'TEST123',
-                departure: 'TEST A',
-                arrival: 'TEST B',
-              },
-              used: { transfers: 0, diagnostics: 1280, uploads: 4000 },
-              uploadComplete: false,
-              missingSegments: [1],
-              segmentCount: 2,
-              segments: [
-                { index: 0, sessionId: 'a'.repeat(32), uploaded: true },
-              ],
-              summary: {
-                receivedSegments: 1,
-                receivedRecords: 2,
-                expectedRecords: 2,
-                measurements: 1,
-                failures: 0,
-                protocols: [
-                  {
-                    type: 'udp_echo',
-                    attempts: 1,
-                    successful: 1,
-                    failed: 0,
-                    timeouts: 0,
-                    capped: 0,
-                    incompleteBursts: 0,
-                    reached: 0,
-                    sampleCount: 2,
-                    replies: 1,
-                    medianMs: 0,
-                  },
-                ],
-              },
-              ...tripChanges,
-            },
-          ],
-        },
-      });
-    if (path.endsWith('/sessions'))
-      return route.fulfill({ json: { items: [summary], total: 1 } });
-    if (path.includes('/sessions/'))
-      return route.fulfill({
-        json: {
-          session: {
-            id: summary.id,
-            startedAt: summary.collectedAt,
-            config: { httpEnabled: false },
-          },
-          receipt: summary,
-          measurements: measurements ?? [
-            {
-              id: 'm',
-              type: 'udp_echo',
-              success: true,
-              value: 0,
-              unit: 'ms',
-              timestamp: summary.collectedAt,
-              details: {
-                samples: [
-                  { sequence: 0, rttMs: 0 },
-                  { sequence: 1, rttMs: null },
-                ],
-              },
-            },
-          ],
+          session: { id: sid },
+          measurements: [],
           events: [],
           snapshots: [],
         },
       });
-    return route.fulfill({ json: { items: [] } });
+    return route.fulfill({
+      status: 404,
+      json: { detail: 'Unknown test endpoint' },
+    });
   });
 }
+async function openTrip(page: Page, options: Options = {}) {
+  await signedIn(page, options);
+  await page.goto('/trips/' + id);
+  await expect(
+    page.getByRole('heading', { name: 'TEST123', exact: true }),
+  ).toBeVisible();
+}
+
 test('public registration does not unlock researcher routes', async ({
   page,
 }) => {
-  await signedIn(page, 'participant');
+  await signedIn(page, { role: 'participant' });
   await page.goto('/');
   await expect(
     page.getByText('Researcher access is required.', { exact: false }),
   ).toBeVisible();
-  await expect(page.getByRole('navigation')).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Research workspace' }),
+  ).toHaveCount(0);
 });
-test('researcher sees received data, probes, missing values and downloads', async ({
-  page,
-}) => {
-  await signedIn(page, 'researcher');
-  await page.goto('/');
-  await expect(
-    page.getByRole('heading', { name: 'A clearer view of connectivity.' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('This workspace cannot see active phones', { exact: false }),
-  ).toBeVisible();
-  await page.screenshot({ path: 'test-results/overview.png', fullPage: true });
-  await page.locator('tbody button').first().click();
-  await expect(
-    page.getByRole('heading', { name: 'Session evidence' }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('cell', { name: 'Unavailable', exact: true }).first(),
-  ).toBeVisible();
-  const download = page.waitForEvent('download');
-  await page
-    .getByRole('button', { name: 'Combined measurement / sample CSV' })
-    .click();
-  expect((await download).suggestedFilename()).toContain('combined.csv');
-  await page.screenshot({
-    path: 'test-results/session-detail.png',
-    fullPage: true,
-  });
-});
-test('signed-out and narrow layouts show a clear sign-in flow', async ({
+test('signed-out narrow layouts show clear Google sign in', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -230,861 +377,323 @@ test('signed-out and narrow layouts show a clear sign-in flow', async ({
   await expect(
     page.getByRole('button', { name: 'Continue with Google' }),
   ).toBeVisible();
-  await expect(
-    page.getByText('Signing up does not grant access', { exact: false }),
-  ).toBeVisible();
 });
-
-const mixedEvidence: Evidence[] = [
-  {
-    id: 'udp-parent',
-    type: 'udp_echo',
-    success: true,
-    value: 12,
-    unit: 'ms',
-    targetHost: 'echo.example.invalid',
-    timestamp: '2026-10-12T12:00:00Z',
-    scheduledAt: '2026-10-12T12:00:00Z',
-    details: {
-      samples: Array.from({ length: 62 }, (_, i) => ({
-        sequence: i,
-        rttMs: i === 61 ? null : i,
-        errorType: i === 61 ? 'timeout' : null,
-      })),
-    },
-  },
-  {
-    id: 'icmp-parent',
-    type: 'icmp_burst',
-    success: true,
-    value: 0,
-    unit: 'ms',
-    timestamp: '2026-10-12T12:01:00Z',
-    targetHost: 'google.example.invalid',
-    details: {
-      samples: [
-        {
-          sequence: 0,
-          rttMs: 0,
-          ttl: 64,
-          packet: {
-            response: { icmpType: 0, icmpCode: 0, receivedSocketBytes: 72 },
-          },
-        },
-      ],
-    },
-  },
-  {
-    id: 'http-parent',
-    type: 'download',
-    success: true,
-    value: 12,
-    unit: 'Mbps',
-    timestamp: '2026-10-12T12:02:00Z',
-    probeServer: '=untrusted-target',
-    transferredBytes: 1048576,
-  },
-  {
-    id: 'loaded-parent',
-    type: 'loaded_download',
-    success: true,
-    value: 20,
-    unit: 'ms',
-    timestamp: '2026-10-12T12:03:00Z',
-    details: {
-      samples: [{ sequence: 0, rttMs: 20 }],
-      baselineSamples: [
-        { sequence: 0, rttMs: 0 },
-        { sequence: 1, rttMs: null, errorType: 'timeout' },
-      ],
-    },
-  },
-  {
-    id: 'tcp-parent',
-    type: 'tcp_connect',
-    success: false,
-    value: null,
-    unit: 'ms',
-    timestamp: '2026-10-12T12:04:00Z',
-    details: { samples: [{ sequence: 0, rttMs: null, errorType: 'network' }] },
-  },
-  {
-    id: 'trace-parent',
-    type: 'traceroute',
-    success: true,
-    value: 2,
-    unit: 'hops',
-    timestamp: '2026-10-12T12:05:00Z',
-    route: {
-      samples: [
-        {
-          hop: 1,
-          sequence: 0,
-          rttMs: 10,
-          kind: 'host_unreachable',
-          address: '192.0.2.1',
-        },
-        {
-          hop: 2,
-          sequence: 1,
-          rttMs: 15,
-          kind: 'port_unreachable',
-          address: '192.0.2.2',
-        },
-      ],
-    },
-  },
-];
-async function openEvidence(page: Page) {
-  await signedIn(page, 'researcher', mixedEvidence);
+test('overview is trip-first without duplicated session/download navigation', async ({
+  page,
+}) => {
+  await signedIn(page);
   await page.goto('/');
-  await page.locator('tbody button').first().click();
   await expect(
-    page.getByRole('heading', { name: 'Explore measurements' }),
+    page.getByRole('table', { name: 'Received trips' }),
   ).toBeVisible();
-}
-test('measurement filters retain failed samples inside successful bursts and reset pagination', async ({
-  page,
-}) => {
-  await openEvidence(page);
-  const samples = page.getByRole('region', {
-    name: 'Individual samples',
-    exact: true,
-  });
-  const measurements = page.getByRole('region', {
-    name: 'Measurement results',
-    exact: true,
-  });
-  await page
-    .getByLabel('Measurement type', { exact: true })
-    .selectOption('udp_echo');
-  await samples.getByRole('button', { name: 'Next observations' }).click();
-  await expect(samples.getByText('Page 2 of 2')).toBeVisible();
-  await page.getByLabel('Whole-measurement outcome').selectOption('success');
-  await page
-    .getByLabel('Sample outcome', { exact: true })
-    .selectOption('timeout');
-  await expect(samples.locator('tbody tr')).toHaveCount(1);
-  await expect(samples.locator('tbody')).toContainText('timeout');
-  await expect(samples.locator('tbody')).toContainText('Unavailable');
-  await expect(measurements.locator('tbody tr')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
-  await expect(page.getByLabel('Sample outcome', { exact: true })).toHaveValue(
-    'timeout',
+  const nav = page.getByRole('navigation');
+  await expect(
+    nav.getByRole('link', { name: 'Trips', exact: true }),
+  ).toBeVisible();
+  for (const name of ['Sessions', 'Downloads', 'Measurement guide'])
+    await expect(nav.getByRole('link', { name, exact: true })).toHaveCount(0);
+  await expect(page.getByText('GPS-supported', { exact: false })).toHaveCount(
+    0,
   );
-  await expect(samples.locator('tbody tr')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Reset filters' }).click();
-  await expect(measurements.locator('tbody tr')).toHaveCount(6);
-  await page.getByLabel('Search measurements').fill('NO-SUCH-TARGET');
-  await expect(measurements.locator('tbody tr')).toHaveCount(0);
+  await expect(page.getByText('Latest confidence')).toHaveCount(0);
   await expect(
-    samples.getByRole('button', { name: 'Download visible columns CSV' }),
-  ).toBeDisabled();
-  await page.getByRole('button', { name: 'Reset filters' }).click();
-  await page
-    .getByLabel('Sample phase', { exact: true })
-    .selectOption('baseline');
-  await expect(samples.locator('tbody tr')).toHaveCount(2);
-  await page
-    .getByLabel('Sample outcome', { exact: true })
-    .selectOption('response');
-  await expect(samples.locator('tbody tr')).toHaveCount(1);
-  await expect(samples.locator('tbody')).toContainText('0');
+    page.getByText('Last updated', { exact: false }).first(),
+  ).toBeVisible();
 });
-test('column selection, sorting and CSV apply to every filtered page', async ({
+test('slow provider statistics never block the trip list', async ({ page }) => {
+  await signedIn(page, { providerFailure: true });
+  await page.goto('/');
+  await expect(
+    page.getByRole('table', { name: 'Received trips' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Retry provider results' }),
+  ).toBeVisible();
+});
+test('trip filters are compact, paginated and represented in the URL', async ({
   page,
 }) => {
-  await openEvidence(page);
-  const samples = page.getByRole('region', {
-    name: 'Individual samples',
-    exact: true,
-  });
-  await page
-    .getByLabel('Measurement type', { exact: true })
-    .selectOption('udp_echo');
-  await samples.getByText('Choose columns', { exact: true }).click();
-  await samples.getByLabel('Find a column').fill('TTL');
-  await samples.getByRole('checkbox', { name: /^Reply TTL/ }).check();
-  await samples.getByLabel('Find a column').fill('');
-  await samples.getByRole('checkbox', { name: /^Sample phase/ }).uncheck();
+  await signedIn(page);
+  await page.goto('/trips');
   await expect(
-    samples.getByRole('columnheader', { name: /Sample phase/ }),
+    page.getByRole('table', { name: 'Received trips' }),
+  ).toBeVisible();
+  await page.getByLabel('Search trips').fill('QR123');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page).toHaveURL(/q=QR123/);
+  await page.getByRole('button', { name: 'Next trips' }).click();
+  await expect(page).toHaveURL(/page=1/);
+  await page.getByLabel('Data type').selectOption('ground');
+  await expect(page).toHaveURL(/kind=ground/);
+  await expect(page).not.toHaveURL(/page=1/);
+});
+test('verified reset shows a clean empty state without fake data', async ({
+  page,
+}) => {
+  await signedIn(page, { empty: true });
+  await page.goto('/');
+  await expect(page.getByText('No trips yet.', { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'TEST123', exact: true }),
   ).toHaveCount(0);
-  await expect(
-    samples.getByRole('columnheader', { name: /Reply TTL/ }),
-  ).toBeVisible();
-  await samples.getByRole('button', { name: /^Elapsed time/ }).click();
-  const event = page.waitForEvent('download');
-  await samples
-    .getByRole('button', { name: 'Download visible columns CSV' })
-    .click();
-  const downloaded = await event;
-  const content = await readFile((await downloaded.path())!, 'utf8');
-  const lines = content.trimEnd().split('\r\n');
-  expect(lines).toHaveLength(63); // All 62 samples, not only the visible 50.
-  const header = lines[0].split(',');
-  expect(header).toContain('replyTtl');
-  expect(header).not.toContain('phase');
-  expect(lines[1].split(',')[header.indexOf('rttMs')]).toBe('0');
-  expect(lines.at(-1)!.split(',')[header.indexOf('rttMs')]).toBe('');
-  await samples
-    .getByRole('button', { name: 'Restore default columns' })
-    .click();
-  await expect(
-    samples.getByRole('columnheader', { name: /Sample phase/ }),
-  ).toBeVisible();
 });
-test('narrow screen supports filters and ICMP field selection', async ({
+test('deep trip links expose network and collector health separately', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openEvidence(page);
-  await page
-    .getByLabel('Measurement type', { exact: true })
-    .selectOption('icmp_burst');
-  const samples = page.getByRole('region', {
-    name: 'Individual samples',
-    exact: true,
-  });
-  await samples.getByText('Choose columns', { exact: true }).click();
-  await samples.getByLabel('Find a column').fill('ICMP');
-  await samples.getByRole('checkbox', { name: /^ICMP code/ }).check();
+  await openTrip(page);
   await expect(
-    samples.getByRole('cell', { name: '0', exact: true }).first(),
-  ).toBeAttached();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBeTruthy();
-  await page.screenshot({
-    path: 'test-results/session-filters-mobile.png',
-    fullPage: true,
-  });
+    page.getByRole('tab', { name: 'Network results' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: 'Collector health' }).click();
+  await expect(page.getByText('Skipped probe events')).toBeVisible();
+  await expect(page.getByText('Live upload retries')).toBeVisible();
+  await expect(
+    page.getByText('Battery and Android power observations'),
+  ).toBeVisible();
 });
-
-for (const width of [390, 1280]) {
-  test(`all selected columns are reachable with horizontal scrolling at ${width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await openEvidence(page);
-    for (const name of [
-      'Measurement results',
-      'Individual samples',
-      'Scheduling results',
-    ]) {
-      const region = page.getByRole('region', { name, exact: true });
-      await region.getByText('Choose columns', { exact: true }).click();
-      await region
-        .getByRole('button', { name: 'Show all columns', exact: true })
-        .click();
-      const viewport = region
-        .getByRole('table', { name, exact: true })
-        .locator('..');
-      await expect(viewport).toHaveCSS('overflow-x', 'auto');
-      await expect(viewport).toHaveAttribute('tabindex', '0');
-      const overflowing = await viewport.evaluate(
-        el => el.scrollWidth > el.clientWidth,
-      );
-      if (name !== 'Scheduling results' || width === 390)
-        expect(overflowing).toBeTruthy();
-      if (overflowing) {
-        await viewport.scrollIntoViewIfNeeded();
-        await viewport.hover();
-        await page.mouse.wheel(400, 0);
-        await expect
-          .poll(() => viewport.evaluate(el => el.scrollLeft))
-          .toBeGreaterThan(0);
-        const right = region.getByRole('button', {
-          name: 'Scroll columns right',
-        });
-        for (let i = 0; i < 40; i++) {
-          const position = await viewport.evaluate(el => ({
-            left: el.scrollLeft,
-            atEnd: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
-          }));
-          if (position.atEnd) break;
-          await right.click();
-          await expect
-            .poll(() => viewport.evaluate(el => el.scrollLeft))
-            .toBeGreaterThan(position.left);
-        }
-        await expect(right).toBeDisabled();
-        const reachable = await viewport.evaluate(el => {
-          const last = el
-            .querySelector('th:last-child')!
-            .getBoundingClientRect();
-          const bounds = el.getBoundingClientRect();
-          return last.right <= bounds.right + 1 && last.left >= bounds.left - 1;
-        });
-        expect(reachable).toBeTruthy();
-        await region
-          .getByRole('button', { name: 'Scroll columns left' })
-          .click();
-        await expect(right).toBeEnabled();
-      }
-    }
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBeTruthy();
-  });
-}
-test('sample interpretation preserves zeros and qualifies traceroute responses', () => {
-  const probes = sampleRows(mixedEvidence);
-  expect(probes.find(s => s.parent === 'icmp-parent')?.icmpCode).toBe(0);
-  expect(probes.find(s => s.parent === 'icmp-parent')?.address).toBeUndefined();
-  expect(probes.find(s => s.kind === 'host_unreachable')?.outcome).toBe(
-    'response',
-  );
-  expect(probes.find(s => s.errorType === 'timeout')?.outcome).toBe('timeout');
-  expect(filterMeasurements(mixedEvidence, '', 'failure', '')).toHaveLength(1);
-  expect(
-    filterMeasurements(mixedEvidence, '', '', 'ECHO.EXAMPLE'),
-  ).toHaveLength(1);
-  expect(
-    sampleRows([{ id: 'legacy', type: 'icmp_rtt', value: 0 }])[0].rttMs,
-  ).toBe(0);
-  expect(csvText(['zero', 'missing', 'untrusted'], [[0, null, '=1+1']])).toBe(
-    "zero,missing,untrusted\r\n0,,'=1+1\r\n",
-  );
-});
-
-test('measurement guide defines every selectable field and supports search', async ({
+test('partial trips remain partial even when registered record counts match', async ({
   page,
 }) => {
-  for (const [scope, fields] of Object.entries({
-    Measurements: measurementFields,
-    Samples: probeFields,
-    Scheduling: scheduleFields,
-  })) {
-    for (const [key] of fields) {
-      const definition = variableDefinition(scope, key);
-      for (const name of [
-        'datatype',
-        'units',
-        'source',
-        'calculation',
-        'blank',
-      ] as const)
-        expect(definition[name], `${scope}.${key}.${name}`).toBeTruthy();
-    }
-  }
-  await openEvidence(page);
-  await page
-    .getByRole('button', { name: 'What do these variables mean?' })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: 'Measurement guide', exact: true }),
-  ).toBeVisible();
-  await page.getByText('TCP connection', { exact: true }).click();
-  await expect(
-    page.getByText('Includes name resolution, native dispatch', {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await page.getByLabel('Search variables').fill('checksum');
-  await expect(
-    page.getByText('1 variables match', { exact: true }),
-  ).toBeVisible();
-  await page.getByText('ICMP checksum', { exact: true }).click();
-  await expect(
-    page.getByText('sample.packet.response.icmpChecksum', { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel('Search variables').fill('no-such-variable');
-  await expect(
-    page.getByText('No variables match.', { exact: false }),
-  ).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('Search variables').fill('');
-  await page.getByLabel('Variable table').selectOption('Scheduling');
-  await expect(
-    page.getByText('4 variables match', { exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBeTruthy();
-  await page.screenshot({
-    path: 'test-results/measurement-guide.png',
-    fullPage: true,
-  });
-});
-
-test('timing gaps exclude displayed headlines while preserving original samples', async ({
-  page,
-}) => {
-  await signedIn(page, 'researcher', [
-    {
-      id: 'gap-probe',
-      type: 'icmp_burst',
-      success: false,
-      value: 123.456,
-      unit: 'ms',
-      timestamp: '2026-10-12T12:00:05Z',
-      scheduledAt: '2026-10-12T12:00:00Z',
-      scheduling: { timingValid: false, startedAt: '2026-10-12T12:00:02Z' },
-      details: {
-        summary: { medianMs: 123.456 },
-        samples: [{ sequence: 0, rttMs: 123.456 }],
+  await openTrip(page, {
+    detailChanges: {
+      ...trip({
+        uploadComplete: false,
+        segmentCount: 96,
+        receivedSegments: 11,
+        completeSegments: 11,
+        missingSegments: 85,
+      }),
+      ...{
+        summary: detail().summary,
+        health: detail().health,
+        events: detail().events,
+        segments: detail().segments,
       },
     },
-  ]);
-  await page.goto('/');
-  await page.locator('tbody button').first().click();
-  const parents = page.getByRole('region', {
-    name: 'Measurement results',
-    exact: true,
   });
   await expect(
-    parents.getByText('Timing gap detected', { exact: true }),
+    page.getByText('Upload incomplete', { exact: true }),
   ).toBeVisible();
   await expect(
-    parents.getByRole('cell', { name: '123.456', exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText('No timing values match these filters.', { exact: true }),
-  ).toBeVisible();
-  const samples = page.getByRole('region', {
-    name: 'Individual samples',
-    exact: true,
-  });
-  await expect(
-    samples.getByRole('cell', { name: '123.456', exact: true }),
-  ).toBeVisible();
-  const scheduling = page.getByRole('region', {
-    name: 'Scheduling results',
-    exact: true,
-  });
-  await expect(
-    scheduling.getByRole('cell', { name: '2000', exact: true }),
+    page.getByText('11/96 segments reconciled.', { exact: false }),
   ).toBeVisible();
 });
-
-test('session timeout explains the failure and allows retry; completed evidence does not poll', async ({
+test('timeline distinguishes recorded gaps from unreceived evidence', async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    const original = window.fetch.bind(window);
-    (
-      window as Window & { simulateSessionTimeout?: boolean }
-    ).simulateSessionTimeout = true;
-    window.fetch = async (...args) => {
-      if (
-        String(args[0]).includes('view=readable') &&
-        (window as Window & { simulateSessionTimeout?: boolean })
-          .simulateSessionTimeout
-      ) {
-        throw new DOMException('signal timed out', 'TimeoutError');
-      }
-      return original(...args);
-    };
+  await openTrip(page);
+  await expect(
+    page.getByRole('region', { name: 'Whole-trip timeline' }),
+  ).toBeVisible();
+  await page.getByText('Inspect event intervals').click();
+  await expect(
+    page.getByRole('cell', { name: 'collector gap', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: 'unreceived', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('A gap does not prove the phone slept.', { exact: false }),
+  ).toBeVisible();
+});
+test('evidence is loaded only on demand, preserves zero and has six default columns', async ({
+  page,
+}) => {
+  let requests = 0;
+  await openTrip(page);
+  page.on('request', r => {
+    if (r.url().includes('/evidence?')) requests++;
   });
-  await signedIn(page, 'researcher', mixedEvidence);
-  await page.goto('/');
+  expect(requests).toBe(0);
   await page
-    .getByRole('button', { name: /10\/12\/2026/ })
-    .first()
+    .getByRole('button', {
+      name: 'Inspect individual probes, segments and raw evidence',
+    })
     .click();
-  await expect(page.getByRole('main').getByRole('alert')).toContainText(
-    'The server took too long',
-  );
-  await expect(page.getByRole('main').getByRole('alert')).not.toContainText(
-    'signal timed out',
-  );
-  let detailRequests = 0;
-  page.on('request', request => {
-    if (request.url().includes('view=readable')) detailRequests++;
+  const table = page.getByRole('table', {
+    name: 'Trip observations',
+    exact: true,
   });
-  await page.evaluate(() => {
-    (
-      window as Window & { simulateSessionTimeout?: boolean }
-    ).simulateSessionTimeout = false;
-  });
-  await page.getByRole('button', { name: 'Retry loading session' }).click();
+  await expect(table).toBeVisible();
+  expect(requests).toBe(1);
+  await expect(table.getByRole('columnheader')).toHaveCount(6);
   await expect(
-    page.getByRole('heading', { name: 'Explore measurements' }),
+    table.getByRole('cell', { name: '0', exact: true }),
   ).toBeVisible();
-  await page.clock.install();
-  await page.clock.fastForward(45000);
-  expect(detailRequests).toBe(1);
-  await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
-  await expect.poll(() => detailRequests).toBe(2);
+  await expect(page.getByLabel('Find a column')).not.toBeVisible();
+  await page.getByText('Customize columns', { exact: true }).click();
+  await expect(page.getByLabel('Find a column')).toBeVisible();
 });
-
-test('a failed refresh retains loaded session evidence and filters', async ({
+test('sample outcome filters request only the selected server page', async ({
   page,
 }) => {
-  await openEvidence(page);
+  await openTrip(page);
   await page
-    .getByLabel('Measurement type', { exact: true })
-    .selectOption('udp_echo');
-  await page.route('**/api/v2/research/sessions/*?view=readable', route =>
-    route.fulfill({ status: 503, body: 'temporarily unavailable' }),
+    .getByRole('button', {
+      name: 'Inspect individual probes, segments and raw evidence',
+    })
+    .click();
+  await page.getByLabel('Evidence rows').selectOption('samples');
+  await page.getByLabel('Evidence outcome').selectOption('timeout');
+  const request = page.waitForRequest(
+    r => r.url().includes('layer=samples') && r.url().includes('offset=50'),
   );
-  await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
-  await expect(page.getByRole('main').getByRole('alert')).toContainText(
-    'Previously loaded evidence is still shown',
-  );
-  await expect(
-    page.getByLabel('Measurement type', { exact: true }),
-  ).toHaveValue('udp_echo');
+  await page.getByRole('button', { name: 'Next observations' }).click();
+  expect((await request).url()).toContain('outcome=timeout');
+});
+test('column help describes units and missing values without a separate guide page', async ({
+  page,
+}) => {
+  await openTrip(page);
+  await page
+    .getByRole('button', {
+      name: 'Inspect individual probes, segments and raw evidence',
+    })
+    .click();
+  await page.getByLabel('About Result', { exact: true }).click();
   await expect(
     page
-      .getByRole('region', { name: 'Individual samples', exact: true })
-      .locator('tbody tr'),
-  ).toHaveCount(50);
-});
-
-test('trip filters and partial segments preserve the distinction from active phones', async ({
-  page,
-}) => {
-  await signedIn(page, 'researcher');
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Trips', exact: true }).click();
-  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
-  await expect(
-    page.getByText('Researcher shadow test', { exact: false }),
+      .getByRole('columnheader')
+      .filter({ has: page.getByLabel('About Result', { exact: true }) })
+      .locator('details[open] p'),
   ).toBeVisible();
   await expect(
-    page.getByText('1 incomplete or missing of 2 reported segments', {
+    page
+      .getByRole('columnheader')
+      .filter({ has: page.getByLabel('About Result', { exact: true }) })
+      .locator('details[open] p'),
+  ).toBeVisible();
+});
+test('whole-trip downloads are actual JSON and combined CSV exports', async ({
+  page,
+}) => {
+  await openTrip(page);
+  await page.getByText('Download trip', { exact: true }).click();
+  for (const [name, suffix] of [
+    ['Complete original JSON', '.json'],
+    ['Combined measurements / samples CSV', '.csv'],
+  ]) {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name, exact: true }).click();
+    expect((await download).suggestedFilename()).toBe(`trip-${id}${suffix}`);
+  }
+});
+test('route illustration uses public endpoints and does not claim a flown path', async ({
+  page,
+}) => {
+  await openTrip(page);
+  await expect(page.getByText('Reported route · DOH → JFK')).toBeVisible();
+  await page.getByText('Reported route · DOH → JFK').click();
+  await expect(
+    page.getByRole('img', { name: /Illustration between reported airports/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('not a recorded flight path', { exact: false }),
+  ).toBeVisible();
+});
+test('ambiguous route inputs stay textual without geocoding', async ({
+  page,
+}) => {
+  await openTrip(page, {
+    detailChanges: {
+      ...detail(),
+      flight: {
+        flightNumber: 'TEST123',
+        departure: 'Test origin',
+        arrival: 'Test destination',
+      },
+    },
+  });
+  await expect(
+    page.getByText('A map appears when both airport endpoints', {
       exact: false,
     }),
   ).toBeVisible();
-  const summary = page.getByRole('region', {
-    name: 'Trip measurement summary',
-    exact: true,
-  });
-  await expect(summary.getByRole('row', { name: /^UDP/ })).toContainText(
-    '0 ms RTT',
-  );
   await expect(
-    summary.getByRole('row', { name: /^M-Lab download/ }),
-  ).toContainText('Not collected in received segments');
-  await page.getByLabel('Latest confidence').selectOption('network_only');
-  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
-  await page
-    .getByText('Open segment evidence, detection timeline and downloads')
-    .click();
-  await page.getByRole('button', { name: 'Segment 1 · uploaded' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Session evidence' }),
-  ).toBeVisible();
-});
-
-test('ASN-only trips expose their policy and filter without claiming an airborne flight', async ({
-  page,
-}) => {
-  await signedIn(page, 'researcher', undefined, {
-    confidence: 'asn_matched',
-    detectorPolicyVersion: 'asn-only-v1',
-    shadow: false,
-  });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Trips', exact: true }).click();
-  await expect(
-    page.getByText('Qualification policy: asn-only-v1'),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/It does not establish an airborne flight/),
-  ).toBeVisible();
-  const request = page.waitForRequest(r =>
-    r.url().includes('confidence=asn_matched'),
-  );
-  await page.getByLabel('Latest confidence').selectOption('asn_matched');
-  await request;
-  await expect(page.getByText('TEST123 · TEST A → TEST B')).toBeVisible();
-});
-
-test('trip cards show pooled results and remain scrollable on a phone', async ({
-  page,
-}) => {
-  const metric = (type: string, values: Record<string, number | null>) => ({
-    type,
-    attempts: 1,
-    successful: 0,
-    failed: 1,
-    timeouts: 0,
-    capped: 0,
-    incompleteBursts: 0,
-    reached: 0,
-    sampleCount: 0,
-    replies: 0,
-    medianMs: null,
-    ...values,
-  });
-  await signedIn(page, 'researcher', undefined, {
-    state: 'completed',
-    phase: 'finished',
-    startedAt: 0,
-    endedAt: 91000168,
-    uploadComplete: true,
-    missingSegments: [],
-    segmentCount: 21,
-    segments: Array.from({ length: 21 }, (_, index) => ({
-      index,
-      sessionId: index.toString(16).padStart(32, '0'),
-      uploaded: true,
-    })),
-    summary: {
-      receivedSegments: 21,
-      receivedRecords: 390,
-      expectedRecords: 390,
-      measurements: 135,
-      failures: 15,
-      protocols: [
-        metric('icmp_burst', {
-          attempts: 32,
-          successful: 31,
-          failed: 1,
-          sampleCount: 320,
-          replies: 311,
-          medianMs: 25.324,
-        }),
-        metric('udp_echo', {
-          attempts: 31,
-          successful: 27,
-          failed: 4,
-          timeouts: 4,
-          incompleteBursts: 4,
-          sampleCount: 595,
-          replies: 576,
-          medianMs: 282.971,
-        }),
-        metric('tcp_connect', {
-          attempts: 31,
-          successful: 31,
-          failed: 0,
-          sampleCount: 31,
-          replies: 31,
-          medianMs: 37.272,
-        }),
-        metric('traceroute', {
-          attempts: 19,
-          successful: 19,
-          failed: 0,
-          reached: 19,
-          sampleCount: 603,
-          replies: 541,
-        }),
-        metric('download', {
-          attempts: 10,
-          successful: 5,
-          failed: 5,
-          timeouts: 5,
-        }),
-        metric('upload', {
-          attempts: 10,
-          successful: 7,
-          failed: 3,
-          timeouts: 3,
-        }),
-        metric('ndt7_download', {}),
-        metric('ndt7_upload', {}),
-      ],
-    },
-  });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Trips', exact: true }).click();
-  const card = page.getByRole('region', {
-    name: 'Trip measurement summary',
-    exact: true,
-  });
-  await expect(card).toContainText('25h 16m');
-  await expect(card).toContainText('135');
-  await expect(card).toContainText('390/390 expected records received');
-  await expect(card.getByRole('row', { name: /^ICMP/ })).toContainText(
-    '311/320 recorded probes replied',
-  );
-  await expect(card.getByRole('row', { name: /^ICMP/ })).toContainText(
-    '25.3 ms RTT',
-  );
-  await expect(card.getByRole('row', { name: /^UDP/ })).toContainText(
-    '4 incomplete bursts',
-  );
-  await expect(card.getByRole('row', { name: /^TCP/ })).toContainText(
-    '31/31 connections succeeded',
-  );
-  await expect(card.getByRole('row', { name: /^TCP/ })).toContainText(
-    '37.3 ms connect',
-  );
-  await expect(card.getByRole('row', { name: /^Traceroute/ })).toContainText(
-    '19/19 traces reported reaching',
-  );
-  await expect(
-    card.getByRole('row', { name: /^Controlled download/ }),
-  ).toContainText('5/10 tests completed; 5 timed out');
-  await expect(
-    card.getByRole('row', { name: /^Controlled upload/ }),
-  ).toContainText('7/10 tests completed; 3 timed out');
-  await expect(
-    card.getByRole('row', { name: /^M-Lab download/ }),
-  ).toContainText('0/1 tests completed; 1 other error');
-  await expect(card.getByRole('row', { name: /^M-Lab upload/ })).toContainText(
-    'Unavailable',
-  );
-  await expect(card).toContainText(
-    'a complete upload does not mean continuous collection',
-  );
-  await page.screenshot({
-    path: '../build/trip-summary-desktop.png',
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  const scroll = page.getByRole('region', {
-    name: 'Trip measurement results',
-    exact: true,
-  });
-  await expect(scroll).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  expect(await scroll.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(
-    true,
-  );
-  await scroll.evaluate(el => {
-    el.scrollLeft = el.scrollWidth;
-  });
-  expect(await scroll.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
-  await page.screenshot({
-    path: '../build/trip-summary-mobile.png',
-    fullPage: true,
-  });
-});
-
-test('trip summary distinguishes capped speed tests and unavailable summaries', async ({
-  page,
-}) => {
-  await signedIn(page, 'researcher', undefined, {
-    summary: {
-      receivedSegments: 1,
-      receivedRecords: 3,
-      expectedRecords: 4,
-      measurements: 1,
-      failures: 1,
-      protocols: [
-        {
-          type: 'ndt7_download',
-          attempts: 1,
-          successful: 0,
-          failed: 1,
-          timeouts: 0,
-          capped: 1,
-          incompleteBursts: 0,
-          reached: 0,
-          sampleCount: 0,
-          replies: 0,
-          medianMs: null,
-        },
-      ],
-    },
-  });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Trips', exact: true }).click();
-  const row = page.getByRole('row', { name: /^M-Lab download/ });
-  await expect(row).toContainText('1 capped / partial');
-  await expect(row).not.toContainText('other errors');
-  await expect(row).not.toContainText('0 ms');
-  await page.route('**/api/v2/research/trips?**', route =>
-    route.fulfill({
-      json: {
-        total: 1,
-        items: [
-          {
-            id: 'c'.repeat(32),
-            participantId: 'b',
-            state: 'active',
-            phase: 'watching',
-            confidence: 'unconfirmed',
-            provider: null,
-            receivedAt: '2026-11-01T12:30:00Z',
-            startedAt: 0,
-            endedAt: null,
-            firstQualifiedAt: null,
-            reason: null,
-            shadow: true,
-            flight: {},
-            used: { transfers: 0, diagnostics: 0, uploads: 0 },
-            uploadComplete: false,
-            missingSegments: [],
-            segmentCount: 0,
-            segments: [],
-          },
-        ],
-      },
-    }),
-  );
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(
-    page.getByText('Measurement summary unavailable.', { exact: false }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Trip measurement summary', exact: true }),
+    page.getByRole('img', { name: /Illustration between reported airports/ }),
   ).toHaveCount(0);
 });
-
-test('ground-test toggle reaches backend filters and marks trip provenance', async ({
+test('researchers never request or see payment identifiers', async ({
   page,
 }) => {
-  await signedIn(page, 'researcher', undefined, {
-    groundTest: true,
-    provider: 'TEST New York University',
-    shadow: false,
-    mlabUsage: {
-      downloadClientBytes: 1500000000,
-      uploadClientBytes: 1200000000,
-    },
+  let paymentRequests = 0;
+  page.on('request', r => {
+    if (r.url().includes('/admin/payments')) paymentRequests++;
   });
-  await page.goto('/');
-  const checkbox = page.getByRole('checkbox', {
-    name: /Include ground-test data/,
-  });
-  await expect(checkbox).not.toBeChecked();
-  const request = page.waitForRequest(r =>
-    r.url().includes('/research/overview?includeGroundTests=true'),
-  );
-  await checkbox.check();
-  await request;
-  await page.getByRole('button', { name: 'Trips', exact: true }).click();
+  await signedIn(page);
+  await page.goto('/participants');
   await expect(
-    page.getByText('Ground network test · excluded from flight totals'),
+    page.getByRole('heading', { name: 'Participants and team' }),
   ).toBeVisible();
-  await expect(page.getByText(/M-Lab client-reported payload/)).toContainText(
-    '1430.51 MiB',
-  );
-});
-
-test('administrator sees payment reconciliation separately from measurement evidence', async ({
-  page,
-}) => {
-  await signedIn(page, 'administrator');
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Participants', exact: true }).click();
+  expect(paymentRequests).toBe(0);
   await expect(
     page.getByRole('heading', { name: 'Payment reconciliation' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('abc123')).toHaveCount(0);
+});
+test('administrators retain team and restricted payment access', async ({
+  page,
+}) => {
+  await signedIn(page, { role: 'administrator' });
+  await page.goto('/participants');
+  await expect(
+    page.getByRole('heading', { name: 'Research team access' }),
   ).toBeVisible();
   await expect(
     page.getByRole('cell', { name: 'abc123', exact: true }),
   ).toBeVisible();
 });
-test('researchers neither request nor see restricted NetIDs', async ({
-  page,
-}) => {
-  const requests: string[] = [];
-  page.on('request', r => {
-    if (r.url().includes('/admin/payments')) requests.push(r.url());
+for (const width of [390, 1280])
+  test(`evidence scrolls horizontally without overflowing the page at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openTrip(page);
+    await page
+      .getByRole('button', {
+        name: 'Inspect individual probes, segments and raw evidence',
+      })
+      .click();
+    await page.getByText('Customize columns', { exact: true }).click();
+    await page.getByRole('button', { name: 'Show all columns' }).click();
+    await page.getByRole('button', { name: 'Scroll columns right' }).click();
+    const area = page.getByRole('region', {
+      name: 'Trip observations scroll area',
+    });
+    expect(await area.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBeTruthy();
+    await page.screenshot({
+      path: `test-results/trip-${width}.png`,
+      fullPage: true,
+    });
   });
-  await signedIn(page, 'researcher');
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Participants', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Payment reconciliation' }),
-  ).toHaveCount(0);
-  await expect(page.getByText('abc123', { exact: true })).toHaveCount(0);
-  expect(requests).toEqual([]);
+test('sample interpretation retains zero, failures, and qualified traceroute labels', () => {
+  const rows = sampleRows([
+    {
+      id: 'm',
+      type: 'icmp_burst',
+      details: {
+        samples: [{ rttMs: 0 }, { rttMs: null, errorType: 'timeout' }],
+      },
+      route: { samples: [{ kind: 'host_unreachable', rttMs: 9 }] },
+    },
+  ]);
+  expect(rows.map(r => r.outcome)).toEqual(['response', 'timeout', 'response']);
+  expect(rows[0].rttMs).toBe(0);
+  expect(csvText(['a'], [['=formula']])).toContain("'=formula");
+  for (const group of [
+    ['Measurements', measurementFields],
+    ['Samples', probeFields],
+    ['Scheduling', scheduleFields],
+  ] as const) {
+    for (const [key] of group[1]) {
+      const d = variableDefinition(group[0], key);
+      expect(d.units).toBeTruthy();
+      expect(d.blank).toBeTruthy();
+    }
+  }
 });

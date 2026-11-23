@@ -22,7 +22,13 @@ export default function Callback() {
         if (e) throw e;
       });
     exchange
-      .then(() => window.location.replace('/'))
+      .then(() => {
+        const target = sessionStorage.getItem('skymeasure.returnTo');
+        sessionStorage.removeItem('skymeasure.returnTo');
+        window.location.replace(
+          target && /^\/trips\/[a-f0-9]{32}$/.test(target) ? target : '/',
+        );
+      })
       .catch(() =>
         setError('Sign-in could not be completed. Please try again.'),
       );

@@ -19,6 +19,7 @@ type ProtocolSummary = {
   sampleCount: number;
   replies: number;
   medianMs: number | null;
+  medianMbps?: number | null;
 };
 const count = (n: number) => n.toLocaleString();
 function elapsed(start: number, end: number | null) {

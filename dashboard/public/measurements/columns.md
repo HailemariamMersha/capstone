@@ -397,3 +397,7 @@ One baseline or during-transfer HTTP transaction.
 | `measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeReference` | WGS84 reference, explicitly not sea-level altitude. | string; none | measurement.networkSnapshot.flightEvidence.gpsDetails.altitudeReference | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.popCode` | Parsed Starlink egress PTR code, not a verified gateway location. | string; none | measurement.networkSnapshot.popCode | Unavailable, not applicable, or historical; never substitute zero. |
 | `measurement.networkSnapshot.reverseDns` | Observed public-IP PTR hostname; changes do not prove satellite handover. | string; none | measurement.networkSnapshot.reverseDns | Unavailable, not applicable, or historical; never substitute zero. |
+| `trip.id` | Trip containing this measurement segment. | string; none | trip.id | Not present in a standalone session export; never replace with zero. |
+| `trip.uploadComplete` | Whether every reported segment has reconciled. | boolean; none | trip.uploadComplete | Not present in a standalone session export; never replace with zero. |
+| `trip.receivedSegments` | Number of received segment manifests. | integer; none | trip.receivedSegments | Not present in a standalone session export; never replace with zero. |
+| `trip.reportedSegments` | Final or last-reported trip segment count. | integer; none | trip.reportedSegments | Not present in a standalone session export; never replace with zero. |
