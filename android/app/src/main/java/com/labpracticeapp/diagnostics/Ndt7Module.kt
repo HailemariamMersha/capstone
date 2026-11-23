@@ -79,6 +79,12 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
                 val direction = testType.value
                 val observedClient = clientResponse ?: clients[direction]
                 val server = receiverCounters(servers[direction], direction == "upload")
+                // Socket cancellation can deliver a later failure callback.
+                // Freeze this direction's transcript under the writer lock so
+                // a late callback cannot mutate results during serialization.
+                val transcript = synchronized(callbacks) {
+                    Pair(JSONArray(callbacks[direction]?.toString() ?: "[]"), dropped[direction] ?: 0)
+                }
                 results.put(JSONObject().put("direction", direction).put("reason", reason).put("host", host)
                     .put("clientBytes", observedClient?.appInfo?.numBytes ?: JSONObject.NULL)
                     .put("clientSeconds", observedClient?.appInfo?.elapsedTime?.div(1e6) ?: JSONObject.NULL)
@@ -86,7 +92,7 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
                     .put("serverSeconds", server?.seconds ?: JSONObject.NULL)
                     .put("serverCounterSource", server?.source ?: JSONObject.NULL)
                     .put("opened", opened).put("cleanClose", error == null && opened)
-                    .put("callbacks", callbacks[direction] ?: JSONArray()).put("droppedCallbacks", dropped[direction] ?: 0))
+                    .put("callbacks", transcript.first).put("droppedCallbacks", transcript.second))
             }
         }
         runId = id
