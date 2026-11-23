@@ -191,3 +191,8 @@ The dashboard images use synthetic browser-test records; the Android image shows
 ## 22 November 2026 — Start/upload handoff
 
 See the [dated upload validation](upload-validation-2026-11-22.md) for cancellation, adaptive retry batches, completion-query checks, phone installation and partial overnight-trip evidence.
+
+
+## Trip workspace and protected history reset — 2026-11-23
+
+See [the dated validation report](workspace-validation-2026-11-23.md) for deployed performance before cleanup, restore-verified archives, preserved identity/access, replay guards, browser tests and the supervisor APK. This work leaves collection methods and scheduling unchanged.

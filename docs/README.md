@@ -12,7 +12,8 @@ Start with the [repository README](../README.md). Current implementation is on `
 | What does each column mean? | [Measurement guide](measurements/guide.md), [generated dictionary](measurements/columns.md), [combined CSV](skymeasure/combined-csv.md) |
 | What do the libraries expose or omit? | [Library comparison](library-packet-comparison.md), [capability audit](measurements/comparison.md) |
 | What is M-Lab and why are results capped? | [Automatic M-Lab](skymeasure/automatic-mlab.md) |
-| How do the dashboard filters work? | [Dashboard filters](skymeasure/dashboard-filters.md) |
+| How do trips, timelines and evidence work? | [Trip workspace](skymeasure/trip-workspace.md), [filters](skymeasure/dashboard-filters.md) |
+| How do we back up and clear staging history? | [Protected history maintenance](skymeasure/history-maintenance.md) |
 | How do we configure services and accounts? | [Staging setup](skymeasure/setup.md), [rollout and ASN setup](skymeasure/flight-rollout.md) |
 | How do we build and recover researcher login? | [Sign-in and verified pilot build](skymeasure/sign-in-recovery.md) |
 | What was tested? | [Validation](skymeasure/validation.md), dated [experiments](experiments/) |

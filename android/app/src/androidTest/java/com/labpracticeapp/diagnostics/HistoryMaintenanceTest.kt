@@ -52,13 +52,27 @@ class HistoryMaintenanceTest {
     @Test fun maintainStoppedHistory() {
         val args=InstrumentationRegistry.getArguments()
         val operation=args.getString("historyMaintenance")
-        assumeTrue("Explicit history backup/cleanup opt-in required",operation in listOf("backup","clear"))
+        assumeTrue("Explicit history backup/cleanup opt-in required",operation in listOf("backup","clear","discardBackup"))
         val context=ApplicationProvider.getApplicationContext<Context>()
         val directory=File(context.getExternalFilesDir(null),"history-maintenance").apply{mkdirs()}
         val name=args.getString("archiveName") ?: "history.sqlite"
         require(name.matches(Regex("[a-zA-Z0-9_-]+\\.sqlite")))
         val target=File(directory,name);val manifestFile=File(directory,"$name.manifest.json");val paymentsFile=File(directory,"$name.payments.json")
         val report=JSONObject()
+        if(operation=="discardBackup") {
+            check(args.getString("archiveVerified")=="true")
+            val manifest=JSONObject(manifestFile.readText())
+            check(args.getString("expectedBackupSha256")==manifest.getString("databaseSha256"))
+            check(hash(target)==manifest.getString("databaseSha256")&&hash(paymentsFile)==manifest.getString("paymentSha256"))
+            val files=mutableListOf(target,paymentsFile,manifestFile)
+            args.getString("discardFailedArchiveName")?.let { failed ->
+                require(failed!=name&&failed.matches(Regex("[a-zA-Z0-9_-]+\\.sqlite")))
+                files.addAll(listOf(File(directory,failed),File(directory,"$failed.payments.json"),File(directory,"$failed.manifest.json")))
+            }
+            files.forEach { check(!it.exists()||it.delete()) }
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,android.os.Bundle().apply { putString("historyMaintenanceStatus","{\"operation\":\"discardBackup\",\"hostCopyRetained\":true}") })
+            return
+        }
         SQLiteDatabase.openDatabase(context.getDatabasePath("capstone.sqlite").path,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
             if(operation=="backup") {
                 check(!target.exists()&&!manifestFile.exists()&&!paymentsFile.exists()) { "Do not overwrite a previous archive" }

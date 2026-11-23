@@ -1,12 +1,12 @@
 # Dynamic trip-card measurement summaries
 
 Researcher **Trips** cards summarize the received segments belonging to each
-trip. The API calculates the values for every request; the dashboard never
+trip. The API calculates values from received evidence and caches selected-trip views by data revision; the dashboard never
 uses a saved experiment or a fixed set of totals. Existing fifteen-second
 refreshes update both old and future trips as more evidence arrives. Participant
 trip responses and phone collection behavior are unchanged.
 
-`GET /api/v2/research/trips` adds a `summary` to each item. It contains received
+The compatibility endpoint `GET /api/v2/research/trips` adds a `summary` to each item. The current dashboard uses `?view=compact` for lists and `/research/trips/{id}/detail` for one cached summary, so list loading does not compute all medians. It contains received
 segment count, expected/received record counts, parent measurement count,
 unsuccessful parent count and protocol results. Partial segments contribute
 only records actually committed; expected counts cover registered manifests.

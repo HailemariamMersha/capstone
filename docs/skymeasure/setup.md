@@ -46,6 +46,8 @@ ALTER ROLE skymeasure_api IN DATABASE postgres
 
 These provisioning statements are for a new deployment, not a password-rotation script. Do not rerun them against existing objects without checking ownership. The pooler login is `skymeasure_api.PROJECT_REF`; the PostgreSQL role itself is `skymeasure_api`. The runtime URL in `deploy/.env.example` explicitly sets the schema search path. The administrator password is used only for provisioning and is not sent to the backend host. In Supabase Table Editor, select the **skymeasure** schema to see the research tables; they are not in `public`.
 
+For the trip workspace, apply [004_trip_workspace.sql](../../backend/migrations/004_trip_workspace.sql) in the existing **skymeasure** schema before deploying the API. It supplies an explicit server-only RLS policy for administrator-created read/reset tables; verify runtime writes inside a rolled-back transaction as well as checking browser denial. See [history maintenance](history-maintenance.md).
+
 Run migrations with the table-owning role. `anon` and `authenticated` receive no direct schema/table grants and RLS is enabled without permissive browser policies; do not expose the private schema through Supabase Data API. The backend role owns its tables and therefore bypasses their RLS as owner; FastAPI independently enforces account ownership and researcher roles using verified Supabase identities. Do not grant browser SQL privileges to work around a denied request.
 
 Copy `deploy/.env.example` to `deploy/.env` and fill in values. The service-role key is needed by the identity deletion worker, not the ingestion path. Create the schema:
