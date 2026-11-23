@@ -2,6 +2,22 @@
 
 > This is a dated migration/rollback record. See [current setup](setup.md) and [validation history](validation.md) for subsequent phone runs and the ASN-only pilot. A pending check below describes its date, not the current status of every build.
 
+## Location update — 23 November 2026
+
+The deployed API and existing APK still use `lab-location-unconfirmed`. The observations below suggest the Ashburn/Washington metropolitan area; **they do not confirm the physical facility**. `ashburn-va-us` is a proposed label, pending lab/provider confirmation. The 31 October text below is kept as written.
+
+| Evidence | What it supports |
+| --- | --- |
+| ipinfo.io lists `23.235.205.53` as Ashburn, Virginia, AS54641 InMotion Hosting | The city. IP lookups can be wrong |
+| Traceroute from Dubai: the last carrier hop before InMotion's network is `ae4.cr3-was1.ip4.gtt.net` | The Washington, DC area, inferred from the router's name |
+| Two 25-ping runs each: lowest replies 199.7 and 203.8 ms from that router, 210.3 and 213.4 ms from the lab server | Consistent with an eastern-US path; RTT differences alone do not establish the facility or exclude alternative/asymmetric routes |
+
+ARIN registers the address block to InMotion's office in Virginia Beach. That is a company address, not the server's location. Neither InMotion nor the lab has confirmed the facility. Treat Ashburn as an inference, and retain the deployed unconfirmed label until it is verified. The table records the earlier investigation; this review did not independently reproduce its route/ping runs.
+
+- **Same server.** A future label change would describe `23.235.205.53`, not a new probe endpoint. Preserve the observation source and change date; do not rewrite historical records or count a renamed endpoint as a second location.
+- **Current configuration:** the checked-in example and local pilot region retain `lab-location-unconfirmed`; installed APKs and historical records are unchanged.
+- **After confirmation:** update the app/probe labels together, document the evidence, restart only the isolated API if needed and verify the expected region. Do not change shared-server or UDP configuration merely to rename the location.
+
 ## Deployment status — 31 October 2026
 
 SkyMeasure's API hostname now points to the lab's InMotion server,

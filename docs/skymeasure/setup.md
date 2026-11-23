@@ -1,8 +1,8 @@
 # SkyMeasure staging setup
 
-> Current phone UX and limits are defined by [pilot 1.2.1](uncapped-pilot.md): no phone Google/researcher controls, required flight details, pilot test-ASN normal admission and uncapped M-Lab. Google configuration below applies to the researcher website and historical clients.
+> Current phone UX and limits are defined by [pilot 1.2.5](uncapped-pilot.md): no phone Google/researcher controls, required NYU NetID and flight/route details, pilot test-ASN normal admission and uncapped M-Lab. Google configuration below applies to the researcher website and historical clients.
 
-> Current hosting: isolated SkyMeasure API/UDP services on the shared lab host, Supabase PostgreSQL/Auth, and Vercel dashboard. Region is `lab-location-unconfirmed`. DigitalOcean instructions below document the original deployment and retained rollback host; do not reprovision it for the current pilot. Current qualification is [ASN-only](../measurements/flight-collection.md).
+> Current hosting: isolated SkyMeasure API/UDP services on the shared lab host, Supabase PostgreSQL/Auth, and Vercel dashboard. The deployed region label remains `lab-location-unconfirmed`; Ashburn is an [unconfirmed location inference](lab-migration.md#location-update--23-november-2026). DigitalOcean instructions below document the original deployment and retained rollback host; do not reprovision it for the current pilot. Current qualification is [ASN-only](../measurements/flight-collection.md).
 
 > For the current anonymous-participant flight pilot, follow [flight rollout and MaxMind setup](flight-rollout.md). Google/PKCE instructions below apply to researchers and retained Google accounts. The new participant flow uses background anonymous enrollment and fifteen-minute trip segments.
 
@@ -123,7 +123,7 @@ After configuring the domain and Supabase, replace the placeholder values using 
 
 Before the 31 October lab migration, the GoDaddy DNS A record `api.hailemariam.com` pointed to `142.93.34.57`. It now points to `23.235.205.53`; the following describes the retained rollback host. `API_DOMAIN=api.hailemariam.com` configures Caddy, which listens on TCP 80/443 and persists its automatic certificate state in the Compose volumes. HTTP redirects to HTTPS. The backend remains bound to host loopback on port 8000; UDP still uses `142.93.34.57:9876` directly.
 
-Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Use `PROBE_REGION=lon1` only on the original London host; the lab uses `lab-location-unconfirmed`. The API allows `https://capstone-backend-henna.vercel.app` in `DASHBOARD_ORIGINS`; add any future dashboard origin explicitly.
+Use `https://api.hailemariam.com` for `NEXT_PUBLIC_API_URL`, `SKYMEASURE_API_URL` and `SKYMEASURE_PROBE_URL`. The Mac's ignored environment files contain these values; the checked-in mobile defaults and installed phone build are not automatically changed. `/health` is a health endpoint, not a dashboard page. Use `PROBE_REGION=lon1` only on the original London host; the lab still uses `lab-location-unconfirmed`. The API allows `https://capstone-backend-henna.vercel.app` in `DASHBOARD_ORIGINS`; add any future dashboard origin explicitly.
 
 ## 4. Dashboard on Vercel
 

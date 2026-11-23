@@ -22,7 +22,7 @@ Automated fixtures cover detector semantics, budgets, privacy projection, storag
 
 Before recruiting, verify on a physical Android phone: anonymous enrollment/CAPTCHA, offline restart after consent, Start/Stop, optional details, shadow mode restricted to researchers, Wi-Fi plus cellular/captive portal routing for each protocol, 15-minute upload pause/resume, counters across segments, expired credentials, locked screen, Recents removal, interruption/reboot recovery, force-stop/reopen, TalkBack and large text. Simulations must be labelled. Then validate on an actual flight.
 
-Do not retire the DigitalOcean rollback host or change unrelated lab applications as part of this rollout. The lab location remains `lab-location-unconfirmed`.
+Do not retire the DigitalOcean rollback host or change unrelated lab applications as part of this rollout. The deployed lab region remains `lab-location-unconfirmed`; see the [location inference](lab-migration.md#location-update--23-november-2026).
 
 
 ## MaxMind setup (operator)

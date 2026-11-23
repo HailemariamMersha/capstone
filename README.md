@@ -25,7 +25,7 @@ flowchart LR
   P -->|one consented NDT7 benchmark| M[M-Lab public measurement platform]
 ```
 
-The API and UDP service run in isolated services on a shared lab server. Its region is `lab-location-unconfirmed`; the DigitalOcean host is retained for rollback. Do not label an unknown host location London or Frankfurt.
+The API and UDP service run in isolated services on a shared lab server. Its deployed region label remains `lab-location-unconfirmed`. [GeoIP and routing observations](docs/skymeasure/lab-migration.md#location-update--23-november-2026) suggest the Ashburn/Washington area, but the facility is not confirmed; `ashburn-va-us` remains a proposed label. The DigitalOcean host is retained for rollback.
 
 ## Measurements and implementation
 
@@ -89,6 +89,8 @@ Offline analysis of an existing complete session JSON (original exports remain u
 npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis
 ```
 
+For independent terminal checks, see [the baseline validation guide](docs/measurements/validation.md). `npm run baseline:test` runs offline fixtures; live baseline runs stay in ignored private output and are kept separate from participant records. Paired phone accuracy validation remains pending.
+
 Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md) and [combined CSV guide](docs/skymeasure/combined-csv.md). Blank values mean unavailable or inapplicable, not zero. Parent values repeated across sample rows must not be summed repeatedly. Regenerate shared documentation with `npm run measurements:docs` and `npm run skymeasure:docs`.
 
 ## Repository map and validation status
@@ -103,6 +105,7 @@ Start with the [measurement guide](docs/measurements/guide.md), [column dictiona
 | `__tests__/`, `backend/tests/` | Collector, privacy, ownership, upload and analysis tests |
 | `deploy/` | Deployment templates and isolated lab-service tooling |
 | `docs/` | [Reading map](docs/README.md), current policies and dated experiment evidence |
+| `paper/` | [Progress report sources](paper/README.md), sanitized plotting data and figures; frozen evidence through 16 November 2026 |
 
 Automated checks and dated physical ground tests support implementation behavior. They do not establish airborne detection accuracy, captive-Wi-Fi routing for every protocol, unplugged endurance across manufacturers, or iOS support. Public recruitment still requires protected enrollment, approved study text and completed identity-deletion operations. See [validation](docs/skymeasure/validation.md) and dated [experiment records](docs/experiments/).
 
