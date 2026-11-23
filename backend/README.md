@@ -39,6 +39,16 @@ references it. Exclude ignored data/configuration, preflight the application
 import, and verify a protected database read as well as `/health` before
 accepting a release. Keep the prior isolated release available for rollback.
 
+Build the source-only archive after committing the selected runtime paths:
+
+```sh
+python3 scripts/build-api-release.py --out build/releases/skymeasure-api.tar.gz
+```
+
+The builder selects tracked backend source, the export dictionary and public CA,
+rejects private/nonregular paths and includes a SHA-256 file manifest. It neither
+selects ignored evidence nor transfers credentials or deploys the archive.
+
 The following probe and historical development documentation remains useful for reproducing earlier tests.
 
 # Controlled probe server (M2)
