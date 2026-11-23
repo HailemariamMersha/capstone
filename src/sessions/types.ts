@@ -58,6 +58,11 @@ export interface BackgroundExecutor {
   start(
     onHeartbeat: () => void,
     onError: (error: Error) => void,
+    phase?: 'collection' | 'upload',
+  ): Promise<void>;
+  setPhase?(
+    phase: 'collection' | 'upload',
+    description?: string,
   ): Promise<void>;
   stop(): Promise<void>;
 }

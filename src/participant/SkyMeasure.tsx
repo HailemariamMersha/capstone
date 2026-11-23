@@ -1,3 +1,4 @@
+import { measurementOutcome } from '../measurements/outcome';
 import { RESEARCH_CONSENT } from './consent';
 import React, {
   createContext,
@@ -536,15 +537,20 @@ function Sessions() {
       const measurements = await measurementStore.listMeasurements(id, 10000);
       const groups = new Map<
         string,
-        { total: number; failed: number; latest?: string }
+        { total: number; failed: number; interrupted: number; latest?: string }
       >();
       for (const { measurement: m } of measurements) {
-        const g: { total: number; failed: number; latest?: string } =
-          groups.get(m.type) ?? { total: 0, failed: 0 };
+        const g: {
+          total: number;
+          failed: number;
+          interrupted: number;
+          latest?: string;
+        } = groups.get(m.type) ?? { total: 0, failed: 0, interrupted: 0 };
         if (!g.latest && m.success && m.value != null)
           g.latest = `${m.value.toFixed(2)} ${m.unit}`;
         g.total++;
-        if (!m.success) g.failed++;
+        if (measurementOutcome(m) === 'failure') g.failed++;
+        if (measurementOutcome(m) === 'interrupted') g.interrupted++;
         groups.set(m.type, g);
       }
       setDetails({
@@ -565,9 +571,9 @@ function Sessions() {
                 ndt7_upload: 'M-Lab upload speed',
               } as Record<string, string>
             )[type] ?? type.replaceAll('_', ' '),
-          value: `${g.total} measurements · ${
-            g.failed
-          } unsuccessful. Latest result: ${g.latest ?? 'unavailable'}.`,
+          value: `${g.total} measurements · ${g.failed} failed · ${
+            g.interrupted
+          } interrupted. Latest result: ${g.latest ?? 'unavailable'}.`,
         })),
       });
     } catch (e) {

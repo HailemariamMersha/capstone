@@ -217,6 +217,44 @@ export function createRepository(
     );
   }
   return {
+    getUploadState: (owner, key) =>
+      read(async () => {
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            `delivery:${owner}:${key}`,
+          ])
+        ).rows[0];
+        return row ? JSON.parse(String(row.value_json)) : null;
+      }),
+    saveUploadState: (owner, key, value) =>
+      write(async () => {
+        await db.execute(
+          'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
+          [`delivery:${owner}:${key}`, JSON.stringify(value)],
+        );
+      }),
+    clearUploadState: (owner, key) =>
+      write(async () => {
+        await db.execute('DELETE FROM app_settings WHERE key=?', [
+          `delivery:${owner}:${key}`,
+        ]);
+      }),
+    appendUploadDiagnostic: (owner, entry) =>
+      write(async () => {
+        const key = `delivery:${owner}:journal`;
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            key,
+          ])
+        ).rows[0];
+        const items = row ? JSON.parse(String(row.value_json)) : [];
+        // The journal is local operational evidence, never another queue record.
+        items.push(entry);
+        await db.execute(
+          'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
+          [key, JSON.stringify(items.slice(-200))],
+        );
+      }),
     initialize,
     saveTripPayment: (owner, tripId, value) =>
       write(() => savePayment(owner, tripId, value)),
@@ -451,11 +489,12 @@ export function createRepository(
         );
         await db.execute('DELETE FROM sessions WHERE owner_id=?', [ownerId]);
         await db.execute(
-          'DELETE FROM app_settings WHERE key=? OR key LIKE ? OR key LIKE ?',
+          'DELETE FROM app_settings WHERE key=? OR key LIKE ? OR key LIKE ? OR key LIKE ?',
           [
             `last_session_config:${ownerId}`,
             `upload-retry:${ownerId}:%`,
             `upload-batch:${ownerId}:%`,
+            `delivery:${ownerId}:%`,
           ],
         );
       }),
@@ -536,7 +575,7 @@ export function createRepository(
           snapshots,
         };
       }),
-    getSyncBatch: (limit = 50, ownerId, sessionId) =>
+    getSyncBatch: (limit = 200, ownerId, sessionId) =>
       read(async () => {
         const installationId = String(
           (await db.execute('SELECT id FROM device_info LIMIT 1')).rows[0].id,
@@ -644,12 +683,12 @@ export function createRepository(
             `upload-batch:${ownerId}:${sessionId}`,
           ])
         ).rows[0];
-        const value = row ? Number(JSON.parse(String(row.value_json))) : 50;
+        const value = row ? Number(JSON.parse(String(row.value_json))) : 200;
         return Number.isFinite(value)
-          ? Math.max(1, Math.min(50, Math.floor(value)))
-          : 50;
+          ? Math.max(1, Math.min(200, Math.floor(value)))
+          : 200;
       }),
-    reduceUploadBatchLimit: (ownerId, sessionId) =>
+    reduceUploadBatchLimit: (ownerId, sessionId, attemptedCount) =>
       write(async () => {
         const key = `upload-batch:${ownerId}:${sessionId}`;
         const row = (
@@ -657,13 +696,21 @@ export function createRepository(
             key,
           ])
         ).rows[0];
-        const value = row ? Number(JSON.parse(String(row.value_json))) : 50;
+        const value = row ? Number(JSON.parse(String(row.value_json))) : 200;
         const limit = Number.isFinite(value)
-          ? Math.max(1, Math.min(50, Math.floor(value)))
-          : 50;
+          ? Math.max(1, Math.min(200, Math.floor(value)))
+          : 200;
         await db.execute(
           'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
-          [key, JSON.stringify(Math.max(1, Math.floor(limit / 2)))],
+          [
+            key,
+            JSON.stringify(
+              Math.max(
+                1,
+                Math.floor(Math.min(limit, attemptedCount ?? limit) / 2),
+              ),
+            ),
+          ],
         );
       }),
     deferUpload: (ownerId, sessionId, reset = false, failure) =>

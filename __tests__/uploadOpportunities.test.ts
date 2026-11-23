@@ -47,7 +47,15 @@ jest.mock('../src/trips/sync', () => ({
   cancelTripUpload: jest.fn(),
 }));
 jest.mock('../src/sync/accountSync', () => ({
+  ...jest.requireActual('../src/sync/accountSync'),
   createAccountSync: () => mockLegacy,
+}));
+jest.mock('../src/background/serviceCoordinator', () => ({
+  foregroundService: {
+    uploading: () => false,
+    registerDrain: () => () => {},
+    startUploads: async () => false,
+  },
 }));
 const { syncAccount } = require('../src/sync/background');
 const { setTripArmed } = require('../src/services/activityGate');
@@ -78,9 +86,9 @@ test('two old trips cannot starve a newer trip across bounded opportunities', as
   mockUpload.mockImplementation(async () => {
     jest.setSystemTime(Date.now() + 26000);
   });
-  await syncAccount();
-  await syncAccount();
-  await syncAccount();
+  await syncAccount({ mode: 'background' });
+  await syncAccount({ mode: 'background' });
+  await syncAccount({ mode: 'background' });
   expect(mockUpload.mock.calls.map(c => c[0].id)).toEqual([
     'old-1',
     'old-2',
@@ -100,8 +108,8 @@ test('a long legacy backlog also yields its next opportunity to a trip', async (
   mockUpload.mockImplementation(async () => {
     jest.setSystemTime(Date.now() + 26000);
   });
-  await syncAccount();
-  await syncAccount();
+  await syncAccount({ mode: 'background' });
+  await syncAccount({ mode: 'background' });
   expect(mockLegacy).toHaveBeenCalledTimes(1);
   expect(mockUpload.mock.calls[0][0].id).toBe('new');
 });
@@ -110,7 +118,10 @@ test('a failing old manifest does not prevent another eligible trip from progres
   mockUpload.mockImplementation(async (t: any) => {
     if (t.id === 'old') throw new Error('old manifest');
   });
-  await expect(syncAccount()).rejects.toThrow('old manifest');
+  expect(await syncAccount()).toMatchObject({
+    outcome: 'failed',
+    error: expect.objectContaining({ message: 'old manifest' }),
+  });
   expect(mockUpload.mock.calls.map(c => c[0].id)).toEqual(['old', 'new']);
 });
 test('armed collection prevents every upload task', async () => {
@@ -189,4 +200,70 @@ test('a trip starting during cursor persistence prevents the next upload task', 
   mockCursorHook = () => setTripArmed(true);
   await syncAccount();
   expect(mockUpload).not.toHaveBeenCalled();
+});
+
+test('service drain stops after ten minutes without new acknowledgements', async () => {
+  const { drainPostTrip } = require('../src/sync/background');
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('stalled', 1));
+  const abort = new AbortController();
+  let finished = false;
+  const work = drainPostTrip(abort.signal, jest.fn()).then(() => {
+    finished = true;
+  });
+  await jest.advanceTimersByTimeAsync(599999);
+  expect(finished).toBe(false);
+  await jest.advanceTimersByTimeAsync(1);
+  await work;
+  expect(finished).toBe(true);
+  expect(mockTrips[0].uploadedRevision).toBeUndefined();
+  expect(
+    JSON.parse(mockStorage.get('automatic-upload-retry.owner-a')!).nextAt,
+  ).toBeGreaterThanOrEqual(Date.now() + 15 * 60000);
+});
+
+test('service drain keeps collecting acknowledgements across passes and finishes without an OS job', async () => {
+  const { drainPostTrip } = require('../src/sync/background');
+  mockStorage.set(
+    'profile.owner-a',
+    JSON.stringify({ consentVersion: 'current', mobileUploads: false }),
+  );
+  mockTrips.push(trip('saved', 1));
+  let attempts = 0;
+  mockUpload.mockImplementation(
+    async (
+      t: any,
+      _live: any,
+      _wifi: any,
+      _persist: any,
+      _observe: any,
+      options: any,
+    ) => {
+      attempts++;
+      options.onProgress(100, 0);
+      if (attempts === 2) t.uploadedRevision = t.revision;
+      return {
+        acknowledged: 100,
+        completed: attempts === 2 ? 1 : 0,
+        pending: attempts !== 2,
+        outcome: attempts === 2 ? 'complete' : 'pending',
+      } as any;
+    },
+  );
+  const report = jest.fn();
+  let finished = false;
+  const work = drainPostTrip(new AbortController().signal, report).then(() => {
+    finished = true;
+  });
+  await jest.advanceTimersByTimeAsync(1001);
+  await work;
+  expect(finished).toBe(true);
+  expect(attempts).toBe(2);
+  expect(report).toHaveBeenCalledWith(
+    expect.stringContaining('200 records acknowledged'),
+  );
+  expect(mockUpload.mock.calls[0][5].deadline).toBe(1180000);
 });

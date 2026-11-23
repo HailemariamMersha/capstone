@@ -19,7 +19,8 @@
     "baseline:compare": "node --experimental-strip-types --no-warnings scripts/baseline/compare.mjs",
     "baseline:test": "node --experimental-strip-types --no-warnings --test scripts/baseline/baseline.test.mjs",
     "skymeasure:configure": "node scripts/configure-skymeasure.cjs",
-    "skymeasure:docs": "node scripts/skymeasure-docs.cjs"
+    "skymeasure:docs": "node scripts/skymeasure-docs.cjs",
+    "uploads:size": "node scripts/measurements/upload-sizing.cjs"
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "2.40.3",
@@ -35,6 +36,7 @@
     "@supabase/supabase-js": "2.118.0",
     "buffer": "6.0.3",
     "fast-text-encoding": "1.0.6",
+    "fflate": "0.8.3",
     "ping-react-native": "2.1.1",
     "react": "19.2.3",
     "react-native": "0.84.1",

@@ -1,7 +1,7 @@
 import type { ProbeType } from '../measurements/types';
 
 export const COLLECTOR_POLICY = {
-  version: 'collector-scheduler-2026-11-08',
+  version: 'collector-scheduler-2026-11-23',
   toleranceMs: 1000,
   gapMs: 90000,
   timingGapToleranceMs: 2000,
@@ -11,6 +11,7 @@ export const COLLECTOR_POLICY = {
   identityFreshMs: 120000,
   heavySpacingMs: 60000,
   uploadPauseMs: 25000,
+  boundaryGraceMs: 10000,
 } as const;
 export const INTERVALS = {
   icmp_burst: 60000,

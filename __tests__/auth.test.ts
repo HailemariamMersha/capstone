@@ -1,3 +1,11 @@
+function httpResponse(status: number, body: unknown = {}) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+  };
+}
 jest.mock('react-native-url-polyfill/auto', () => {});
 jest.mock('../src/config/public.json', () => ({
   supabaseUrl: 'https://test.supabase.co',
@@ -191,12 +199,8 @@ test('one server 401 refreshes credentials and retries for the same owner', asyn
   });
   globalThis.fetch = jest
     .fn()
-    .mockResolvedValueOnce({ status: 401, ok: false })
-    .mockResolvedValueOnce({
-      status: 200,
-      ok: true,
-      json: async () => ({ role: 'participant' }),
-    });
+    .mockResolvedValueOnce(httpResponse(401))
+    .mockResolvedValueOnce(httpResponse(200, { role: 'participant' }));
   expect(await api('/profile', {}, 'a')).toEqual({ role: 'participant' });
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(
@@ -214,7 +218,7 @@ test('401 recovery never retries a record with a different account', async () =>
     data: { session: { ...session, user: { id: 'b' }, access_token: 'wrong' } },
     error: null,
   });
-  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  globalThis.fetch = jest.fn().mockResolvedValue(httpResponse(401));
   await expect(api('/profile', {}, 'a')).rejects.toThrow('Account changed');
   expect(fetch).toHaveBeenCalledTimes(1);
 });
@@ -234,11 +238,9 @@ test.each([
         },
       },
     });
-    globalThis.fetch = jest.fn().mockResolvedValue({
-      status: 403,
-      ok: false,
-      json: async () => ({ detail }),
-    });
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue(httpResponse(403, { detail }));
     await expect(api('/profile', {}, 'a')).rejects.toMatchObject({
       status: 403,
       reason,
@@ -257,7 +259,7 @@ test('a repeated server 401 stops after one refresh attempt', async () => {
     data: { session },
     error: null,
   });
-  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  globalThis.fetch = jest.fn().mockResolvedValue(httpResponse(401));
   await expect(api('/profile', {}, 'a')).rejects.toMatchObject({
     status: 401,
     reason: 'sign_in_required',
@@ -271,7 +273,7 @@ test('ingestion is not silently replayed outside durable retry/budget accounting
     expires_at: Date.now() / 1000 + 3600,
   };
   (auth.auth.getSession as jest.Mock).mockResolvedValue({ data: { session } });
-  globalThis.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  globalThis.fetch = jest.fn().mockResolvedValue(httpResponse(401));
   await expect(
     api('/sessions/s/records', { method: 'POST', body: '{"records":[]}' }, 'a'),
   ).rejects.toMatchObject({ status: 401 });

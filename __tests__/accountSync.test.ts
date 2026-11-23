@@ -249,7 +249,7 @@ test('cancelled trip registration settles quietly and releases the upload gate',
   const uploading = run();
   await ready;
   const release = await acquireMeasurementActivity();
-  await expect(uploading).resolves.toBeUndefined();
+  await expect(uploading).resolves.toMatchObject({ outcome: 'cancelled' });
   expect(f.request).not.toHaveBeenCalled();
   release();
 });
@@ -264,4 +264,73 @@ test('an archived server recording retires its queue without authentication fail
   expect(f.store.retireSessionData).toHaveBeenCalledWith('a', 's');
   expect(f.store.failSync).not.toHaveBeenCalled();
   expect(f.store.deferUpload).not.toHaveBeenCalled();
+});
+
+test('accepted manifests survive uploader recreation, preserve array order and are never replaced', async () => {
+  const f = fixture();
+  const state = new Map<string, unknown>();
+  f.store.getUploadState = jest.fn(
+    async (_owner: string, key: string) => state.get(key) ?? null,
+  );
+  f.store.saveUploadState = jest.fn(
+    async (_owner: string, key: string, value: unknown) => {
+      state.set(key, value);
+    },
+  );
+  await f.run();
+  f.request.mockClear();
+  await createAccountSync(f)();
+  expect(f.request.mock.calls.map((c: any[]) => c[0])).toEqual([
+    '/sessions/s/complete',
+  ]);
+  f.store.sessionManifest.mockResolvedValue([{ ...record, version: 3 }]);
+  f.request.mockClear();
+  const result = await createAccountSync(f)();
+  expect(result).toMatchObject({ outcome: 'failed', status: 409 });
+  expect(f.request).not.toHaveBeenCalled();
+  expect(f.store.setUploadStatus).toHaveBeenLastCalledWith(
+    'a',
+    's',
+    'Action needed',
+  );
+});
+
+test('a shared 180-second foreground deadline drains four segments in one run', async () => {
+  const f = fixture();
+  const sessions = Array.from({ length: 4 }, (_, i) => ({
+    ...session,
+    id: 's' + i,
+  }));
+  f.store.accountSessions.mockResolvedValue(sessions);
+  f.store.sessionManifest.mockImplementation(
+    async (_owner: string, id: string) => [
+      { ...record, id, payload: { ...session, id } },
+    ],
+  );
+  const sent = new Set<string>();
+  f.store.getSyncBatch.mockReset();
+  f.store.getSyncBatch.mockImplementation(
+    async (_limit: number, _owner: string, id: string) => {
+      if (sent.has(id)) return { records: [] };
+      return { records: [{ ...record, id, payload: { ...session, id } }] };
+    },
+  );
+  f.store.acknowledgeSync.mockImplementation(async (records: any[]) => {
+    for (const r of records) sent.add(r.id);
+  });
+  f.request.mockImplementation(async (path: string, body: any) =>
+    path.endsWith('/records')
+      ? { acknowledged: body.records }
+      : path.endsWith('/complete')
+      ? { complete: true }
+      : {},
+  );
+  const result = await f.run({ deadline: 180000 });
+  expect(result).toMatchObject({
+    acknowledged: 4,
+    completed: 4,
+    pending: false,
+    outcome: 'complete',
+  });
+  expect(sent.size).toBe(4);
 });

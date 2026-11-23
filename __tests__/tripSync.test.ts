@@ -1,6 +1,11 @@
 import { Buffer } from 'buffer';
 import type { Trip } from '../src/trips/model';
-import { TRIP_POLICY, DETECTOR_POLICY } from '../src/trips/model';
+import {
+  TRIP_POLICY,
+  DETECTOR_POLICY,
+  PILOT_TRIP_POLICY,
+} from '../src/trips/model';
+import { uploadKey } from '../src/sync/transport';
 import { tripManifest, uploadTrip } from '../src/trips/sync';
 import { api, localSession } from '../src/auth/client';
 import { measurementStore } from '../src/storage/database';
@@ -22,6 +27,9 @@ jest.mock('../src/storage/database', () => ({
     retireTripData: jest.fn(),
     tripPayment: jest.fn(async () => null),
     acknowledgeTripPayment: jest.fn(),
+    getUploadState: jest.fn(),
+    saveUploadState: jest.fn(),
+    clearUploadState: jest.fn(),
   },
 }));
 function trip(): Trip {
@@ -57,6 +65,20 @@ beforeEach(() => {
   jest.clearAllMocks();
   (localSession as jest.Mock).mockResolvedValue({ user: { id: 'owner' } });
   (api as jest.Mock).mockResolvedValue({ uploadComplete: false });
+  const states = new Map();
+  (measurementStore.getUploadState as jest.Mock).mockImplementation(
+    async (_owner, key) => states.get(key) ?? null,
+  );
+  (measurementStore.saveUploadState as jest.Mock).mockImplementation(
+    async (_owner, key, value) => {
+      states.set(key, value);
+    },
+  );
+  (measurementStore.clearUploadState as jest.Mock).mockImplementation(
+    async (_owner, key) => {
+      states.delete(key);
+    },
+  );
 });
 test('only new trips include an explicit detector policy in their manifest', () => {
   const t = trip();
@@ -128,6 +150,7 @@ test('payment metadata is uploaded once through its separate owner endpoint, nev
     `/trips/${t.id}/payment`,
     expect.objectContaining({ method: 'PUT', body: '{"netId":"abc123"}' }),
     'owner',
+    expect.any(Object),
   );
   expect(measurementStore.acknowledgeTripPayment).toHaveBeenCalledWith(
     'owner',
@@ -146,4 +169,75 @@ test('a history reset retires the old trip without replacing its identity', asyn
   expect(t.state).toBe('interrupted');
   expect(measurementStore.retireTripData).toHaveBeenCalledWith('owner', t.id);
   expect(currentActivity()).toBeNull();
+});
+
+test('a saved trip acknowledgement survives a failed receipt and avoids repeating the PUT', async () => {
+  const t = {
+    ...trip(),
+    state: 'completed',
+    phase: 'finished',
+    endedAt: 2,
+  } as Trip;
+  await measurementStore.saveUploadState!('owner', uploadKey('capability'), 2);
+  let receipts = 0;
+  (api as jest.Mock).mockImplementation(async (path: string) => {
+    if (path.endsWith('/receipt')) {
+      if (++receipts === 1)
+        throw Object.assign(new Error('timeout'), { code: 'REQUEST_TIMEOUT' });
+      return { acceptedRevision: 1, uploadComplete: true };
+    }
+    return { acceptedRevision: 1, uploadComplete: false };
+  });
+  await expect(uploadTrip(t, false, true, jest.fn())).rejects.toThrow(
+    'timeout',
+  );
+  await uploadTrip(t, false, true, jest.fn());
+  expect(
+    (api as jest.Mock).mock.calls.filter(([p]) => p.includes('?view=receipt')),
+  ).toHaveLength(1);
+  expect(receipts).toBe(2);
+  expect(t.uploadedRevision).toBe(1);
+});
+
+test('a lost compact receipt invalidates its registration hint without deleting evidence', async () => {
+  const t = {
+    ...trip(),
+    state: 'completed',
+    phase: 'finished',
+    endedAt: 2,
+  } as Trip;
+  await measurementStore.saveUploadState!('owner', uploadKey('capability'), 2);
+  (api as jest.Mock).mockImplementation(async (path: string) => {
+    if (path.endsWith('/receipt'))
+      throw Object.assign(new Error('missing'), { status: 404 });
+    return { acceptedRevision: 1, uploadComplete: false };
+  });
+  await expect(uploadTrip(t, false, true, jest.fn())).rejects.toThrow(
+    'missing',
+  );
+  expect(measurementStore.clearUploadState).toHaveBeenCalledWith(
+    'owner',
+    uploadKey('trip-manifest', t.id),
+  );
+  await expect(uploadTrip(t, false, true, jest.fn())).rejects.toThrow(
+    'missing',
+  );
+  expect(
+    (api as jest.Mock).mock.calls.filter(([p]) => p.includes('?view=receipt')),
+  ).toHaveLength(2);
+  expect(measurementStore.retireTripData).not.toHaveBeenCalled();
+});
+
+test('crash-surviving live reservations are charged once without leaking local reservation IDs', async () => {
+  const t = trip();
+  t.policy = PILOT_TRIP_POLICY;
+  t.used.uploads = 100;
+  t.uploadReservations = { uncertain: 500 };
+  const persist = jest.fn();
+  await uploadTrip(t, false, true, persist);
+  await uploadTrip(t, false, true, persist);
+  expect(t.used.uploads).toBe(600);
+  expect(t.uploadReservations).toEqual({});
+  expect(persist).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(tripManifest(t))).not.toContain('uncertain');
 });

@@ -627,13 +627,13 @@ test('new trip and payment mapping commit atomically without embedding the NetID
 
 test('timeout batch limits survive restart, remain owner scoped and never split a record', async () => {
   await store.initialize();
-  expect(await store.uploadBatchLimit('a', 's')).toBe(50);
+  expect(await store.uploadBatchLimit('a', 's')).toBe(200);
   await store.reduceUploadBatchLimit('a', 's');
-  expect(await store.uploadBatchLimit('a', 's')).toBe(25);
+  expect(await store.uploadBatchLimit('a', 's')).toBe(100);
   db.close();
   open();
-  expect(await store.uploadBatchLimit('a', 's')).toBe(25);
-  expect(await store.uploadBatchLimit('b', 's')).toBe(50);
+  expect(await store.uploadBatchLimit('a', 's')).toBe(100);
+  expect(await store.uploadBatchLimit('b', 's')).toBe(200);
   for (let i = 0; i < 8; i++) await store.reduceUploadBatchLimit('a', 's');
   expect(await store.uploadBatchLimit('a', 's')).toBe(1);
   await store.deferUpload('a', 's', false, {
@@ -654,7 +654,7 @@ test('timeout batch limits survive restart, remain owner scoped and never split 
   });
   expect(retry.secret).toBeUndefined();
   await store.deleteAccountRecords('a');
-  expect(await store.uploadBatchLimit('a', 's')).toBe(50);
+  expect(await store.uploadBatchLimit('a', 's')).toBe(200);
 });
 
 test('history pagination is owner scoped and retired evidence stays exportable without retrying', async () => {
@@ -697,4 +697,21 @@ test('history pagination is owner scoped and retired evidence stays exportable w
   expect((await store.getSyncBatch(50, 'a', sid)).records).toHaveLength(0);
   expect((await store.exportSession(sid)).session.id).toBe(sid);
   await expect(store.retireSessionData('b', sid)).rejects.toThrow('ownership');
+});
+
+test('legacy or byte-limited timeout halves the actual attempted batch immediately', async () => {
+  await store.initialize();
+  await store.reduceUploadBatchLimit('owner', 'session', 50);
+  expect(await store.uploadBatchLimit('owner', 'session')).toBe(25);
+  await store.reduceUploadBatchLimit('owner', 'session', 8);
+  expect(await store.uploadBatchLimit('owner', 'session')).toBe(4);
+  await store.saveUploadState('owner', 'manifest', { hash: 'accepted' });
+  expect(await store.getUploadState('other', 'manifest')).toBeNull();
+  db.close();
+  open();
+  expect(await store.getUploadState('owner', 'manifest')).toEqual({
+    hash: 'accepted',
+  });
+  await store.deleteAccountRecords('owner');
+  expect(await store.getUploadState('owner', 'manifest')).toBeNull();
 });

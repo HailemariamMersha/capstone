@@ -25,6 +25,14 @@ export interface UploadFailure {
   status: number | null;
 }
 export interface MeasurementStore {
+  /** Owner-scoped operational state; excluded from measurement exports. */
+  getUploadState?(owner: string, key: string): Promise<unknown | null>;
+  saveUploadState?(owner: string, key: string, value: unknown): Promise<void>;
+  clearUploadState?(owner: string, key: string): Promise<void>;
+  appendUploadDiagnostic?(
+    owner: string,
+    entry: Record<string, unknown>,
+  ): Promise<void>;
   saveTripPayment(owner: string, tripId: string, netId: string): Promise<void>;
   tripPayment(
     owner: string,
@@ -59,7 +67,11 @@ export interface MeasurementStore {
   requeueSync(records: SyncRecord[]): Promise<void>;
   uploadReady(ownerId: string, sessionId: string): Promise<boolean>;
   uploadBatchLimit(ownerId: string, sessionId: string): Promise<number>;
-  reduceUploadBatchLimit(ownerId: string, sessionId: string): Promise<void>;
+  reduceUploadBatchLimit(
+    ownerId: string,
+    sessionId: string,
+    attemptedCount?: number,
+  ): Promise<void>;
   deferUpload(
     ownerId: string,
     sessionId: string,

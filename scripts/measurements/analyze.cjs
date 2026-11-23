@@ -1,3 +1,4 @@
+const { measurementOutcome } = require('../../src/measurements/outcome.ts');
 /* Offline, additive views. Reuse the phone serializer to preserve legacy semantics. */
 const {
   sessionExportFiles,
@@ -797,6 +798,7 @@ function analyze(data) {
     const payload = payloadCandidates.find(([value]) => present(value));
     const focused = {
       ...row,
+      interruptionReason: m.interruptionReason ?? null,
       recordPath: at,
       library,
       libraryVersion: row.libraryVersion ?? p.engineVersion ?? null,
@@ -857,7 +859,8 @@ function analyze(data) {
       recordPath: `/measurements/${i}`,
       sampleTimestamp: m.timestamp,
       targetHost: m.targetHost ?? m.probeServer,
-      outcome: m.errorType ?? (m.success ? 'success' : 'unavailable'),
+      outcome: measurementOutcome(m),
+      interruptionReason: m.interruptionReason ?? null,
       errorType: m.errorType,
     };
     if (m.type === 'tcp_connect') {

@@ -1,4 +1,5 @@
 import BackgroundService from 'react-native-background-actions';
+import { Platform } from 'react-native';
 import { createBackgroundExecutor } from '../src/background/backgroundExecutor';
 
 jest.mock('react-native-background-actions', () => ({
@@ -6,6 +7,7 @@ jest.mock('react-native-background-actions', () => ({
   stop: jest.fn(),
   on: jest.fn(),
   removeListener: jest.fn(),
+  updateServicePhase: jest.fn(async () => 1),
 }));
 const background = jest.mocked(BackgroundService);
 let executor: ReturnType<typeof createBackgroundExecutor>;
@@ -94,4 +96,27 @@ test('OS expiry is forwarded and its listener is removed at stop', async () => {
   );
   await executor.stop();
   expect(background.removeListener).toHaveBeenCalledWith('expiration', expire);
+});
+
+test('upload handoff updates the same task and verifies the accepted Android type', async () => {
+  const original = Platform.Version;
+  Object.defineProperty(Platform, 'Version', { configurable: true, value: 33 });
+  const phase = (BackgroundService as any).updateServicePhase as jest.Mock;
+  try {
+    await executor.start(jest.fn(), jest.fn());
+    await executor.setPhase!('upload');
+    expect(phase).toHaveBeenCalledWith(
+      expect.objectContaining({ foregroundServiceType: ['dataSync'] }),
+    );
+    expect(background.start).toHaveBeenCalledTimes(1);
+    phase.mockResolvedValueOnce(0);
+    await expect(executor.setPhase!('upload')).rejects.toThrow(
+      'did not accept',
+    );
+  } finally {
+    Object.defineProperty(Platform, 'Version', {
+      configurable: true,
+      value: original,
+    });
+  }
 });

@@ -1,3 +1,4 @@
+import { measurementOutcome } from '../measurements/outcome.ts';
 type Row = Record<string, unknown>;
 const object = (value: unknown): Row =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -129,6 +130,8 @@ const measurementColumns = [
   'timestamp',
   'state',
   'success',
+  'outcome',
+  'interruptionReason',
   'value',
   'unit',
   'durationMs',
@@ -181,6 +184,7 @@ export function measurementCsv(records: Row[]): string {
       return {
         ...context(m.networkSnapshot),
         ...m,
+        outcome: measurementOutcome(m),
         library: raw.library ?? route.library,
         libraryVersion: raw.version ?? route.version,
         rawSource: raw.source,

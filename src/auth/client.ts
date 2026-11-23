@@ -7,6 +7,8 @@ import * as Keychain from 'react-native-keychain';
 import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 import configuration from '../config/public.json';
 import { deadline } from '../services/deadline';
+import { Buffer } from 'buffer';
+import type { ApiObserver } from '../sync/transport';
 
 // React Native supplies randomness through get-random-values. Supabase's PKCE
 // must use S256 even where WebCrypto.digest is absent (never the plain fallback).
@@ -236,6 +238,7 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
   owner?: string,
+  observer?: ApiObserver,
 ): Promise<T> {
   if (options.signal?.aborted)
     throw new Error('Upload opportunity ended; retry pending');
@@ -246,8 +249,9 @@ export async function api<T>(
   const controller = requestDeadline;
   try {
     let response: Response;
-    const request = (token: string) =>
-      fetch(`${configuration.apiUrl}/api/v2${path}`, {
+    const request = (token: string) => {
+      observer?.dispatched?.();
+      return fetch(`${configuration.apiUrl}/api/v2${path}`, {
         ...options,
         signal: controller.signal,
         headers: {
@@ -256,6 +260,7 @@ export async function api<T>(
           ...options.headers,
         },
       });
+    };
     response = await request(initial.access_token);
     // A server may reject a revoked/expired token before the phone's expiry check.
     // Retry a bodyless read once, preserving the initiating owner. Uploads are
@@ -272,9 +277,33 @@ export async function api<T>(
         throw new Error('Upload opportunity ended; retry pending');
       response = await request(refreshed.access_token);
     }
+    // Read exactly once. Decoded response text is a conservative body-byte count
+    // if the platform transparently decompresses the response.
+    const text = await response.text();
+    const retry = response.headers.get('Retry-After');
+    const retryAfterMs =
+      retry == null
+        ? null
+        : /^\d+(\.\d+)?$/.test(retry)
+        ? Number(retry) * 1000
+        : Math.max(0, Date.parse(retry) - Date.now());
+    observer?.response?.({
+      status: response.status,
+      responseBytes: Buffer.byteLength(text, 'utf8'),
+      syncVersion: Number(response.headers.get('X-SkyMeasure-Sync') ?? 1),
+      requestId: response.headers.get('X-Request-ID'),
+      serverTiming: response.headers.get('Server-Timing'),
+      retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : null,
+    });
+    const json = () => (text ? JSON.parse(text) : {});
     if (!response.ok) {
       if (response.status === 410) {
-        const body = await response.json().catch(() => ({}));
+        let body: any = {};
+        try {
+          body = json();
+        } catch {
+          /* Bounded generic error below. */
+        }
         if (body.detail?.code === 'DATA_REMOVED')
           throw Object.assign(
             new Error('This test was archived and removed from study history.'),
@@ -285,7 +314,7 @@ export async function api<T>(
       if (response.status === 403) {
         let detail = '';
         try {
-          const body = await response.json();
+          const body = json();
           detail = typeof body.detail === 'string' ? body.detail : '';
         } catch {
           /* Use a safe generic authorization message. */
@@ -321,10 +350,16 @@ export async function api<T>(
         new Error(
           `Research service could not complete this request (${response.status}). Your saved data is safe.`,
         ),
-        { status: response.status },
+        {
+          status: response.status,
+          retryAt:
+            retryAfterMs != null && Number.isFinite(retryAfterMs)
+              ? Date.now() + retryAfterMs
+              : undefined,
+        },
       );
     }
-    return await response.json();
+    return json();
   } catch (error) {
     if (requestDeadline.timedOut())
       throw Object.assign(

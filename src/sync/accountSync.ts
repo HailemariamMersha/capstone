@@ -4,13 +4,35 @@ import {
   currentActivity,
   isTripArmed,
 } from '../services/activityGate';
+import { fingerprint, uploadKey, syncVersion } from './transport';
 
+export interface SyncRunOptions {
+  deadline?: number;
+  signal?: AbortSignal;
+  onProgress?: (records: number, segments: number) => void;
+}
+export interface SyncResult {
+  acknowledged: number;
+  completed: number;
+  pending: boolean;
+  outcome: 'complete' | 'pending' | 'deferred' | 'cancelled' | 'failed';
+  retryAt?: number;
+  status?: number;
+  error?: unknown;
+}
+export const emptySyncResult = (): SyncResult => ({
+  acknowledged: 0,
+  completed: 0,
+  pending: false,
+  outcome: 'complete',
+});
 export interface SyncDependencies {
   tripWindow?: boolean;
   sessionFilter?: (
     session: import('../sessions/types').SessionRecord,
   ) => boolean;
   beforeSessions?: (signal: AbortSignal) => Promise<void>;
+  afterSessions?: (signal: AbortSignal) => Promise<void>;
   store: MeasurementStore;
   identity(): Promise<{ owner: string; mobileUploads: boolean } | null>;
   network(): Promise<{ connected: boolean; wifi: boolean }>;
@@ -30,21 +52,28 @@ const publicSession = (session: Record<string, unknown>) => {
   return result;
 };
 export function createAccountSync(deps: SyncDependencies) {
-  let running: Promise<void> | null = null;
+  let running: Promise<SyncResult> | null = null;
   let cancellation: AbortController | null = null;
-  async function run() {
-    if (currentActivity() || (isTripArmed() && !deps.tripWindow)) return;
+  async function run(options: SyncRunOptions = {}): Promise<SyncResult> {
+    const result = emptySyncResult();
+    if (currentActivity() || (isTripArmed() && !deps.tripWindow))
+      return { ...result, pending: true, outcome: 'deferred' };
     const controller = new AbortController();
     const release = acquireActivity('sync', () => controller.abort());
     cancellation = controller;
     const signal = controller.signal;
-    const timeout = setTimeout(() => cancellation?.abort(), 25000);
+    const cancel = () => controller.abort();
+    if (options.signal?.aborted) cancel();
+    options.signal?.addEventListener('abort', cancel);
+    const deadline = options.deadline ?? deps.now() + 25000;
+    const timeout = setTimeout(cancel, Math.max(0, deadline - deps.now()));
+    const available = () => !signal.aborted && deps.now() < deadline;
     try {
-      // Headless startup must not recover/close an active collection.
       await deps.store.initialize(false);
-      if (signal.aborted || (await deps.store.hasActiveSession())) return;
+      if (!available() || (await deps.store.hasActiveSession()))
+        return { ...result, pending: true, outcome: 'deferred' };
       const identity = await deps.identity();
-      if (!identity || signal.aborted) return;
+      if (!identity || !available()) return { ...result, outcome: 'deferred' };
       const { owner, mobileUploads } = identity;
       const sessions = (await deps.store.accountSessions(owner))
         .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
@@ -55,9 +84,9 @@ export function createAccountSync(deps: SyncDependencies) {
             s.uploadStatus !== 'Removed from study' &&
             (deps.sessionFilter?.(s) ?? true),
         );
-      if (signal.aborted) return;
+      result.pending = sessions.length > 0;
+      if (!available()) return result;
       const network = await deps.network();
-      if (signal.aborted) return;
       if (!network.connected || (!network.wifi && !mobileUploads)) {
         for (const s of sessions)
           await deps.store.setUploadStatus(
@@ -65,42 +94,62 @@ export function createAccountSync(deps: SyncDependencies) {
             s.id,
             'Waiting for connection',
           );
-        return;
+        return { ...result, outcome: 'deferred' };
       }
-      const deadline = deps.now() + 20000;
       await deps.beforeSessions?.(signal);
       for (const s of sessions) {
-        if (deps.now() >= deadline || signal.aborted) break;
+        if (!available()) break;
         if (!(await deps.store.uploadReady(owner, s.id))) continue;
         let attempted: SyncRecord[] = [];
         let stage: 'manifest' | 'records' | 'complete' = 'manifest';
+        const manifestKey = uploadKey('session-manifest', s.id);
+        let cachedManifest = false;
         try {
           const records = await deps.store.sessionManifest(owner, s.id);
-          if (signal.aborted) break;
-          const expected = records.map(({ type, id, version }) => ({
-            type,
-            id,
-            version,
-          }));
-          const session = publicSession({ ...s });
-          await deps.request(
-            `/sessions/${s.id}/manifest`,
-            {
-              session,
-              expected,
-              collectorVersion:
-                s.config.collectorVersion ?? 'skymeasure-libraries-1',
-              schemaVersion: 3,
-            },
+          if (!available()) break;
+          const manifest = {
+            session: publicSession({ ...s }),
+            expected: records.map(({ type, id, version }) => ({
+              type,
+              id,
+              version,
+            })),
+            collectorVersion:
+              s.config.collectorVersion ?? 'skymeasure-libraries-1',
+            schemaVersion: 3,
+          };
+          const hash = fingerprint(manifest);
+          const receipt = (await deps.store.getUploadState?.(
             owner,
-            'PUT',
-            signal,
-          );
-          if (signal.aborted) break;
+            manifestKey,
+          )) as { hash: string } | null;
+          if (receipt && receipt.hash !== hash)
+            throw Object.assign(
+              new Error(
+                'Accepted recording manifest changed; review local evidence.',
+              ),
+              { code: 'MANIFEST_CONFLICT', status: 409 },
+            );
+          cachedManifest = receipt?.hash === hash;
+          if (!cachedManifest) {
+            await deps.request(
+              `/sessions/${s.id}/manifest`,
+              manifest,
+              owner,
+              'PUT',
+              signal,
+            );
+            await deps.store.saveUploadState?.(owner, manifestKey, { hash });
+          }
+          if (!available()) break;
           await deps.store.setUploadStatus(owner, s.id, 'Uploading');
-          const batchLimit = await deps.store.uploadBatchLimit(owner, s.id);
+          // Until a server advertises v2 the old 50-record contract remains valid.
+          const batchLimit = Math.min(
+            await deps.store.uploadBatchLimit(owner, s.id),
+            (await syncVersion(deps.store, owner)) >= 2 ? 200 : 50,
+          );
           stage = 'records';
-          while (deps.now() < deadline && !signal.aborted) {
+          while (available()) {
             const batch = await deps.store.getSyncBatch(
               batchLimit,
               owner,
@@ -111,8 +160,8 @@ export function createAccountSync(deps: SyncDependencies) {
                 ? { ...r, payload: publicSession(r.payload) }
                 : r,
             );
-            if (!attempted.length || signal.aborted) break;
-            const result = await deps.request<{
+            if (!attempted.length || !available()) break;
+            const response = await deps.request<{
               acknowledged: { type: string; id: string; version: number }[];
             }>(
               `/sessions/${s.id}/records`,
@@ -122,26 +171,32 @@ export function createAccountSync(deps: SyncDependencies) {
               signal,
             );
             const accepted = attempted.filter(r =>
-              result.acknowledged.some(
+              response.acknowledged?.some(
                 a =>
                   a.id === r.id && a.type === r.type && a.version === r.version,
               ),
             );
+            // Even a response arriving after cancellation must be durably applied
+            // before releasing the activity lease to a new collector.
+            if (accepted.length) {
+              await deps.store.acknowledgeSync(accepted);
+              result.acknowledged += accepted.length;
+              options.onProgress?.(accepted.length, 0);
+            }
             if (accepted.length !== attempted.length)
               throw new Error('Incomplete upload acknowledgement');
-            await deps.store.acknowledgeSync(accepted);
             attempted = [];
           }
           stage = 'complete';
-          if (deps.now() < deadline && !signal.aborted) {
-            const result = await deps.request<{
+          if (available()) {
+            const receipt = await deps.request<{
               complete: boolean;
               missing?: { type: string; id: string; version: number }[];
             }>(`/sessions/${s.id}/complete`, {}, owner, 'POST', signal);
-            if (!result.complete)
+            if (!receipt.complete)
               await deps.store.requeueSync(
                 records.filter(r =>
-                  result.missing?.some(
+                  receipt.missing?.some(
                     m =>
                       m.id === r.id &&
                       m.type === r.type &&
@@ -149,11 +204,15 @@ export function createAccountSync(deps: SyncDependencies) {
                   ),
                 ),
               );
-            else await deps.store.deferUpload(owner, s.id, true);
+            else {
+              await deps.store.deferUpload(owner, s.id, true);
+              result.completed++;
+              options.onProgress?.(0, 1);
+            }
             await deps.store.setUploadStatus(
               owner,
               s.id,
-              result.complete ? 'Uploaded' : 'Saved locally',
+              receipt.complete ? 'Uploaded' : 'Saved locally',
             );
           } else await deps.store.setUploadStatus(owner, s.id, 'Saved locally');
         } catch (error) {
@@ -161,18 +220,31 @@ export function createAccountSync(deps: SyncDependencies) {
             await deps.store.setUploadStatus(owner, s.id, 'Saved locally');
             break;
           }
-          const failure = (error ?? {}) as { code?: string; status?: number };
+          const failure = (error ?? {}) as {
+            code?: string;
+            status?: number;
+            retryAt?: number;
+          };
           if (failure.status === 410 && failure.code === 'DATA_REMOVED') {
             await deps.store.retireSessionData(owner, s.id);
+            result.completed++;
             continue;
           }
+          // A lost server-side registration invalidates the local hint, not the
+          // saved evidence. Re-registration occurs once on the next opportunity.
+          if (cachedManifest && failure.status === 404)
+            await deps.store.clearUploadState?.(owner, manifestKey);
           const timeout = failure.code === 'REQUEST_TIMEOUT';
           if (
             stage === 'records' &&
             attempted.length &&
             (timeout || failure.status === 413)
           )
-            await deps.store.reduceUploadBatchLimit(owner, s.id);
+            await deps.store.reduceUploadBatchLimit(
+              owner,
+              s.id,
+              attempted.length,
+            );
           await deps.store.failSync(
             attempted,
             timeout
@@ -187,28 +259,41 @@ export function createAccountSync(deps: SyncDependencies) {
           await deps.store.setUploadStatus(
             owner,
             s.id,
-            (error as { status?: number } | null)?.status === 401 ||
-              (error as { status?: number } | null)?.status === 403 ||
+            failure.status === 401 ||
+              failure.status === 403 ||
+              failure.code === 'MANIFEST_CONFLICT' ||
               String(error).includes('Action needed') ||
               String(error).includes('Sign in')
               ? 'Action needed'
               : 'Saved locally',
           );
+          result.outcome = 'failed';
+          result.error = error;
+          result.status = failure.status;
+          result.retryAt = failure.retryAt;
           break;
         }
       }
+      result.pending = result.completed < sessions.length;
+      if (available() && result.outcome !== 'failed')
+        await deps.afterSessions?.(signal);
+      if (signal.aborted) result.outcome = 'cancelled';
+      else if (result.outcome !== 'failed')
+        result.outcome = result.pending ? 'pending' : 'complete';
+      return result;
     } catch (error) {
-      // Cancellation hands control back to Start; it is not an upload failure.
       if (!signal.aborted) throw error;
+      return { ...result, outcome: 'cancelled', pending: true };
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', cancel);
       cancellation = null;
       release();
     }
   }
-  const trigger = () => {
+  const trigger = (options?: SyncRunOptions) => {
     if (!running)
-      running = run().finally(() => {
+      running = run(options).finally(() => {
         running = null;
       });
     return running;

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "notation": "m=measurement; s=sample; p=s.packet ?? m.packet; r=p.response; raw=s.raw ?? m.raw; n=associated context. Packet projection overrides sample fields even when a packet property is absent; see src/export/serialize.ts.",
   "fields": {
     "id": {
@@ -383,10 +383,10 @@
     "outcome": {
       "datatype": "string",
       "units": "none",
-      "meaning": "Normalized result or trace kind. Library HostUnreachable is ambiguous, not proof of failed route.",
-      "source": "Legacy sample: s.kind or s.errorType/reply/unavailable; focused TCP/HTTP: m.errorType or success/unavailable.",
+      "meaning": "Measurement rows: success, failure, interrupted or unavailable. Sample/hop rows retain their protocol-specific outcome; ambiguous traceroute labels do not prove a failed route.",
+      "source": "Measurement: shared measurementOutcome(m); samples: recorded outcome/kind/error.",
       "example": "time_exceeded",
-      "calculation": "Copied from the stated source; no calculation.",
+      "calculation": "success=true is success; success=false with cancelled/interrupted is interrupted; other false is failure; absent success is unavailable. Never classify an unsent probe as lost.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
       "applicableFiles": [
         "samples.csv",
@@ -395,7 +395,8 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "measurements.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -1685,6 +1686,24 @@
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
       "applicableFiles": ["http.csv"],
       "applicableRows": "Loaded HTTP latency tests only."
+    },
+    "interruptionReason": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Explicit application interruption cause, distinct from a network failure.",
+      "source": "m.interruptionReason",
+      "example": "segment_boundary",
+      "calculation": "First recorded cancellation cause; not inferred for historical records.",
+      "blank": "No interruption or the historical reason was not recorded.",
+      "applicableFiles": [
+        "measurements.csv",
+        "icmp.csv",
+        "tcp.csv",
+        "traceroute.csv",
+        "udp.csv",
+        "http.csv"
+      ],
+      "applicableRows": "Measurement attempts."
     }
   },
   "files": {
@@ -1701,6 +1720,8 @@
         "timestamp",
         "state",
         "success",
+        "outcome",
+        "interruptionReason",
         "value",
         "unit",
         "durationMs",
@@ -1921,6 +1942,7 @@
         "sampleTimestamp",
         "targetHost",
         "outcome",
+        "interruptionReason",
         "sequence",
         "rttMs",
         "timingScope",
@@ -1963,6 +1985,7 @@
         "sampleTimestamp",
         "targetHost",
         "outcome",
+        "interruptionReason",
         "targetPort",
         "connectDurationMs",
         "timingScope",
@@ -2006,6 +2029,7 @@
         "sampleTimestamp",
         "targetHost",
         "outcome",
+        "interruptionReason",
         "sequence",
         "hop",
         "targetPort",
@@ -2048,6 +2072,7 @@
         "sampleTimestamp",
         "targetHost",
         "outcome",
+        "interruptionReason",
         "sequence",
         "targetPort",
         "rttMs",
@@ -2083,6 +2108,7 @@
         "sampleTimestamp",
         "targetHost",
         "outcome",
+        "interruptionReason",
         "success",
         "requestedBytes",
         "transferredBytes",
@@ -2495,6 +2521,24 @@
       "source": "trip.reportedSegments",
       "calculation": "Copied from the trip manifest; it includes segments not yet received.",
       "blank": "Not present in a standalone session export; never replace with zero."
+    },
+    "measurement.outcome": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Derived parent outcome: success, failure, interrupted or unavailable. Repeated per sample; count distinct measurement IDs.",
+      "source": "shared outcome definition v1",
+      "calculation": "Cancellations/interruptions are not failures.",
+      "example": "interrupted",
+      "blank": "No applicable measurement."
+    },
+    "measurement.interruptionReason": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Explicit app interruption cause; historical reasons are not invented.",
+      "source": "m.interruptionReason",
+      "calculation": "Copied.",
+      "example": "segment_boundary",
+      "blank": "Not interrupted or reason unrecorded."
     }
   }
 }

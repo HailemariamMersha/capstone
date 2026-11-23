@@ -86,6 +86,11 @@ class CollectorEvidenceTest {
                 }
             }
             if (requestedTrip != null) {
+                // Explicit stopped-trip diagnostics only. Never dump app settings:
+                // the journal contains allowlisted sizes/timings, not credentials.
+                db.rawQuery("SELECT value_json FROM app_settings WHERE key=(SELECT 'delivery:' || owner_id || ':journal' FROM trips WHERE id=?)", arrayOf(requestedTrip)).use { rows ->
+                    if (rows.moveToFirst()) File(directory, "$requestedTrip-upload-journal.json").writeText(rows.getString(0))
+                }
                 db.rawQuery("SELECT payload_json FROM trips WHERE id=?", arrayOf(requestedTrip)).use { rows ->
                     if (rows.moveToFirst()) {
                         val saved = JSONObject(rows.getString(0)).apply { remove("ownerId") }

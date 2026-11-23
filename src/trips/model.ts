@@ -15,12 +15,17 @@ export const TRIP_POLICY = {
   speedMps: 128.611,
 } as const;
 export const HISTORICAL_PILOT_POLICY = 'flight-pilot-uncapped-2026-11-14';
-export const PILOT_POLICY_VERSION = 'flight-pilot-hourly-2026-11-20';
+export const PREVIOUS_PILOT_POLICY_VERSION = 'flight-pilot-hourly-2026-11-20';
+export const PILOT_POLICY_VERSION = 'flight-pilot-delivery-2026-11-23';
+export const isHourlyPilot = (version: string) =>
+  version === PILOT_POLICY_VERSION || version === PREVIOUS_PILOT_POLICY_VERSION;
 export const HOURLY_TRANSFER_POLICY = 'hourly-v1';
 export const PILOT_TRIP_POLICY = {
   ...TRIP_POLICY,
   version: PILOT_POLICY_VERSION,
   transferBytes: 60 * 1048576,
+  downloadBytes: 500000,
+  downloadTimeoutMs: 45000,
 } as const;
 export const DETECTOR_POLICY = {
   version: 'asn-only-v1',
@@ -95,6 +100,8 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  /** Local-only live request reservations. Never included in tripManifest(). */
+  uploadReservations?: Record<string, number>;
   /** Retired evidence stays exportable locally and never enters automatic sync. */
   removedFromStudy?: boolean;
   groundTest?: boolean;
@@ -129,9 +136,14 @@ export interface Trip {
   state: 'active' | 'completed' | 'interrupted';
   reason: string | null;
   flight: FlightDetails;
-  policy: Omit<typeof TRIP_POLICY, 'version' | 'transferBytes'> & {
+  policy: Omit<
+    typeof TRIP_POLICY,
+    'version' | 'transferBytes' | 'downloadBytes'
+  > & {
     version: string;
     transferBytes: number;
+    downloadBytes: number;
+    downloadTimeoutMs?: number;
   };
   segmentCount: number;
   firstQualifiedAt: number | null;

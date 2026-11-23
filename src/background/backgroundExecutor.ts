@@ -1,5 +1,28 @@
 import BackgroundService from 'react-native-background-actions';
+import { Platform } from 'react-native';
 import type { BackgroundExecutor } from '../sessions/types';
+type Phase = 'collection' | 'upload';
+const phaseOptions = (
+  phase: Phase,
+  location: boolean,
+  description?: string,
+) => ({
+  taskTitle:
+    phase === 'upload'
+      ? 'Uploading saved measurements'
+      : 'SkyMeasure collection active',
+  taskDesc:
+    description ??
+    (phase === 'upload'
+      ? 'Your trip has stopped. Saved results are being sent. Tap to view progress.'
+      : 'Measurements are saved on this device. Tap to open and stop.'),
+  foregroundServiceType:
+    phase === 'upload'
+      ? ['dataSync']
+      : location
+      ? ['location']
+      : ['specialUse'],
+});
 
 const HEARTBEAT_MS = 60_000;
 const START_TIMEOUT_MS = 10_000;
@@ -10,7 +33,7 @@ export function createBackgroundExecutor(location = false): BackgroundExecutor {
   let removeExpiration: (() => void) | undefined;
 
   return {
-    async start(onHeartbeat, onError) {
+    async start(onHeartbeat, onError, phase = 'collection') {
       let cancelled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let startupTimer: ReturnType<typeof setTimeout> | undefined;
@@ -75,12 +98,15 @@ export function createBackgroundExecutor(location = false): BackgroundExecutor {
             }),
           {
             taskName: 'CapstoneMeasurement',
-            taskTitle: 'SkyMeasure collection active',
-            taskDesc:
-              'Measurements are saved on this device. Tap to open and stop.',
+            ...phaseOptions(phase, location),
             taskIcon: { name: 'ic_measurement', type: 'drawable' },
             color: '#375976',
-            foregroundServiceType: location ? ['location'] : ['specialUse'],
+            foregroundServiceType:
+              phase === 'upload'
+                ? ['dataSync']
+                : location
+                ? ['location']
+                : ['specialUse'],
           },
         );
         await readiness;
@@ -88,6 +114,22 @@ export function createBackgroundExecutor(location = false): BackgroundExecutor {
         cancel();
         throw error;
       }
+    },
+    async setPhase(phase, description) {
+      const patched = BackgroundService as typeof BackgroundService & {
+        updateServicePhase(
+          options: ReturnType<typeof phaseOptions>,
+        ): Promise<number>;
+      };
+      const actualType = await patched.updateServicePhase(
+        phaseOptions(phase, location, description),
+      );
+      if (
+        phase === 'upload' &&
+        Number(Platform.Version) >= 29 &&
+        actualType !== 1
+      )
+        throw new Error('Android did not accept the upload service type.');
     },
     async stop() {
       cancel?.();

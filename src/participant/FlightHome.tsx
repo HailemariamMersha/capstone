@@ -31,7 +31,6 @@ import { flightDetails, type FlightDetails, type Trip } from '../trips/model';
 const requireFlightDetails = (details: FlightDetails) =>
   flightDetails(details, true);
 import { normalizeNetId } from '../trips/payment';
-import { syncAccount } from '../sync/background';
 import { theme } from './theme';
 
 function routeLabel(flight: FlightDetails) {
@@ -81,15 +80,8 @@ export default function FlightHome({ owner }: { owner: string }) {
     try {
       if (active) {
         await stopTrip();
-        // Closing the trip must not keep Start disabled for an upload window.
-        syncAccount().catch(e => {
-          if (!tripRunning())
-            setError(
-              e instanceof Error
-                ? e.message
-                : 'Upload pending. Your trip is saved.',
-            );
-        });
+        // The collector durably hands its existing service to the shared drain.
+        // A second screen-owned pass would lose the drain's progress callback.
       } else {
         details = requireFlightDetails(details);
         const paymentNetId = normalizeNetId(netId);

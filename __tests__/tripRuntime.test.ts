@@ -321,6 +321,9 @@ test('an old identity response is not made fresh when its callback finally arriv
 });
 
 test('a boundary cancels a long transfer, keeps control evidence and closes before uploading', async () => {
+  const timeout = jest
+    .spyOn(require('../src/trips/scheduler'), 'transferTimeout')
+    .mockReturnValue(700000);
   const { runProbe } = require('../src/measurements/runProbe');
   runProbe.mockImplementation(
     (_: unknown, __: unknown, ___: unknown, signal: AbortSignal) =>
@@ -344,6 +347,7 @@ test('a boundary cancels a long transfer, keeps control evidence and closes befo
     ),
   ).toBe(true);
   expect(currentTrip()!.transferFailures?.download).toBe(0);
+  timeout.mockRestore();
 });
 
 test('M-Lab completion spaces controlled transfers away from its actual finish', async () => {
@@ -551,3 +555,61 @@ test('Start takes priority over a cancellable upload while preserving exclusive 
   expect(currentActivity()).toBe('measurement');
   expect(isTripArmed()).toBe(true);
 });
+
+test.each([
+  [8000, true, 902000],
+  [20000, false, 910000],
+])(
+  'light probe taking %s ms gets bounded boundary grace (success=%s)',
+  async (duration, successful, closedAfter) => {
+    const policy = require('../src/trips/scheduler');
+    const reset = jest.spyOn(policy, 'resetProbes').mockImplementation(() => ({
+      icmp_burst: 1895000,
+      udp_echo: 9000000,
+      tcp_connect: 9000000,
+      traceroute: 9000000,
+    }));
+    const { runDiagnostic } = require('../src/measurements/diagnostics');
+    runDiagnostic.mockImplementation(
+      (attempt: any, _config: any, signal: AbortSignal) =>
+        new Promise(resolve => {
+          const started = Date.now();
+          const finish = () => {
+            clearTimeout(timer);
+            signal.removeEventListener('abort', finish);
+            resolve({
+              ...attempt,
+              success: !signal.aborted,
+              value: signal.aborted ? null : 20,
+              durationMs: Date.now() - started,
+              errorType: signal.aborted ? 'cancelled' : null,
+            });
+          };
+          const timer = setTimeout(finish, duration as number);
+          signal.addEventListener('abort', finish, { once: true });
+        }),
+    );
+    try {
+      await startTrip('researcher', {}, true, { includeMlab: false });
+      await jest.advanceTimersByTimeAsync(911000);
+      const result = mockStore.finishAttempt.mock.calls
+        .map((c: any) => c[0])
+        .find((m: any) => m.type === 'icmp_burst');
+      expect(result.success).toBe(successful);
+      if (!successful)
+        expect(result).toMatchObject({
+          errorType: 'interrupted',
+          interruptionReason: 'segment_boundary',
+          value: null,
+        });
+      const pause = mockEvents.find((r: any) => r[1] === 'upload_pause') as any;
+      expect(Date.parse(pause[2].startedAt) - 1000000).toBe(closedAfter);
+      expect(currentTrip()!.nextUploadAt - 1000000).toBe(1800000);
+      expect((uploadTrip as jest.Mock).mock.calls[0][5]).toMatchObject({
+        deadline: 1000000 + (closedAfter as number) + 25000,
+      });
+    } finally {
+      reset.mockRestore();
+    }
+  },
+);
