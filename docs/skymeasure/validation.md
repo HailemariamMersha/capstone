@@ -13,11 +13,16 @@ baseline tests passed; one optional PostgreSQL integration check was skipped.
 Both TypeScript projects and the production dashboard build passed. A fresh
 monitoring-only phone check reconciled 10/10 records about nine seconds after
 Stop; an earlier failed transport check retained and later reconciled all 13
-records. The extended ground-run checkpoint reconciled 5,686 records across
-nineteen closed segments; final trip closure and local queue comparison await
-the phone. An Android 16 synthetic emulator check verified OS-expiration
-cancellation, preservation of fourteen pending versions and duplicate-free
-retry, and exposed/fixed adoption of a screen-owned pass by the service. See the
+records. The completed 5 h 12 min ground run reconciled **6,251/6,251 record
+versions across 21 segments**, with 963 measurements, two quota-blocked M-Lab
+parents and one participant interruption. Its final locked-screen upload took
+34.262 seconds. The final shareable APK separately reconciled 17/17 versions
+with the app removed from Recents after Wi-Fi rejoined, and 10/10 versions in a
+60.589-second locked-screen upload. Rejoining required waking Android Wi-Fi
+settings; unattended locked-screen association is not established. An Android 16
+synthetic emulator check verified OS-expiration cancellation, preservation of
+fourteen pending versions and duplicate-free retry, and exposed/fixed adoption
+of a screen-owned pass by the service. See the
 [dated delivery report](upload-validation-2026-11-23.md) for faults found,
 exact conditions, results and remaining platform checks.
 

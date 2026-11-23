@@ -160,10 +160,111 @@ the analysis does not infer original ICMP type/code from those traceroute labels
 Independent same-destination reference measurements remain necessary to establish
 measurement accuracy.
 
-Final Stop-to-receipt timing, local/server queue-version comparison and foreground
-service shutdown remain pending connection of the physical phone. The installed
-long-run candidate predates the later service-adoption fix below and the final
-snapshot-freezing follow-up; its results must retain that build provenance.
+### Final closure and exact reconciliation
+
+The trip was stopped at **23:05:18.986 UTC**, after **5 h 12 min 55.460 s**.
+All **twenty-one declared segments** completed, with **6,251 record versions**
+and **963 parent measurements**. A stopped-phone export matched every server
+`(type, id, version)` exactly: no missing or unexpected versions, all 6,251 local
+queue entries acknowledged, and local, uploaded and server trip revisions equal
+to **2315**. The required payment mapping also remained separate from measurement
+exports. Original local and server evidence was preserved before updating the
+app; no account reset, uninstall or history deletion occurred.
+
+| Measurement | Final recorded result |
+|---|---|
+| ICMP | 310 parents, including one burst interrupted by Stop; 3,033 replies, 65 timeouts and one cancelled sample among 3,099 recorded observations |
+| UDP | 309 bursts; 6,060/6,180 replies and 120 timeouts |
+| TCP | 309/309 connection attempts succeeded |
+| Traceroute | 21/21 library-reported destination completions, with the same hop-label limitations |
+| Fixed-size transfers | All six 500,000-byte downloads and six 1,000,000-byte uploads completed |
+| M-Lab | Two quota-blocked direction parents, with no valid speed result |
+
+The stopped ICMP burst requested ten probes but retained nine sample records;
+one of those is cancelled. Its primary value is null and its parent outcome is
+`interrupted`. Do not count its unrecorded probe as demonstrated packet loss.
+The deployed dashboard summary confirms **two failed parents and one interrupted
+parent**. The three historical `probe_failure` events therefore do not establish
+three measurement failures; derived outcomes distinguish Stop from the two quota
+blocks without rewriting raw events.
+
+The final twenty live-upload pauses lasted **15.015–23.091 s**, with a
+**19.316 s median**. All fit the 25-second opportunity. All twenty-one health
+records report zero collector gaps; the nine explicit busy-deadline skips and
+37,837 ms maximum lateness remain visible. Offline checks over all final segments
+report **zero errors**, **587 ambiguous-traceroute-label warnings**, and **three
+unavailable checks**: two focused M-Lab views and one loss calculation for the
+incomplete ICMP burst.
+
+The complete allowlisted journal for this trip contains **107 HTTP 200 responses**:
+21 changed trip updates, 21 session manifests, 42 record batches, 21 completions,
+one payment update and one final receipt. Request bodies total **2,420,780 encoded
+bytes / 20,183,862 decoded bytes**, plus **447,955 known response bytes**. These
+counts include the final post-trip tail, which is additional traffic outside the
+live-upload allocation. They exclude authentication and transport overhead.
+
+The phone was put to sleep immediately after Stop. Its own final receipt ended
+at **23:05:53.248 UTC**, **34.262 s after the saved ending time**. The same native
+service record and `startForegroundCount=1` persisted through the twenty-second
+observation and were absent at thirty-five seconds. Instrumentation and app
+reopening occurred only after the service exited. These timings use the phone's
+clock; no phone/server clock subtraction is required.
+
+The long-run candidate predates the later service-adoption and snapshot-freezing
+follow-ups. It is not the final shareable binary; the two checks below validate
+that later binary explicitly.
+
+## Final APK: closed-app recovery and locked-screen uploading
+
+The **1.2.6 / code 14** delivery APK was built from clean source **`973c8a8`**,
+with packaged configuration verified. A readback of the APK installed on the
+phone exactly matches the delivery artifact's SHA-256:
+
+```text
+4e26a52ec073edfcd3be5e514f2fe0636001e2bba473aa5f194a5259f77f22ee
+```
+
+It was installed with `adb install -r`, preserving the existing identity and
+saved evidence. Both short checks were explicitly marked ground tests, stopped
+in Watching, and collected **zero measurements**. They did not start M-Lab or
+controlled transfers and do not validate flight admission accuracy.
+
+**Offline Stop and Recents removal.** A short trip closed with Wi-Fi disabled.
+Mobile-data uploads were already disabled and that preference was preserved.
+Only SkyMeasure's own Recents card was dismissed; its same foreground service
+remained alive with `startForegroundCount=1`. Re-enabling the radio while the
+phone was non-interactive did not make Android associate with a network. The
+app correctly continued displaying “Waiting for Wi-Fi,” and no trip had reached
+the server at that checkpoint.
+
+Waking Android's Wi-Fi settings caused the existing saved network to rejoin;
+no password or network configuration was changed, and SkyMeasure was not
+reopened. The server completed the segment at **23:17:04.683 UTC**. A subsequent
+stopped-phone export confirmed **17/17 distinct versions acknowledged**, the
+final trip revision acknowledged and the service exited. This establishes
+closed-app retry after actual connectivity returns. It does **not** establish
+automatic Wi-Fi association while locked: Android settings was awake during
+reconnection and delivery.
+
+**Stop followed immediately by locking.** A separate brief trip used the
+already-connected Wi-Fi. It closed at **23:20:56.114 UTC**, and its final receipt
+ended at **23:21:56.703 UTC**: **60.589 s after Stop**. All **10/10 versions**
+matched locally and remotely, and the final revision was acknowledged. The
+foreground service persisted while work was pending and exited after delivery.
+The screen was not awakened and the app was not reopened during this upload.
+
+All six requests returned HTTP 200. The first metadata request took **25.921 s**
+on the client, versus **1.849 s** to response headers in the API middleware.
+These are different scopes: the difference cannot uniquely identify network,
+radio, dispatch or callback delay, and the nested server phases must not be
+added together. This successful but slower check supports the bounded extended
+post-trip pass; fewer requests do not guarantee an eight-to-ten-second upload.
+The 25-second live deadline remains distinct from the 180-second post-trip pass.
+
+The Samsung reported ambient-display `Dozing` and non-interactive sleep while
+locked. This is not evidence of deep device-idle endurance. USB was connected;
+force-stop, reboot, unplugged operation and physical Android 15+ behavior retain
+their separate validation requirements.
 
 ## Android OS expiration and retry: synthetic emulator check
 
@@ -228,8 +329,8 @@ differ or are absent from the earlier archive. No API restart was needed for the
 mobile-only cancellation fix, avoiding an interruption to the active ground run.
 
 Physical Android 15+ expiration/quota behavior, force-stop/reboot recovery on the
-final APK, unplugged endurance, loss/delay gateway tests and actual flights still
-require separate validation. The final APK's offline Stop → Recents removal →
-Wi-Fi restoration check also awaits the physical phone. Android force-stop
-prevents retries until the app is reopened. Neither the native callback nor the
-synthetic emulator test establishes indefinite OS/OEM background execution.
+final APK, unplugged endurance, unattended Wi-Fi association, loss/delay gateway
+tests and actual flights still require separate validation. Android force-stop
+prevents retries until the app is reopened. Neither these bounded physical
+checks, the native callback nor the synthetic emulator test establishes
+indefinite OS/OEM background execution.
