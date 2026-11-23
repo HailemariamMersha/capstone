@@ -12,6 +12,8 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.DataOutputStream
+import java.net.Socket
 import java.security.MessageDigest
 
 /** Explicit connected-device maintenance only. Never opens Keychain or resets app identity. */
@@ -71,12 +73,28 @@ class HistoryMaintenanceTest {
                         while(c.moveToNext()) { val row=JSONArray();for(i in 0 until c.columnCount)row.put(if(c.isNull(i))JSONObject.NULL else if(c.getType(i)==Cursor.FIELD_TYPE_INTEGER)c.getLong(i) else c.getString(i));payments.put(row) }
                     }
                     paymentsFile.writeText(JSONObject().put("columns",columns).put("rows",payments).toString())
-                    copy.execSQL("PRAGMA secure_delete=ON");copy.execSQL("DELETE FROM trip_payments");copy.execSQL("VACUUM")
+                    copy.rawQuery("PRAGMA secure_delete=ON",null).use { it.moveToFirst() }
+                    copy.execSQL("DELETE FROM trip_payments");copy.execSQL("VACUUM")
                 }
                 check(inventory(db).toString()==before.toString()) { "History changed during backup; retry with a new archive" }
                 val manifest=JSONObject().put("version",1).put("databaseSha256",hash(target)).put("paymentSha256",hash(paymentsFile)).put("tables",before)
                 manifestFile.writeText(manifest.toString())
                 report.put("operation","backup").put("databaseSha256",hash(target)).put("bytes",target.length()).put("tables",before)
+                args.getString("hostTransferPort")?.toInt()?.let { port ->
+                    require(port in 1024..65535)
+                    Socket("127.0.0.1",port).use { socket ->
+                        DataOutputStream(socket.getOutputStream()).use { output ->
+                            val files=listOf(target,paymentsFile,manifestFile)
+                            output.writeInt(files.size)
+                            for(file in files) {
+                                output.writeUTF(file.name);output.writeLong(file.length())
+                                file.inputStream().use { it.copyTo(output) }
+                            }
+                            output.flush()
+                        }
+                    }
+                    report.put("hostTransferCompleted",true)
+                }
             } else {
                 check(args.getString("archiveVerified")=="true") { "A verified host archive is required" }
                 val manifest=JSONObject(manifestFile.readText())
