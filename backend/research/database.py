@@ -2,7 +2,7 @@
 import os
 from functools import lru_cache
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, String, JSON, Integer, Boolean, ForeignKey, Float, BigInteger
+from sqlalchemy import create_engine, String, JSON, Integer, Boolean, ForeignKey, Float, BigInteger, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -77,7 +77,18 @@ class Sample(Base):
 
 @lru_cache(maxsize=4)
 def engine_for(url):
-    return create_engine(url, pool_pre_ping=True)
+    value = create_engine(url, pool_pre_ping=True)
+    from .timing import metrics
+    import time
+    @event.listens_for(value, 'before_cursor_execute')
+    def before(_conn, _cursor, _sql, _params, context, _many):
+        context.research_started = time.perf_counter() if metrics.get() is not None else None
+    @event.listens_for(value, 'after_cursor_execute')
+    def after(_conn, _cursor, _sql, _params, context, _many):
+        data = metrics.get()
+        if data is not None and context.research_started is not None:
+            data['dbSql'] = data.get('dbSql', 0) + (time.perf_counter() - context.research_started) * 1000
+    return value
 
 
 def engine():

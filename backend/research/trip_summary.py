@@ -1,13 +1,14 @@
 """Small trip summaries from parent records and indexed samples, never CSV rows."""
 from sqlalchemy import select, func, case, and_
 from .database import TripSegment, ResearchSession, Record, Sample
+from .outcomes import failed, interrupted
 
 
 def summaries(db, trip_ids):
     if not trip_ids:
         return {}
     result = {key: {'receivedSegments': 0, 'receivedRecords': 0,
-                    'expectedRecords': 0, 'measurements': 0, 'failures': 0,
+                    'expectedRecords': 0, 'measurements': 0, 'failures': 0, 'interruptions': 0,
                     'protocols': []} for key in trip_ids}
     for key, expected in db.execute(select(
         TripSegment.trip_id, ResearchSession.manifest['expected']
@@ -25,10 +26,11 @@ def summaries(db, trip_ids):
     timeout = and_(Record.success.is_(False), Record.raw['errorType'].as_string() == 'timeout')
     metrics = {}
     valid_timing = Record.raw['scheduling']['timingValid'].as_boolean().is_not(False)
-    for key, protocol, attempts, successful, failed, timeouts, caps, incomplete, reached, excluded in db.execute(
+    for key, protocol, attempts, successful, failures, interruptions, timeouts, caps, incomplete, reached, excluded in db.execute(
         select(TripSegment.trip_id, Record.protocol, func.count(),
             func.sum(case((Record.success.is_(True), 1), else_=0)),
-            func.sum(case((Record.success.is_(False), 1), else_=0)),
+            func.sum(case((failed(), 1), else_=0)),
+            func.sum(case((interrupted(), 1), else_=0)),
             func.sum(case((timeout, 1), else_=0)),
             func.sum(case((capped, 1), else_=0)),
             func.sum(case((Record.raw['details']['complete'].as_boolean().is_(False), 1), else_=0)),
@@ -39,13 +41,14 @@ def summaries(db, trip_ids):
         .group_by(TripSegment.trip_id, Record.protocol)
     ):
         metric = {'type': protocol or 'unknown', 'attempts': attempts,
-                  'successful': successful, 'failed': failed, 'timeouts': timeouts,
+                  'successful': successful, 'failed': failures, 'interrupted': interruptions, 'timeouts': timeouts,
                   'capped': caps, 'incompleteBursts': incomplete, 'reached': reached,
                   'sampleCount': 0, 'replies': 0, 'medianMs': None, 'timingExcluded': excluded}
         metrics[(key, protocol)] = metric
         result[key]['protocols'].append(metric)
         result[key]['measurements'] += attempts
-        result[key]['failures'] += failed
+        result[key]['failures'] += failures
+        result[key]['interruptions'] += interruptions
 
     # Count probe/hop observations separately from parents. Baselines and M-Lab
     # callback records must not inflate echo reply counts or connection attempts.

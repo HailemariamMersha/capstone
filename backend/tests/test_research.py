@@ -270,13 +270,13 @@ def test_real_auth_dependency_uses_verified_identity_and_ignores_metadata_role(c
     def verified(url, **kwargs):
         seen.append((url, kwargs))
         return httpx.Response(200, json={'id': 'a', 'user_metadata': {'role': 'administrator'}})
-    monkeypatch.setattr(auth_module.httpx, 'get', verified)
+    monkeypatch.setattr(auth_module.auth_client(), 'get', verified)
     response = client.get('/api/v2/profile', headers=auth('untrusted-token'))
     assert response.status_code == 200 and response.json()['role'] == 'participant'
     assert seen[0][0] == 'https://staging.example.invalid/auth/v1/user'
     assert seen[0][1]['headers']['Authorization'] == 'Bearer untrusted-token'
     assert client.get('/api/v2/profile').status_code == 401
-    monkeypatch.setattr(auth_module.httpx, 'get', lambda *a, **k: httpx.Response(401))
+    monkeypatch.setattr(auth_module.auth_client(), 'get', lambda *a, **k: httpx.Response(401))
     assert client.get('/api/v2/research/overview', headers=auth('admin')).status_code == 401
 
 
@@ -456,7 +456,8 @@ def test_trip_summary_pools_samples_without_duplicate_parents_and_preserves_part
     assert item['uploadComplete']
     summary = item['summary']
     assert summary['receivedSegments'] == 2
-    assert summary['measurements'] == 9 and summary['failures'] == 4
+    assert summary['measurements'] == 9 and summary['failures'] == 3
+    assert summary['interruptions'] == 1
     assert summary['receivedRecords'] == summary['expectedRecords'] == 11
     metrics = {m['type']: m for m in summary['protocols']}
     assert metrics['icmp_burst']['attempts'] == 2

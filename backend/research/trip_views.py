@@ -18,6 +18,7 @@ from .presentation import readable, evidence_response
 from .read_cache import cached
 from .history_reset import epoch_ms
 from .trip_summary import summaries
+from .outcomes import failed, interrupted, outcome as measurement_outcome
 
 router = APIRouter()
 PROVIDERS = {14593: 'Starlink', 31515: 'Inmarsat', 22351: 'Intelsat', 64294: 'Panasonic', 206433: 'SITA', 40306: 'ViaSat', 5384: 'TEST Etisalat'}
@@ -63,13 +64,14 @@ def compact_items(db, trips):
         .where(TripSegment.trip_id.in_(ids)).group_by(TripSegment.trip_id))}
     records = {r[0]: r[1:] for r in db.execute(select(TripSegment.trip_id, func.count(),
         func.sum(case((Record.kind == 'measurement', 1), else_=0)),
-        func.sum(case((and_(Record.kind == 'measurement', Record.success.is_(False)), 1), else_=0)))
+        func.sum(case((and_(Record.kind == 'measurement', failed()), 1), else_=0)),
+        func.sum(case((and_(Record.kind == 'measurement', interrupted()), 1), else_=0)))
         .join(Record, Record.session_id == TripSegment.session_id)
         .where(TripSegment.trip_id.in_(ids)).group_by(TripSegment.trip_id))}
     result = []
     for t in trips:
         received, complete, expected = counts.get(t.id, (0, 0, 0))
-        saved, measurements, failures = records.get(t.id, (0, 0, 0))
+        saved, measurements, failures, interruptions = records.get(t.id, (0, 0, 0, 0))
         declared = t.raw.get('segmentCount', 0)
         result.append({'id': t.id, 'participantId': t.participant_id,
             **{k: t.raw.get(k) for k in ('flight', 'startedAt', 'endedAt', 'state', 'phase', 'provider', 'reason', 'firstQualifiedAt')},
@@ -78,7 +80,7 @@ def compact_items(db, trips):
             'receivedSegments': received, 'completeSegments': complete,
             'missingSegments': max(0, declared - complete),
             'receivedRecords': saved, 'expectedRegisteredRecords': expected or 0,
-            'measurements': measurements or 0, 'failures': failures or 0,
+            'measurements': measurements or 0, 'failures': failures or 0, 'interruptions': interruptions or 0,
             'uploadComplete': t.raw['state'] != 'active' and complete == declared and received == declared and saved == (expected or 0)})
     return result
 
@@ -196,7 +198,7 @@ def detail_model(db, trip):
         for protocol in summary['protocols']:protocol['medianMbps']=statistics.median(values[protocol['type']]) if protocol['type'] in values else None
         controls['health']['timingExcluded'] = sum(p.get('timingExcluded', 0) for p in summary['protocols'])
         return {'summary': summary, **controls}
-    statistics_view = cached(db, f'trip:{trip.id}:detail', f'trip:{trip.id}', compute, lifetime=3600)
+    statistics_view = cached(db, f'trip:{trip.id}:detail:outcomes-v1', f'trip:{trip.id}', compute, lifetime=3600)
     return {**compact_items(db, [trip])[0], **statistics_view}
 
 
@@ -219,7 +221,7 @@ def timeline(trip_id: str, request: Request, maxPoints: int=Query(2000, ge=100, 
             at = epoch_ms(timestamp)
             if at is None: continue
             p = {'id': rid, 'at': at, 'type': protocol, 'value': value if valid is not False and success is True else None,
-                'success': success, 'target': host or server, 'error': error, 'timingValid': valid is not False,
+                'success': success, 'outcome': measurement_outcome({'success': success, 'errorType': error}), 'target': host or server, 'error': error, 'timingValid': valid is not False,
                 'durationMs': duration, 'bytes': size}
             groups.setdefault(protocol or 'unknown', []).append(p)
         series = []
@@ -232,17 +234,17 @@ def timeline(trip_id: str, request: Request, maxPoints: int=Query(2000, ge=100, 
                 for values in bins.values():
                     usable=[p['value'] for p in values if p['value'] is not None]
                     reduced.append({**values[0], 'value': statistics.median(usable) if usable else None, 'pointCount': len(values),
-                        'failures': sum(p['success'] is False for p in values), 'min': min(usable) if usable else None, 'max': max(usable) if usable else None})
+                        'failures': sum(p['outcome'] == 'failure' for p in values), 'interruptions': sum(p['outcome'] == 'interrupted' for p in values), 'min': min(usable) if usable else None, 'max': max(usable) if usable else None})
                 points=reduced
             series.append({'type': protocol, 'bucketMs': width, 'points': points})
         return {'series': series, 'clock': 'recorded_wall_clock_utc', 'rttMeaning': 'median within each recorded burst; no kernel timestamps'}
-    result = cached(db, f'trip:{trip_id}:timeline:{maxPoints}', f'trip:{trip_id}', compute, lifetime=3600)
+    result = cached(db, f'trip:{trip_id}:timeline:{maxPoints}:outcomes-v1', f'trip:{trip_id}', compute, lifetime=3600)
     return evidence_response(result, request.headers.get('accept-encoding', ''))
 
 
 @router.get('/research/trips/{trip_id}/evidence')
 def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pattern='^(measurements|samples|events)$'),
-             protocol: str='', outcome: str=Query('', pattern='^(|success|failure|timeout)$'),
+             protocol: str='', outcome: str=Query('', pattern='^(|success|failure|timeout|interrupted)$'),
              offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=200),
              a=Depends(researcher), db: Session=Depends(database)):
     get_trip(db, trip_id)
@@ -253,7 +255,8 @@ def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pa
         if protocol: query=query.where(Record.protocol==protocol)
         if outcome=='timeout': query=query.where(Sample.outcome=='timeout')
         elif outcome=='success': query=query.where(Sample.rtt_ms>=0)
-        elif outcome=='failure': query=query.where(Sample.rtt_ms.is_(None))
+        elif outcome=='failure': query=query.where(Sample.rtt_ms.is_(None), func.coalesce(Sample.outcome, '').not_in(['cancelled','interrupted']))
+        elif outcome=='interrupted': query=query.where(Sample.outcome.in_(['cancelled','interrupted']))
         total=db.scalar(select(func.count()).select_from(query.subquery()))
         items=[{'sessionId': s.session_id, 'measurementId': s.measurement_id, 'phase': s.phase, 'ordinal': s.ordinal,
                 'timestamp': raw.get('timestamp') or timestamp, 'protocol': kind, 'target': target,
@@ -264,7 +267,8 @@ def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pa
         query=select(Record).where(Record.session_id.in_(ids), Record.kind==('event' if layer=='events' else 'measurement'))
         if protocol: query=query.where(Record.protocol==protocol)
         if outcome=='success': query=query.where(Record.success.is_(True))
-        if outcome=='failure': query=query.where(Record.success.is_(False))
+        if outcome=='failure': query=query.where(failed())
+        if outcome=='interrupted': query=query.where(interrupted())
         if outcome=='timeout': query=query.where(Record.raw['errorType'].as_string()=='timeout')
         total=db.scalar(select(func.count()).select_from(query.subquery()))
         items=[{**dashboard_record(r.raw), 'sessionId': r.session_id} for r in db.scalars(query.order_by(Record.timestamp, Record.id).offset(offset).limit(limit))]

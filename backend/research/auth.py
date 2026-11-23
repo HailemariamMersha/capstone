@@ -1,5 +1,6 @@
 """Supabase validates bearer tokens; user metadata never determines authorization."""
 import os
+from threading import Lock
 from uuid import uuid4
 import httpx
 from fastapi import Depends, HTTPException, Request
@@ -8,8 +9,27 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from .database import Account, database
+from .timing import timed
 
 bearer = HTTPBearer(auto_error=False)
+_client = None
+_client_lock = Lock()
+
+
+def auth_client():
+    global _client
+    with _client_lock:
+        if _client is None or _client.is_closed:
+            _client = httpx.Client(timeout=10, limits=httpx.Limits(max_connections=32, max_keepalive_connections=16))
+        return _client
+
+
+def close_auth_client():
+    global _client
+    with _client_lock:
+        if _client is not None:
+            _client.close()
+            _client = None
 
 
 def identity(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:
@@ -20,9 +40,10 @@ def identity(credentials: HTTPAuthorizationCredentials | None = Depends(bearer))
     if not url or not key:
         raise HTTPException(503, 'Authentication is not configured')
     try:
-        result = httpx.get(f'{url}/auth/v1/user', headers={
-            'Authorization': f'Bearer {credentials.credentials}', 'apikey': key,
-        }, timeout=10)
+        with timed('auth'):
+            result = auth_client().get(f'{url}/auth/v1/user', headers={
+                'Authorization': f'Bearer {credentials.credentials}', 'apikey': key,
+            }, timeout=10)
         if result.status_code != 200:
             raise HTTPException(401 if result.status_code < 500 else 503, 'Sign in again before uploading')
         user = result.json()

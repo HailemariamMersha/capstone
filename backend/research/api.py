@@ -121,7 +121,9 @@ class Incoming(Expected):
 
 
 class Batch(Strict):
-    records: list[Incoming] = Field(min_length=1, max_length=50)
+    records: list[Incoming] = Field(min_length=1, max_length=200)
+
+from .outcomes import failed, interrupted
 
 
 def owned(db, session_id, a, lock=False):
@@ -253,14 +255,15 @@ def complete(session_id: str, a=Depends(account), db: Session = Depends(database
 
 
 def summary(db, s, counts=None):
-    received, measurements, failures = counts if counts is not None else db.execute(select(
+    received, measurements, failures, interruptions = counts if counts is not None else db.execute(select(
         func.count(), func.sum(case((Record.kind == 'measurement', 1), else_=0)),
-        func.sum(case(((Record.kind == 'measurement') & Record.success.is_(False), 1), else_=0))
+        func.sum(case(((Record.kind == 'measurement') & failed(), 1), else_=0)),
+        func.sum(case(((Record.kind == 'measurement') & interrupted(), 1), else_=0))
     ).where(Record.session_id == s.id)).one()
     return {'id': s.id, 'participantId': s.participant_id, 'collectedAt': s.collected_at,
             'receivedAt': s.received_at, 'completedAt': s.completed_at,
             'collectorVersion': s.collector_version, 'configuration': s.raw.get('config', {}),
-            'measurements': measurements or 0, 'failures': failures or 0,
+            'measurements': measurements or 0, 'failures': failures or 0, 'interruptions': interruptions or 0,
             'receivedRecords': received, 'expectedRecords': len(s.manifest['expected']),
             'uploadStatus': 'Uploaded' if s.completed_at else 'Uploading'}
 
@@ -268,13 +271,14 @@ def summary(db, s, counts=None):
 def session_summaries(db, sessions):
     if not sessions:
         return []
-    counts = {sid: (received, measurements, failures) for sid, received, measurements, failures in db.execute(select(
+    counts = {sid: (received, measurements, failures, interruptions) for sid, received, measurements, failures, interruptions in db.execute(select(
         Record.session_id, func.count(),
         func.sum(case((Record.kind == 'measurement', 1), else_=0)),
-        func.sum(case(((Record.kind == 'measurement') & Record.success.is_(False), 1), else_=0)),
+        func.sum(case(((Record.kind == 'measurement') & failed(), 1), else_=0)),
+        func.sum(case(((Record.kind == 'measurement') & interrupted(), 1), else_=0)),
     ).where(Record.session_id.in_([s.id for s in sessions])).group_by(Record.session_id))}
     tests = dict(db.execute(select(TripSegment.session_id, ResearchTrip.raw['groundTest'].as_boolean()).join(ResearchTrip, ResearchTrip.id == TripSegment.trip_id).where(TripSegment.session_id.in_([s.id for s in sessions]))).all())
-    return [{**summary(db, s, counts.get(s.id, (0, 0, 0))), 'groundTest': bool(tests.get(s.id))} for s in sessions]
+    return [{**summary(db, s, counts.get(s.id, (0, 0, 0, 0))), 'groundTest': bool(tests.get(s.id))} for s in sessions]
 
 
 @router.get('/sessions')
@@ -307,13 +311,13 @@ def query_sessions(participant=None, protocol=None, outcome=None, q=None, since=
         if protocol:
             records = records.where(Record.protocol == protocol)
         if outcome:
-            records = records.where(Record.success == (outcome == 'success'))
+            records = records.where(Record.success.is_(True) if outcome == 'success' else interrupted() if outcome == 'interrupted' else failed())
         query = query.where(ResearchSession.id.in_(records))
     return query.order_by(ResearchSession.received_at.desc())
 
 
 @router.get('/research/sessions')
-def research_sessions(a=Depends(researcher), db: Session = Depends(database), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), participant: str | None = None, protocol: str | None = None, outcome: Literal['success', 'failure'] | None = None, q: str | None = None, since: str | None = None, until: str | None = None, collector: str | None = None, context: str | None = None, format: Literal['json', 'csv'] = 'json', includeGroundTests: bool=False):
+def research_sessions(a=Depends(researcher), db: Session = Depends(database), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), participant: str | None = None, protocol: str | None = None, outcome: Literal['success', 'failure', 'interrupted'] | None = None, q: str | None = None, since: str | None = None, until: str | None = None, collector: str | None = None, context: str | None = None, format: Literal['json', 'csv'] = 'json', includeGroundTests: bool=False):
     query = query_sessions(participant, protocol, outcome, q, since, until, collector, context, includeGroundTests)
     count = db.scalar(select(func.count()).select_from(query.subquery()))
     if format == 'csv':
@@ -334,7 +338,8 @@ def overview(a=Depends(researcher), db: Session = Depends(database), includeGrou
             'sessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.id.in_(ids))),
             'partialSessions': db.scalar(select(func.count()).select_from(ResearchSession).where(ResearchSession.id.in_(ids), ResearchSession.completed_at.is_(None))),
             'measurements': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement')),
-            'failures': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement', Record.success.is_(False)))}
+            'failures': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement', failed())),
+            'interruptions': db.scalar(select(func.count()).select_from(Record).where(Record.session_id.in_(ids), Record.kind == 'measurement', interrupted()))}
 
 
 @router.get('/research/sessions/{session_id}')

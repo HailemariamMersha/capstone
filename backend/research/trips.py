@@ -8,7 +8,7 @@ from .database import ResearchTrip, TripSegment, ResearchSession, TripPayment, d
 from .auth import account, researcher, administrator
 from .read_cache import invalidate
 from .history_reset import guard
-from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, require_consent
+from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, HOURLY_PILOT_POLICIES, require_consent
 
 router = APIRouter()
 
@@ -52,15 +52,15 @@ class TripUpdate(BaseModel):
     transferSchedule: Literal['hourly-v1'] | None = None
 
 @router.put('/trips/{trip_id}')
-def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database)):
+def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database), view: str=Query('full', pattern='^(full|receipt)$')):
     guard(db, 'trip', trip_id, a.user_id, body.startedAt)
     require_consent(a, body.policyVersion)
-    if body.policyVersion in (PILOT_POLICY, HISTORICAL_PILOT_POLICY):
+    if body.policyVersion in HOURLY_PILOT_POLICIES | {HISTORICAL_PILOT_POLICY}:
         if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')):
             raise HTTPException(422, 'Flight number, departure and arrival are required')
         if body.groundTest is None:
             raise HTTPException(422, 'Pilot requires explicit test provenance')
-    if body.policyVersion == PILOT_POLICY and (body.transferSchedule != 'hourly-v1' or body.flight.expectedMinutes is not None):
+    if body.policyVersion in HOURLY_PILOT_POLICIES and (body.transferSchedule != 'hourly-v1' or body.flight.expectedMinutes is not None):
         raise HTTPException(422, 'New pilot trips require hourly scheduling without expected duration')
     if len(trip_id) != 32 or any(c not in '0123456789abcdef' for c in trip_id):
         raise HTTPException(422, 'Invalid trip identifier')
@@ -78,7 +78,7 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
     for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage', 'transferSchedule'):
         if getattr(body, field) is None:
             raw.pop(field, None)
-    if body.policyVersion == PILOT_POLICY:
+    if body.policyVersion in HOURLY_PILOT_POLICIES:
         raw['flight'].pop('expectedMinutes', None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     changed = t is None or t.raw != raw
@@ -113,7 +113,26 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
         db.add(t)
     if changed: invalidate(db, trip_id)
     db.commit()
-    return describe(db, t)
+    return receipt(db, t) if view == 'receipt' else describe(db, t)
+
+
+def receipt(db, trip):
+    complete = db.scalar(select(func.count()).select_from(TripSegment)
+        .join(ResearchSession, ResearchSession.id == TripSegment.session_id)
+        .where(TripSegment.trip_id == trip.id, ResearchSession.completed_at.is_not(None)))
+    received = db.scalar(select(func.count()).select_from(TripSegment).where(TripSegment.trip_id == trip.id))
+    return {'id': trip.id, 'acceptedRevision': trip.revision, 'expectedSegments': trip.raw['segmentCount'],
+            'receivedSegments': received, 'completeSegments': complete,
+            'uploadComplete': trip.raw['state'] != 'active' and complete == received == trip.raw['segmentCount']}
+
+
+@router.get('/trips/{trip_id}/receipt')
+def trip_receipt(trip_id: str, a=Depends(account), db: Session=Depends(database)):
+    guard(db, 'trip', trip_id, a.user_id)
+    trip = db.get(ResearchTrip, trip_id)
+    if not trip or trip.owner_id != a.user_id:
+        raise HTTPException(404, 'Trip not found')
+    return receipt(db, trip)
 
 def describe(db, t, segments=None):
     if segments is None:

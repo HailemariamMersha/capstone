@@ -3,6 +3,7 @@ import csv
 import io
 import json
 from pathlib import Path
+from .outcomes import outcome
 
 DICTIONARY = json.loads((Path(__file__).resolve().parents[2] / "scripts/measurements/columns.json").read_text())
 PACKET_COLUMNS = DICTIONARY["combinedPacketProjection"]
@@ -57,6 +58,8 @@ def packet_fields(packet, prefix):
 def combined_rows(data):
     for measurement in data['measurements']:
         parent = flatten({k: v for k, v in measurement.items() if k not in ('raw', 'packet', 'details', 'route')}, 'measurement.')
+        parent['measurement.outcome'] = outcome(measurement)
+        parent['measurement.interruptionReason'] = measurement.get('interruptionReason')
         config = data['session'].get('config') or {}
         if config.get('tripId'):
             parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight', 'transferSchedule') if k in config}, 'session.'))

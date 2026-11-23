@@ -1,5 +1,6 @@
 """Controlled probe server with durable, idempotent local ingestion."""
 import os
+from contextlib import asynccontextmanager
 
 from backend.ingestion import router
 
@@ -15,12 +16,20 @@ HEADERS = {
     "X-Capstone-Probe": "1",
     "X-Probe-Region": os.environ.get("PROBE_REGION", "local"),
 }
-app = FastAPI(title="Capstone Probe Server", version="0.2.0")
+@asynccontextmanager
+async def lifespan(_app):
+    from backend.research.auth import close_auth_client
+    try:
+        yield
+    finally:
+        close_auth_client()
+
+
+app = FastAPI(title="Capstone Probe Server", version="0.2.0", lifespan=lifespan)
 app.include_router(router)
 from backend.research.api import router as research_router
 from fastapi.middleware.cors import CORSMiddleware
 app.include_router(research_router)
-app.add_middleware(CORSMiddleware, allow_origins=[x for x in os.environ.get('DASHBOARD_ORIGINS', '').split(',') if x], allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
 
 
 
@@ -74,6 +83,17 @@ async def upload(request: Request):
 
 from backend.research.limits import RequestLimits
 app.add_middleware(RequestLimits)
+from backend.research.timing import RequestTiming
+app.add_middleware(RequestTiming)
+app.add_middleware(CORSMiddleware, allow_origins=[x for x in os.environ.get('DASHBOARD_ORIGINS', '').split(',') if x], allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type', 'Content-Encoding', 'X-SkyMeasure-Content-Encoding'], expose_headers=['X-SkyMeasure-Sync', 'X-Request-ID', 'Server-Timing', 'Retry-After'])
+
+# Keep validation errors bounded: Pydantic's default input echo can repeat an
+# entire raw batch, wasting the phone's response allocation and exposing evidence.
+from fastapi.exceptions import RequestValidationError
+@app.exception_handler(RequestValidationError)
+async def validation_error(_request, error):
+    return JSONResponse({'detail': [{'type': e['type'], 'loc': e['loc'], 'msg': e['msg']}
+                                    for e in error.errors()[:20]]}, status_code=422)
 
 @app.get('/health')
 def health():

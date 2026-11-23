@@ -2,6 +2,43 @@
 
 Authenticated participant and researcher APIs live under `/api/v2`. Follow [staging setup](../docs/skymeasure/setup.md) for Supabase Auth, PostgreSQL migrations, administrator bootstrap, Docker/UDP deployment, and Google sign-in. `python -m backend.research.manage migrate` creates the new research tables; it does not remove old SQLite evidence. The legacy ingestion route is disabled unless `CAPSTONE_LOCAL_DEV=1` is explicitly set.
 
+## Authenticated delivery contract
+
+V2 responses advertise `X-SkyMeasure-Sync: 2`. Record ingestion accepts up to
+200 records and 8 MiB encoded/decoded per request. The phone targets 512 KiB
+decoded batches and retains oversized individual records intact. Gzip requests
+use `Content-Encoding: gzip`; Android React Native binary bodies additionally
+use `X-SkyMeasure-Content-Encoding: gzip`, because the library strips the standard
+header for ArrayBuffer requests. Both labels reach the same bounded decoder;
+conflicting labels, truncated/trailing streams and unsupported encodings fail
+explicitly. These rules do not compress the raw HTTP measurement endpoints.
+
+Closed session manifests are immutable. Exact record ID/version acknowledgements
+follow committed ingestion, and `/complete` reconciles against the manifest.
+`PUT /api/v2/trips/{id}?view=receipt` and authenticated
+`GET /api/v2/trips/{id}/receipt` return a compact accepted revision and segment
+counts. A closed trip is complete only when every declared segment reconciles.
+Ownership and consent checks apply to compressed and uncompressed requests alike.
+The original full PUT response remains available for old clients.
+
+`X-Request-ID` and `Server-Timing` connect the phone's bounded delivery journal
+to redacted API timing logs. `auth` measures token verification; `dbSql` measures
+executed SQL calls; `headers` and total request time also include other work.
+SQL timing excludes connection checkout, commit and response serialization, so
+do not treat it as total database latency. Logs contain route templates rather
+than object IDs, query strings, credentials, NetIDs or raw evidence.
+
+Derived failure totals exclude application cancellations/interruptions and show
+those separately. Historical `success`, errors and original JSON remain intact.
+See [delivery validation](../docs/skymeasure/upload-validation-2026-11-23.md).
+
+Source deployments must include `backend/`,
+`scripts/measurements/columns.json` and the tracked public
+`deploy/certs/supabase-prod-ca-2021.crt` when the existing TLS connection string
+references it. Exclude ignored data/configuration, preflight the application
+import, and verify a protected database read as well as `/health` before
+accepting a release. Keep the prior isolated release available for rollback.
+
 The following probe and historical development documentation remains useful for reproducing earlier tests.
 
 # Controlled probe server (M2)
@@ -36,9 +73,9 @@ Restart the backend after upgrading from the preset-size implementation. Older s
 
 The TypeScript client prepares upload data before starting a monotonic timer, then times the complete request through response-body consumption. RTT covers a full small HTTP exchange, not ICMP ping. A cold request may include DNS/TCP/TLS setup; connection reuse can change later timings. Fetch does not provide isolated DNS timing.
 
-Download bytes come from the complete binary response. Above 8 MiB, the app streams downloads into a temporary file through `@dr.pogodin/react-native-fs` and records `http_download_to_file`; file-write time is included. Smaller downloads retain the fetch-based `http_full_transaction` method. Do not pool these methods without accounting for that difference. Upload bytes are counted only after an acknowledgement confirms the expected amount. Throughput is `bytes × 8 / (duration_ms × 1000)` Mbps. It includes connection/server/acknowledgement and JavaScript processing overhead, so it is end-to-end application throughput, not raw link capacity. Loopback/emulator values are functionality checks and should not be used as satellite performance evidence.
+Download bytes come from the complete binary response. The generic/manual collector streams downloads above 8 MiB into a temporary file through `@dr.pogodin/react-native-fs` and records `http_download_to_file`; smaller generic downloads may use fetch. Automatic trips explicitly use file downloads at every size. New pilot trips request 500,000 bytes with a 45-second deadline; historical policy sizes remain unchanged. File-write time is included. Do not pool methods without accounting for that difference. Upload bytes are counted only after an acknowledgement confirms the expected amount. Throughput is `bytes × 8 / (duration_ms × 1000)` Mbps. It includes connection/server/acknowledgement and JavaScript processing overhead, so it is end-to-end application throughput, not raw link capacity. Loopback/emulator values are functionality checks and should not be used as satellite performance evidence.
 
-The client checks the protocol header and payload lengths to detect unexpected responses (including common captive-portal pages). A timeout covers both fetching and body consumption. Cancellation aborts the request and prevents later probes in the batch. Failed transfers have no throughput value or confirmed transferred-byte count. A failure may still have used network data.
+The client checks the protocol header and payload lengths to detect unexpected responses (including common captive-portal pages). A timeout covers fetching and body consumption. Cancellation aborts the request and prevents later probes in the batch. Failed transfers have no primary throughput value. File downloads retain observed partial bytes when available, with their explicit scope; unknown progress stays null. A failure may still have used network data.
 
 The current mobile app saves measurements with durable IDs in SQLite and can export or synchronize closed sessions.
 
