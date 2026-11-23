@@ -5,5 +5,6 @@ data class CallbackRegistry(
     val measurementProgressCbk: (Measurement) -> Unit,
     val onFinishedCbk: (ClientResponse, Throwable?, NDTTest.TestType) -> Unit,
     val onOpen: () -> Unit,
-    val byteLimit: Long?
+    val byteLimit: Long?,
+    val transport: (TransportObservation) -> Unit = {}
 )

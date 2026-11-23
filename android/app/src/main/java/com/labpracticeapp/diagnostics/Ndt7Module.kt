@@ -57,12 +57,17 @@ class Ndt7Module(private val context: ReactApplicationContext) : ReactContextBas
         var overall = "complete"
         val started = System.nanoTime()
         val gson = Gson()
-        fun log(direction: String, value: Any) {
+        fun log(direction: String, value: Any, terminal: Boolean = false) = synchronized(callbacks) {
             val rows = callbacks.getOrPut(direction) { JSONArray() }
-            if (rows.length() >= 100) { dropped[direction] = (dropped[direction] ?: 0) + 1; return }
+            if (rows.length() >= 100) {
+                dropped[direction] = (dropped[direction] ?: 0) + 1
+                if (!terminal) return@synchronized
+                rows.remove(0)
+            }
             rows.put(JSONObject().put("observedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())).put("elapsedMs", (System.nanoTime() - started) / 1e6).put("value", JSONObject(gson.toJson(value))))
         }
         val test = object : NDTTest(client, if (uncapped) null else 90L * 1024 * 1024) {
+            override fun onTransport(testType: TestType, observation: net.measurementlab.ndt7.android.models.TransportObservation) { log(testType.value, observation, true) }
             override fun onDownloadProgress(clientResponse: ClientResponse) { clients["download"] = clientResponse; log("download", clientResponse) }
             override fun onUploadProgress(clientResponse: ClientResponse) { clients["upload"] = clientResponse; log("upload", clientResponse) }
             override fun onMeasurementDownloadProgress(measurement: Measurement) { servers["download"] = measurement; log("download", measurement) }

@@ -4,6 +4,7 @@ import net.measurementlab.ndt7.android.models.ClientResponse
 import net.measurementlab.ndt7.android.models.Measurement
 
 interface DataPublisher {
+    fun onTransport(testType: NDTTest.TestType, observation: net.measurementlab.ndt7.android.models.TransportObservation) {}
 
     fun onMeasurementDownloadProgress(measurement: Measurement) {
     }

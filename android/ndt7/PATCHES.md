@@ -2,7 +2,7 @@
 
 Upstream: https://github.com/m-lab/ndt7-client-android
 Commit: `3e831b785bf4086fddb8e700458588e39b493cf0`
-Upstream library version: 0.2.1. SkyMeasure provenance: **0.2.2-skymeasure.2**.
+Upstream library version: 0.2.1. SkyMeasure provenance: **0.2.2-skymeasure.3**.
 License: Apache-2.0, reproduced in LICENSE. This is a source fork maintained by
 SkyMeasure, not an unmodified upstream SDK or an M-Lab-certified client.
 
@@ -36,13 +36,22 @@ Changes relative to the pinned source:
   no signed URLs in result records. Discovery failure is retained; no fallback
   retry burst. Maximum pair watchdog 60 seconds; each direction wait 25 seconds
   including handshake and shutdown grace.
-- The bridge applies one 90 MiB payload threshold per direction and a durable
+- Bounded builds apply one 90 MiB payload threshold per direction and a durable
   four-attempt rolling-24-hour ceiling. Reserve 200 MiB before initialization:
   two thresholds, up to one 16 MiB protocol-compliant download message past the
-  threshold, and 4 MiB control margin. Wire overhead remains unobservable.
+  threshold, and 4 MiB control margin. The private uncapped pilot omits the byte
+  threshold/reservation but retains the rolling attempt quota and watchdogs.
+  Wire overhead remains unobservable.
 - At most 100 callback records per direction, plus final counters. Dropped
   callback counts are preserved. Server TCP/BBR telemetry is server evidence,
   not handset kernel telemetry. Parsed upstream models can omit future fields.
+- Version 3 adds bounded transport diagnostics for WebSocket closing, closed and
+  failure callbacks: direction, phase, queued bytes, close code, HTTP status and
+  an allowlisted failure category. The bridge retains at most 100 diagnostics
+  and records dropped entries, retaining terminal diagnostics when full. It
+  never retains exception messages, signed Locate/WebSocket URLs, or peer close
+  reasons. These diagnostics explain incomplete directions; they do not change
+  completion criteria, throughput calculations or historical provenance.
 
 Maintenance: changes must preserve license and this upstream pin, update this
 patch list/version, run `:ndt7:testReleaseUnitTest`, the TypeScript tests and an

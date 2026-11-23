@@ -26,7 +26,7 @@ abstract class NDTTest(private val httpClient: OkHttpClient, private val byteLim
     }
     fun startTest(testType: TestType) {
         if (stopped) return
-        val request = Request.Builder().url("https://locate.measurementlab.net/v2/nearest/ndt/ndt7?client_name=skymeasure-android&client_version=0.2.2-skymeasure.2").build()
+        val request = Request.Builder().url("https://locate.measurementlab.net/v2/nearest/ndt/ndt7?client_name=skymeasure-android&client_version=0.2.2-skymeasure.3").build()
         val urls = try {
             val discovery = httpClient.newCall(request)
             call = discovery
@@ -65,7 +65,7 @@ abstract class NDTTest(private val httpClient: OkHttpClient, private val byteLim
                         try { onFinished(result, error, type) } finally { done.countDown() }
                     }
                 },
-                { opened = true }, byteLimit
+                { opened = true }, byteLimit, { onTransport(direction, it) }
             )
             try {
                 if (direction == TestType.DOWNLOAD) {

@@ -33,6 +33,8 @@ export interface ProbeConfig {
   uploadBytes: number;
 }
 export interface Measurement {
+  /** App interruption cause, separate from a network timeout/failure. */
+  interruptionReason?: string;
   scheduledAt?: string;
   scheduling?: {
     scheduledAt: string;

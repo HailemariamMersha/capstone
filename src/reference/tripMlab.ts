@@ -27,6 +27,7 @@ export async function runTripMlab(
   signal: AbortSignal,
   scheduledAt?: number,
   uncapped = false,
+  interruptionReason?: () => string | null,
 ) {
   if (consent !== MLAB_CONSENT)
     throw new Error('M-Lab publication consent required.');
@@ -56,7 +57,7 @@ export async function runTripMlab(
     policyUrl: 'https://www.measurementlab.net/privacy/',
     publicIpAndResultsPublished: true,
     library: 'ndt7-client-android',
-    version: '0.2.2-skymeasure.2',
+    version: '0.2.2-skymeasure.3',
     reservationBytes: uncapped ? null : MLAB_RESERVATION,
     byteThresholdPerDirection: uncapped ? null : 90 * 1048576,
     thresholdMayOvershoot: true,
@@ -109,13 +110,25 @@ export async function runTripMlab(
       response.reason ?? 'invalid_response',
       {
         library: 'ndt7-client-android',
-        version: '0.2.2-skymeasure.2',
+        version: '0.2.2-skymeasure.3',
         method: 'ndt7_android_library',
         source: 'android_library_callbacks',
         byteThreshold: uncapped ? null : 90 * 1048576,
       },
     ),
     requestedBytes: uncapped ? null : 90 * 1048576,
+    ...(!response.results.find(
+      r =>
+        r.direction ===
+        (attempt.type === 'ndt7_download' ? 'download' : 'upload'),
+    )?.cleanClose && signal.aborted
+      ? {
+          interruptionReason: interruptionReason?.() ?? 'trip_ended',
+          errorType: 'interrupted' as const,
+          success: false,
+          value: null,
+        }
+      : {}),
     networkSnapshot: snapshot,
   }));
   for (const result of results) await store.finishAttempt(result);

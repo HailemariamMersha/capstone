@@ -20,9 +20,11 @@ class Uploader(private val cbRegistry: CallbackRegistry, private val executor: E
     private val done = AtomicBoolean(false)
     @Volatile private var closing = false
     private var socket: WebSocket? = null
+    @Volatile private var phase = "connecting"
     override fun onOpen(webSocket: WebSocket, response: Response) {
         if (done.get()) { webSocket.cancel(); return }
         startTime = currentTimeInMicroseconds(); previous = startTime; cbRegistry.onOpen()
+        phase = "transferring"
         executor.submit { createBytePayloads(webSocket) }
     }
     @Synchronized override fun onMessage(webSocket: WebSocket, text: String) {
@@ -32,13 +34,20 @@ class Uploader(private val cbRegistry: CallbackRegistry, private val executor: E
         try { cbRegistry.measurementProgressCbk(Gson().fromJson(text, Measurement::class.java)) } catch (_: Exception) { finish("invalid_response") }
     }
     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        cbRegistry.transport(TransportObservation("peer_closing", phase, webSocket.queueSize(), closeCode=code))
+        phase = "peer_closing"
         closing = true
         webSocket.close(1000, null)
     }
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+        cbRegistry.transport(TransportObservation("closed", phase, webSocket.queueSize(), closeCode=code))
         finish(if (code == 1000) null else "network")
     }
-    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { finish("network") }
+    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        cbRegistry.transport(TransportObservation("transport_failure", phase, webSocket.queueSize(),
+            httpStatus=response?.code, failureCategory=transportFailureCategory(t)))
+        finish("network")
+    }
     @Synchronized fun beginUpload(url: String, httpClient: OkHttpClient?) {
         if (!done.get()) socket = SocketFactory.establishSocketConnection(url, httpClient, this)
     }
@@ -62,7 +71,11 @@ class Uploader(private val cbRegistry: CallbackRegistry, private val executor: E
                 // Avoid upstream's busy loop while retaining the WebSocket backpressure queue.
                 Thread.sleep(1)
             }
-            if (!done.get() && !closing) ws.close(1000, null)
+            if (!done.get() && !closing) {
+                cbRegistry.transport(TransportObservation("client_closing", phase, ws.queueSize(), closeCode=1000))
+                phase = "client_closing"
+                ws.close(1000, null)
+            }
             // Wait for server's final receiver counters and clean close, bounded by orchestrator.
         } catch (_: InterruptedException) { cancel() }
     }

@@ -38,12 +38,18 @@ class Downloader(private val cbRegistry: CallbackRegistry, executor: ExecutorSer
         if (cbRegistry.byteLimit != null && numBytes >= cbRegistry.byteLimit) finish("data_threshold")
     }
     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        cbRegistry.transport(TransportObservation("peer_closing", "download", webSocket.queueSize(), closeCode=code))
         webSocket.close(1000, null)
     }
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+        cbRegistry.transport(TransportObservation("closed", "download", webSocket.queueSize(), closeCode=code))
         finish(if (code == 1000) null else "network")
     }
-    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { finish("network") }
+    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        cbRegistry.transport(TransportObservation("transport_failure", "download", webSocket.queueSize(),
+            httpStatus=response?.code, failureCategory=transportFailureCategory(t)))
+        finish("network")
+    }
     @Synchronized fun beginDownload(url: String, httpClient: OkHttpClient?) {
         if (!done.get()) webSocket = SocketFactory.establishSocketConnection(url, httpClient, this)
     }

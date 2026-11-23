@@ -66,3 +66,28 @@ class BoundedClientTest {
         assertEquals("network", error?.message)
     }
 }
+
+class TransportDiagnosticTest {
+    @Test fun failureDiagnosticsDoNotExposeSignedUrlsOrExceptionText() {
+        val observations = mutableListOf<TransportObservation>()
+        var error: Throwable? = null
+        val registry = CallbackRegistry({}, {}, { _, e, _ -> error=e }, {}, null, { observations.add(it) })
+        val worker = Executors.newSingleThreadExecutor()
+        val socket = object : WebSocket {
+            override fun request() = Request.Builder().url("https://example.invalid").build()
+            override fun queueSize() = 128L
+            override fun send(text: String) = true
+            override fun send(bytes: ByteString) = true
+            override fun close(code: Int, reason: String?) = true
+            override fun cancel() {}
+        }
+        try {
+            Uploader(registry,worker,Semaphore(0)).onFailure(socket,java.io.EOFException("SECRET_SIGNED_URL"),null)
+            assertEquals("network",error?.message)
+            assertEquals("eof",observations.single().failureCategory)
+            assertEquals("connecting",observations.single().phase)
+            assertEquals(128L,observations.single().queuedBytes)
+            assertFalse(observations.toString().contains("SECRET"))
+        } finally { worker.shutdownNow() }
+    }
+}
