@@ -4,6 +4,7 @@ export type TripSummary = {
   expectedRecords: number;
   measurements: number;
   failures: number;
+  interruptions?: number;
   protocols: ProtocolSummary[];
 };
 type ProtocolSummary = {
@@ -12,6 +13,7 @@ type ProtocolSummary = {
   attempts: number;
   successful: number;
   failed: number;
+  interrupted?: number;
   timeouts: number;
   capped: number;
   incompleteBursts: number;
@@ -31,6 +33,7 @@ function outcome(m: ProtocolSummary, noun: string) {
   const parts = [`${count(m.successful)}/${count(m.attempts)} ${noun}`];
   if (m.timeouts) parts.push(`${count(m.timeouts)} timed out`);
   if (m.capped) parts.push(`${count(m.capped)} capped / partial`);
+  if (m.interrupted) parts.push(`${count(m.interrupted)} interrupted`);
   if (m.timingExcluded)
     parts.push(
       `${count(m.timingExcluded)} timing excluded after a collection gap`,
@@ -38,7 +41,7 @@ function outcome(m: ProtocolSummary, noun: string) {
   const other = Math.max(0, m.failed - m.timeouts - m.capped);
   if (other)
     parts.push(`${count(other)} other ${other === 1 ? 'error' : 'errors'}`);
-  const unknown = m.attempts - m.successful - m.failed;
+  const unknown = m.attempts - m.successful - m.failed - (m.interrupted ?? 0);
   if (unknown > 0) parts.push(`${count(unknown)} outcomes unavailable`);
   return parts.join('; ');
 }
@@ -117,7 +120,8 @@ export function TripMeasurementSummary({
           ['Elapsed trip time', elapsed(startedAt, endedAt)],
           ['Received segments', count(summary.receivedSegments)],
           ['Measurements', count(summary.measurements)],
-          ['Failed / incomplete measurements', count(summary.failures)],
+          ['Failed measurements', count(summary.failures)],
+          ['Interrupted measurements', count(summary.interruptions ?? 0)],
         ].map(([label, value]) => (
           <div key={label} className="rounded-xl bg-slate-50 p-3">
             <dt className="text-xs muted">{label}</dt>

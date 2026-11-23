@@ -19,6 +19,7 @@ export type TripRow = {
   expectedRegisteredRecords: number;
   measurements: number;
   failures: number;
+  interruptions?: number;
   uploadComplete: boolean;
 };
 export type TripEvent = {
@@ -65,6 +66,8 @@ export type TripDetail = TripRow & {
   };
 };
 export type Point = {
+  outcome?: 'success' | 'failure' | 'interrupted' | 'unavailable';
+  interruptions?: number;
   id: string;
   at: number;
   type: string;

@@ -315,6 +315,7 @@ export function TripEvidence({
             <option value="">All outcomes</option>
             <option value="success">Success / reply</option>
             <option value="failure">Failure</option>
+            <option value="interrupted">Interrupted</option>
             <option value="timeout">Timeout</option>
           </select>
         </label>

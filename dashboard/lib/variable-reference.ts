@@ -156,7 +156,7 @@ export function variableDefinition(group: string, key: string): Definition {
       source: definition.source,
       calculation:
         group === 'Measurements'
-          ? 'success=true → success; false → failure; absent → unavailable. A burst may succeed with individual timeouts.'
+          ? 'success=true → success; false with cancelled/interrupted → interrupted; other false → failure; absent → unavailable. A burst may succeed with individual timeouts. Unsent/cancelled probes are not packet loss.'
           : 'Explicit timeout → timeout; another error → error; ambiguous traceroute response label or finite nonnegative RTT → response; otherwise unavailable. Response does not prove the destination was reached.',
       blank:
         'Missing evidence is labelled unavailable; it is not success or zero loss.',

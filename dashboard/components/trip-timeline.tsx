@@ -70,7 +70,14 @@ export function TripTimeline({
   const failures =
     timeline?.series
       .flatMap(s => s.points)
-      .filter(p => p.success === false || p.failures) ?? [];
+      .filter(
+        p =>
+          p.outcome === 'failure' ||
+          p.failures ||
+          (p.outcome == null &&
+            p.success === false &&
+            !['cancelled', 'interrupted'].includes(p.error ?? '')),
+      ) ?? [];
   function lane(name: string, series: typeof rtt, unit: string) {
     return (
       <section className="panel p-5 min-w-0" aria-label={name}>

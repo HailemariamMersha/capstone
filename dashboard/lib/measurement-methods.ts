@@ -176,7 +176,7 @@ const durationMs = dependencies.now() - started;
       'First transfer pair five minutes after qualification, then hourly; at most ten pairs under the current saved policy.',
     how: 'Request an exact byte count from the controlled lab endpoint and stream the body into the app cache. Check HTTP status, X-Capstone-Probe, identity encoding, content length and bytes written. Remove the temporary file after the native worker settles.',
     request:
-      'GET https://api.hailemariam.com/api/v1/probe/download/5000000?request=<measurement-id>\nHeaders: Cache-Control: no-cache; Accept-Encoding: identity; Connection: close\nCurrent automatic payload: 5,000,000 bytes (decimal), not 5 MiB.',
+      'GET https://api.hailemariam.com/api/v1/probe/download/500000?request=<measurement-id>\nHeaders: Cache-Control: no-cache; Accept-Encoding: identity; Connection: close\nNew pilot payload: 500,000 bytes (decimal), with a 45-second total ceiling. Historical trips retain their recorded sizes.',
     appCall: `const started = clock.now(); // performance.now()
 const task = fs.downloadFile({
   fromUrl: \`\${config.serverUrl}/api/v1/probe/download/\${config.downloadBytes}?request=\${attempt.id}\`,
@@ -192,13 +192,13 @@ const Mbps = response.bytesWritten * 8 / (durationMs * 1000);`,
     timing:
       'Start before downloadFile; stop when its promise settles after writing the body. Timing includes setup, transfer, native file buffering and callback completion. Partial failures retain the last observed byte count when available; the completed Mbps value remains null.',
     calculation:
-      'Mbps = confirmed file bytes × 8 / durationMs / 1000. The outer total timeout is min(90 s, max(30 s, 10 s + payload time at an assumed 0.5 Mbps)); that assumed rate is a timeout policy, not a measured speed.',
+      'Mbps = confirmed file bytes × 8 / durationMs / 1000. The new pilot uses a 45-second download ceiling. Historical policies retain min(90 s, max(30 s, 10 s + payload time at an assumed 0.5 Mbps)); that assumed rate is a timeout policy, not a measured speed.',
     evidence:
       'requestedBytes, transferredBytes, durationMs, value, transfer.observedBytes, transfer.stage, headersAfterMs, bytesScope and timeoutMs.',
     limits:
       'This is fixed-size application transfer performance to the lab, including overhead. It does not establish full link capacity and is not equivalent to Ookla or M-Lab. The fetch tooling path is used when streaming is off and the payload is at most 8 MiB.',
     terminal:
-      "curl --http1.1 -H 'Accept-Encoding: identity' -H 'Connection: close' -H 'Cache-Control: no-cache' -o /dev/null -w 'bytes=%{size_download} total_seconds=%{time_total}\\n' 'https://api.hailemariam.com/api/v1/probe/download/5000000?request=terminal-check'",
+      "curl --http1.1 -H 'Accept-Encoding: identity' -H 'Connection: close' -H 'Cache-Control: no-cache' -o /dev/null -w 'bytes=%{size_download} total_seconds=%{time_total}\\n' 'https://api.hailemariam.com/api/v1/probe/download/500000?request=terminal-check'",
     sources: [
       'src/measurements/fileDownload.ts',
       'src/measurements/runProbe.ts',
@@ -240,12 +240,12 @@ const Mbps = config.uploadBytes * 8 / (durationMs * 1000);`,
   {
     name: 'M-Lab NDT7 speed test',
     library:
-      'ndt7-client-android 0.2.2-skymeasure.2 through the Android adapter',
+      'ndt7-client-android 0.2.2-skymeasure.3 through the Android adapter',
     schedule:
       'One automatic pair per qualified trip, subject to the saved policy and four-attempts-per-24-hour native frequency guard.',
     how: 'Discover an M-Lab server, then run the library download and upload tests over secure WebSockets. These are time-based bulk transfers, normally about ten seconds per direction, rather than requests for a fixed five-megabyte file.',
     request:
-      'GET https://locate.measurementlab.net/v2/nearest/ndt/ndt7?client_name=skymeasure-android&client_version=0.2.2-skymeasure.2\nThen use the returned signed WSS URLs for /ndt/v7/download and /ndt/v7/upload on the selected M-Lab host. Signed URL credentials are not shown here.',
+      'GET https://locate.measurementlab.net/v2/nearest/ndt/ndt7?client_name=skymeasure-android&client_version=0.2.2-skymeasure.3\nThen use the returned signed WSS URLs for /ndt/v7/download and /ndt/v7/upload on the selected M-Lab host. Signed URL credentials are not shown here.',
     appCall: `// TypeScript:
 await NativeModules.CapstoneNdt7.run(id, consentVersion, wifiHandle, uncapped);
 // Android adapter, using a client bound to the selected Wi-Fi:

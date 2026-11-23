@@ -422,7 +422,7 @@ test('measurement guide stays accessible without trips and supports variable loo
   await page.getByText('M-Lab NDT7 speed test', { exact: true }).click();
   await expect(
     page.getByText(
-      'ndt7-client-android 0.2.2-skymeasure.2 through the Android adapter',
+      'ndt7-client-android 0.2.2-skymeasure.3 through the Android adapter',
       { exact: true },
     ),
   ).toBeVisible();
@@ -647,6 +647,60 @@ test('sample outcome filters request only the selected server page', async ({
   );
   await page.getByRole('button', { name: 'Next observations' }).click();
   expect((await request).url()).toContain('outcome=timeout');
+});
+
+test('trip summary and evidence keep app interruptions separate from failures', async ({
+  page,
+}) => {
+  await openTrip(page, {
+    detailChanges: {
+      summary: {
+        receivedSegments: 4,
+        receivedRecords: 435,
+        expectedRecords: 435,
+        measurements: 183,
+        failures: 1,
+        interruptions: 4,
+        protocols: [
+          {
+            ...protocol,
+            attempts: 183,
+            successful: 178,
+            failed: 1,
+            timeouts: 1,
+            interrupted: 4,
+          },
+        ],
+      },
+    },
+  });
+  const summary = page.getByRole('region', {
+    name: 'Trip measurement summary',
+    exact: true,
+  });
+  await expect(
+    summary.getByText('183 measurement rounds', { exact: false }),
+  ).toContainText('1 failed · 4 interrupted');
+  await expect(
+    summary.getByRole('cell', {
+      name: '1 timed out; 4 interrupted',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('outcomes unavailable', { exact: false }),
+  ).toHaveCount(0);
+  await page
+    .getByRole('button', {
+      name: 'Inspect individual probes, segments and raw evidence',
+    })
+    .click();
+  const request = page.waitForRequest(
+    r =>
+      r.url().includes('/evidence?') && r.url().includes('outcome=interrupted'),
+  );
+  await page.getByLabel('Evidence outcome').selectOption('interrupted');
+  expect((await request).url()).toContain('layer=measurements');
 });
 test('column help describes units and missing values without a separate guide page', async ({
   page,

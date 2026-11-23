@@ -1,3 +1,4 @@
+import { measurementOutcome } from '../../src/measurements/outcome';
 export type Evidence = Record<string, any>;
 export const measurementLabels: Record<string, string> = {
   icmp_burst: 'ICMP echo burst',
@@ -17,13 +18,11 @@ export const present = (v: unknown) => v !== undefined && v !== null;
 const numeric = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v);
 export function parentOutcome(m: Evidence) {
-  return m.success === true
-    ? 'success'
-    : m.success === false
-    ? 'failure'
-    : 'unavailable';
+  return measurementOutcome(m);
 }
 export function sampleOutcome(s: Evidence): string {
+  if (s.errorType === 'cancelled' || s.errorType === 'interrupted')
+    return 'interrupted';
   if (s.errorType === 'timeout' || s.kind === 'timeout') return 'timeout';
   if (s.errorType || s.kind === 'error') return 'error';
   // A trace error callback is response evidence. Its library label is not a

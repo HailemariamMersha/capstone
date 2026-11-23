@@ -205,7 +205,8 @@ export function SessionEvidence({ data }: { data: Evidence }) {
           >
             <option value="">All outcomes</option>
             <option value="success">Successful</option>
-            <option value="failure">Unsuccessful</option>
+            <option value="failure">Failed</option>
+            <option value="interrupted">Interrupted</option>
             <option value="unavailable">Unavailable</option>
           </Select>
           <label className="block text-sm font-medium space-y-2">

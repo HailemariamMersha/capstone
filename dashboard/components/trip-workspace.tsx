@@ -586,7 +586,15 @@ function HealthHeader({ trip }: { trip: TripDetail }) {
 }
 function NetworkSummary({ trip }: { trip: TripDetail }) {
   return (
-    <section className="panel table-scroll">
+    <section
+      className="panel table-scroll"
+      aria-label="Trip measurement summary"
+    >
+      <p className="px-4 pt-4 text-sm muted">
+        {number(trip.summary.measurements, 0)} measurement rounds ·{' '}
+        {number(trip.summary.failures, 0)} failed ·{' '}
+        {number(trip.summary.interruptions ?? 0, 0)} interrupted
+      </p>
       <table className="w-full" aria-label="Trip measurement results">
         <thead>
           <tr>
@@ -616,6 +624,7 @@ function NetworkSummary({ trip }: { trip: TripDetail }) {
                 {[
                   p.timeouts ? `${p.timeouts} timed out` : '',
                   p.capped ? `${p.capped} partial` : '',
+                  p.interrupted ? `${p.interrupted} interrupted` : '',
                   p.incompleteBursts
                     ? `${p.incompleteBursts} incomplete bursts`
                     : '',
