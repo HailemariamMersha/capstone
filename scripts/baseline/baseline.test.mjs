@@ -1,3 +1,5 @@
+import { PILOT_TRIP_POLICY } from '../../src/trips/model.ts';
+import { COLLECTOR_POLICY } from '../../src/trips/scheduler.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -95,7 +97,9 @@ const start = m => Date.parse(m.scheduling.startedAt) - T0;
 test('a simulated overnight trip matches the recorded phone trip', async () => {
   // Phone: 11 h 17 min 56 s; 675 ICMP, UDP and TCP; 46 traceroutes; 46 segments.
   const r = await simulate(
-    { durationMs: (11 * 3600 + 17 * 60 + 56) * 1000, controls: true, mlab: true },
+    { durationMs: (11 * 3600 + 17 * 60 + 56) * 1000, controls: true, mlab: true,
+      policy: { ...PILOT_TRIP_POLICY, version:'flight-pilot-hourly-2026-11-20', downloadBytes:5000000, downloadTimeoutMs:undefined },
+      collectorPolicy:{ ...COLLECTOR_POLICY, version:'collector-scheduler-2026-11-08', boundaryGraceMs:0 } },
     // Both of that trip's downloads timed out, at 90 s each.
     {
       duration: type => (type === 'download' ? 90000 : undefined),
@@ -123,34 +127,53 @@ test('first hour follows the app order and timing', async () => {
   assert.equal(count(r.saved, 'download'), 1);
 });
 
+for (const hours of [14, 24]) test(`${hours}-hour new-policy scheduling preserves boundaries and ten transfer slots`, async () => {
+  const r = await simulate({ durationMs: hours * 3600000, controls: false, mlab: true, uploadPauseMs: 22000 });
+  assert.equal(r.overlap, false);
+  // A final short segment may retain control events at Stop; it must not
+  // create an additional measurement window or discard those events.
+  assert.ok(r.segments >= hours * 4 && r.segments <= hours * 4 + 1);
+  assert.equal(r.closed, r.segments);
+  assert.equal(count(r.saved, 'ndt7_download'), 1);
+  assert.equal(count(r.saved, 'ndt7_upload'), 1);
+  assert.equal(count(r.saved, 'download'), 10);
+  assert.equal(count(r.saved, 'upload'), 10);
+  assert.equal(r.trip.policy.downloadBytes, 500000);
+  const pauses = r.events.filter(e => e.kind === 'upload_pause');
+  for (let i = 0; i < pauses.length; i++) {
+    const started = Date.parse(pauses[i].details.startedAt) - T0;
+    assert.ok(started >= (i + 1) * 900000 && started <= (i + 1) * 900000 + 10000, String(started));
+  }
+});
+
 test('upload gaps stop probing for the configured time every fifteen minutes', async () => {
   const r = await simulate({ durationMs: 3600000, controls: true, uploadPauseMs: 22000 });
   const gaps = r.events.filter(e => e.kind === 'upload_pause').map(e => e.details);
-  assert.equal(gaps.length, 3);
+  assert.equal(gaps.filter(g => g.durationMs > 0).length, 3);
   for (const gap of gaps) {
     assert.equal(gap.simulated, true);
-    assert.equal(gap.durationMs, 22000);
+    assert.ok(gap.durationMs === 22000 || gap.durationMs === 0);
     const [a, b] = [Date.parse(gap.startedAt), Date.parse(gap.endedAt)];
     for (const m of [...r.saved, ...r.controls])
       assert.ok(Date.parse(m.scheduling.callbackAt) <= a || Date.parse(m.scheduling.startedAt) >= b);
   }
 });
 
-test('work still running at a segment boundary is cancelled and kept', async () => {
+test('work exceeding boundary grace is interrupted and kept', async () => {
   // Qualifying at 44 s puts a slow ICMP burst across the 900 s boundary.
   const r = await simulate(
     { durationMs: 1100000, paired: { qualifiedAt: T0 + 44000, transferAt: T0 + 3600000 } },
     { duration: (type, at) => (type === 'icmp_burst' && at > 880000 && at < 890000 ? 34000 : undefined) },
   );
-  const cancelled = r.saved.filter(m => m.errorType === 'cancelled');
+  const cancelled = r.saved.filter(m => m.errorType === 'interrupted' && m.interruptionReason === 'segment_boundary');
   assert.equal(cancelled.length, 1);
-  assert.equal(Date.parse(cancelled[0].scheduling.callbackAt) - T0, 900000);
+  assert.equal(Date.parse(cancelled[0].scheduling.callbackAt) - T0, 910000);
   assert.equal(r.events.filter(e => e.kind === 'upload_pause').length, 1);
   assert.equal(r.overlap, false);
 });
 
 test('late slots are skipped, not replayed', async () => {
-  const r = await simulate({ durationMs: 900000 }, { duration: type => (type === 'download' ? 88000 : undefined) });
+  const r = await simulate({ durationMs: 900000, policy: { ...PILOT_TRIP_POLICY, downloadBytes: 5000000, downloadTimeoutMs: 90000 } }, { duration: type => (type === 'download' ? 88000 : undefined) });
   assert.ok(r.events.some(e => e.kind === 'probe_skipped' && e.details.reason === 'busy_deadline'));
   const times = r.saved.filter(m => m.type === 'icmp_burst').map(start);
   for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] > 20000);

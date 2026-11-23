@@ -75,7 +75,9 @@ export function pairedTimes(phoneAt, now) {
       qualifiedAt + 20000 <= phoneAt + PAIRED_MLAB_MS
         ? phoneAt + PAIRED_MLAB_MS
         : clear(qualifiedAt + 20000),
-    transferAt: clear(Math.max(phoneAt + PAIRED_TRANSFER_MS, qualifiedAt + 60000)),
+    transferAt: clear(
+      Math.max(phoneAt + PAIRED_TRANSFER_MS, qualifiedAt + 60000),
+    ),
   };
 }
 
@@ -88,29 +90,35 @@ export function pairedTimes(phoneAt, now) {
 export async function runSchedule(deps, options) {
   const { clock, sink } = deps;
   const { durationMs, signal: external } = options;
+  // Historical reference fixtures explicitly supply their collected policy.
+  const policy = options.policy ?? PILOT_TRIP_POLICY;
+  const collector = options.collectorPolicy ?? COLLECTOR_POLICY;
   const uploadPauseMs = options.uploadPauseMs ?? DEFAULT_UPLOAD_PAUSE_MS;
   const random = options.random ?? Math.random;
   const iso = (at = clock.now()) => new Date(at).toISOString();
   const startedAt = clock.now();
-  const stopAt = startedAt + Math.min(durationMs, PILOT_TRIP_POLICY.maximumMs);
-  const qualifiedAt = options.paired?.qualifiedAt ?? startedAt + QUALIFICATION_MS;
+  const stopAt = startedAt + Math.min(durationMs, policy.maximumMs);
+  const qualifiedAt =
+    options.paired?.qualifiedAt ?? startedAt + QUALIFICATION_MS;
   const trip = {
     startedAt,
     endedAt: null,
     phase: 'watching',
     reason: null,
     flight: {},
-    policy: PILOT_TRIP_POLICY,
+    policy,
     transferSchedule: HOURLY_TRANSFER_POLICY,
     used: { transfers: 0, diagnostics: 0, uploads: 0 },
     transferPairs: 0,
     nextTransferAt: null,
-    nextUploadAt: startedAt + PILOT_TRIP_POLICY.uploadMs,
+    nextUploadAt: startedAt + policy.uploadMs,
     due: {},
     controlDue: {},
     transferFailures: { download: 0, upload: 0 },
     pendingTransferPair: undefined,
-    mlab: options.mlab ? { dueAt: null, reserved: false, status: 'waiting' } : undefined,
+    mlab: options.mlab
+      ? { dueAt: null, reserved: false, status: 'waiting' }
+      : undefined,
     segmentCount: 0,
   };
   let health = newHealth();
@@ -125,6 +133,55 @@ export async function runSchedule(deps, options) {
   let recoveringGap = false;
   let lastControlAt = clock.now();
   let lastHeavyEnd = -Infinity;
+  let activeType = 'idle';
+  let interruptionReason = null;
+  let boundaryWake = new AbortController(),
+    graceWake = new AbortController();
+  function beginRotation() {
+    if (ended() || rotating || uploading) return;
+    rotating = true;
+    const light = [
+      'idle',
+      'icmp_burst',
+      'udp_echo',
+      'tcp_connect',
+      'traceroute',
+    ].includes(activeType);
+    if (!light || !collector.boundaryGraceMs) {
+      if (probeAbort) {
+        interruptionReason = 'segment_boundary';
+        probeAbort.abort();
+      }
+    } else {
+      const grace = (graceWake = new AbortController());
+      clock
+        .wait(
+          Math.max(
+            0,
+            trip.nextUploadAt + collector.boundaryGraceMs - clock.now(),
+          ),
+          grace.signal,
+        )
+        .then(() => {
+          if (!grace.signal.aborted && probeAbort) {
+            interruptionReason = 'segment_boundary';
+            probeAbort.abort();
+          }
+        });
+    }
+    workerWake.abort();
+    controlWake.abort();
+  }
+  function armBoundary() {
+    boundaryWake.abort();
+    if (!collector.boundaryGraceMs || ended()) return;
+    const wake = (boundaryWake = new AbortController());
+    clock
+      .wait(Math.max(0, trip.nextUploadAt - clock.now()), wake.signal)
+      .then(() => {
+        if (!wake.signal.aborted && !ended()) beginRotation();
+      });
+  }
   const ended = () => stop.signal.aborted || trip.phase === 'finished';
   const finish = reason => {
     if (trip.phase === 'finished') return;
@@ -140,18 +197,25 @@ export async function runSchedule(deps, options) {
   const onExternal = () => finish('operator_stop');
   external?.addEventListener('abort', onExternal);
 
+  let segmentOpen = false;
   async function openSegment() {
     health = newHealth();
     await sink.openSegment(trip.segmentCount++);
+    segmentOpen = true;
   }
   async function closeSegment(reason) {
+    if (!segmentOpen) return;
     await sink.event('segment_health', {
       policyVersion: COLLECTOR_POLICY.version,
       ...health,
       observedEndAt: iso(),
     });
-    await sink.event('trip_segment_closed', { reason, budgets: { ...trip.used } });
+    await sink.event('trip_segment_closed', {
+      reason,
+      budgets: { ...trip.used },
+    });
     await sink.closeSegment(reason);
+    segmentOpen = false;
   }
 
   async function handleGap(now) {
@@ -175,8 +239,16 @@ export async function runSchedule(deps, options) {
     }
     trip.pendingTransferPair = undefined;
     if (trip.nextTransferAt != null && trip.nextTransferAt <= now)
-      trip.nextTransferAt = advance(trip.nextTransferAt, now, transferInterval(trip));
-    if (trip.mlab && !trip.mlab.reserved && (trip.mlab.dueAt ?? Infinity) <= now)
+      trip.nextTransferAt = advance(
+        trip.nextTransferAt,
+        now,
+        transferInterval(trip),
+      );
+    if (
+      trip.mlab &&
+      !trip.mlab.reserved &&
+      (trip.mlab.dueAt ?? Infinity) <= now
+    )
       trip.mlab.dueAt = now + 60000 + Math.floor(random() * 120000);
     health.gaps++;
     health.unobservedMs += now - lastControlAt;
@@ -200,13 +272,16 @@ export async function runSchedule(deps, options) {
       lastControlAt = now;
       if (now >= stopAt) {
         finish(
-          durationMs >= PILOT_TRIP_POLICY.maximumMs ? 'safety_ceiling' : 'duration_reached',
+          durationMs >= PILOT_TRIP_POLICY.maximumMs
+            ? 'safety_ceiling'
+            : 'duration_reached',
         );
         break;
       }
       if (now >= qualifiedAt && trip.phase === 'watching') {
         trip.phase = 'collecting';
-        trip.nextTransferAt = options.paired?.transferAt ?? qualifiedAt + 300000;
+        trip.nextTransferAt =
+          options.paired?.transferAt ?? qualifiedAt + 300000;
         await sink.event('baseline_collecting', {
           observedAt: iso(now),
           qualifiedAt: iso(qualifiedAt),
@@ -235,10 +310,7 @@ export async function runSchedule(deps, options) {
             ? COLLECTOR_POLICY.identityRefreshMs
             : COLLECTOR_POLICY.identityRetryMs);
       }
-      if (clock.now() >= trip.nextUploadAt) {
-        rotating = true;
-        probeAbort?.abort();
-      }
+      if (clock.now() >= trip.nextUploadAt) beginRotation();
       workerWake.abort();
       if (clock.now() + COLLECTOR_POLICY.toleranceMs >= nextTick)
         nextTick = advance(
@@ -248,7 +320,8 @@ export async function runSchedule(deps, options) {
         );
       const wakes = [nextTick, stopAt];
       if (trip.phase === 'watching') wakes.push(qualifiedAt);
-      if (!uploading && !rotating && identityDue > clock.now()) wakes.push(identityDue);
+      if (!uploading && !rotating && identityDue > clock.now())
+        wakes.push(identityDue);
       if (!ended())
         await clock.wait(
           Math.max(1, Math.min(...wakes) - clock.now()),
@@ -258,6 +331,7 @@ export async function runSchedule(deps, options) {
   }
 
   async function probe(type, scheduledAt) {
+    if (clock.now() >= trip.nextUploadAt) beginRotation();
     if (ended() || rotating) {
       increment(health.skips, `control_preempted:${type}`);
       await sink.event('probe_skipped', {
@@ -269,11 +343,13 @@ export async function runSchedule(deps, options) {
     }
     const isTransfer = type === 'download' || type === 'upload';
     const timeoutMs = isTransfer
-      ? transferTimeout(
-          type === 'download'
-            ? trip.policy.downloadBytes
-            : trip.policy.uploadBytes,
-        )
+      ? type === 'download' && policy.downloadTimeoutMs != null
+        ? policy.downloadTimeoutMs
+        : transferTimeout(
+            type === 'download'
+              ? trip.policy.downloadBytes
+              : trip.policy.uploadBytes,
+          )
       : PROBE_TIMEOUT_MS;
     const limitMs =
       type === 'traceroute'
@@ -309,11 +385,16 @@ export async function runSchedule(deps, options) {
     const startedMono = clock.mono();
     if (!isControl) {
       for (const type of types) increment(health.started, type);
-      health.maxLatenessMs = Math.max(health.maxLatenessMs, started - scheduledAt);
+      health.maxLatenessMs = Math.max(
+        health.maxLatenessMs,
+        started - scheduledAt,
+      );
     }
     const abort = new AbortController();
     const done = new AbortController();
     probeAbort = abort;
+    activeType = types[0];
+    interruptionReason = null;
     clock.wait(limitMs, done.signal).then(() => {
       if (!done.signal.aborted) abort.abort();
     });
@@ -327,6 +408,7 @@ export async function runSchedule(deps, options) {
     } finally {
       done.abort();
       probeAbort = null;
+      activeType = 'idle';
     }
     const callbackAt = clock.now();
     const wallDurationMs = callbackAt - started;
@@ -335,31 +417,36 @@ export async function runSchedule(deps, options) {
     const timingValid =
       Math.abs(wallDurationMs - monoDurationMs) <=
       COLLECTOR_POLICY.timingGapToleranceMs;
-    const results = (Array.isArray(outcome) ? outcome : [outcome]).map(result => ({
-      ...result,
-      ...(timingValid
-        ? {}
-        : {
-            success: false,
-            value: null,
-            errorType: 'interrupted',
-            errorMessage:
-              'Clock gap crossed this attempt; original samples are retained.',
-          }),
-      scheduledAt: iso(scheduledAt),
-      scheduling: {
+    const results = (Array.isArray(outcome) ? outcome : [outcome]).map(
+      result => ({
+        ...result,
+        ...(!result.success && interruptionReason
+          ? { errorType: 'interrupted', interruptionReason, value: null }
+          : {}),
+        ...(timingValid
+          ? {}
+          : {
+              success: false,
+              value: null,
+              errorType: 'interrupted',
+              errorMessage:
+                'Clock gap crossed this attempt; original samples are retained.',
+            }),
         scheduledAt: iso(scheduledAt),
-        startedAt: iso(started),
-        callbackAt: iso(callbackAt),
-        saveRequestedAt: iso(),
-        timingValid,
-        reportedValue: result.value ?? null,
-        latenessMs: started - scheduledAt,
-        wallDurationMs,
-        startElapsedRealtimeMs: startedMono,
-        endElapsedRealtimeMs: startedMono + monoDurationMs,
-      },
-    }));
+        scheduling: {
+          scheduledAt: iso(scheduledAt),
+          startedAt: iso(started),
+          callbackAt: iso(callbackAt),
+          saveRequestedAt: iso(),
+          timingValid,
+          reportedValue: result.value ?? null,
+          latenessMs: started - scheduledAt,
+          wallDurationMs,
+          startElapsedRealtimeMs: startedMono,
+          endElapsedRealtimeMs: startedMono + monoDurationMs,
+        },
+      }),
+    );
     for (const result of results) {
       if (!isControl) increment(health.completed, result.type);
       await sink.save(result, isControl);
@@ -368,7 +455,10 @@ export async function runSchedule(deps, options) {
   }
 
   function dueControl(now) {
-    const enabled = options.controls === true ? Object.keys(CONTROLS) : options.controls || [];
+    const enabled =
+      options.controls === true
+        ? Object.keys(CONTROLS)
+        : options.controls || [];
     if (!enabled.length) return null;
     for (const [type, spec] of Object.entries(CONTROLS))
       trip.controlDue[type] ??= now + spec.offsetMs;
@@ -383,7 +473,8 @@ export async function runSchedule(deps, options) {
       const slot = takeDue(trip.controlDue[type], now, spec.intervalMs);
       if (!slot) continue;
       trip.controlDue[type] = slot.next;
-      if (nextApp - now >= spec.worstCaseMs) return { type, at: slot.scheduledAt };
+      if (nextApp - now >= spec.worstCaseMs)
+        return { type, at: slot.scheduledAt };
     }
     return null;
   }
@@ -398,7 +489,9 @@ export async function runSchedule(deps, options) {
         continue;
       }
       if (rotating || now >= trip.nextUploadAt) {
-        rotating = true;
+        beginRotation();
+        boundaryWake.abort();
+        graceWake.abort();
         identityAbort?.abort();
         const scheduled = trip.nextUploadAt;
         trip.nextUploadAt = advance(scheduled, now, trip.policy.uploadMs);
@@ -420,6 +513,7 @@ export async function runSchedule(deps, options) {
           simulated: true,
         });
         rotating = false;
+        armBoundary();
         continue;
       }
       if (trip.phase !== 'collecting') {
@@ -434,7 +528,8 @@ export async function runSchedule(deps, options) {
       }
       if (trip.mlab && trip.mlab.dueAt == null)
         trip.mlab.dueAt =
-          options.paired?.mlabDueAt ?? now + 60000 + Math.floor(random() * 120000);
+          options.paired?.mlabDueAt ??
+          now + 60000 + Math.floor(random() * 120000);
       const heavyReady = now - lastHeavyEnd >= COLLECTOR_POLICY.heavySpacingMs;
       if (
         trip.mlab &&
@@ -449,7 +544,9 @@ export async function runSchedule(deps, options) {
           60000,
           60000,
         );
-        trip.mlab.status = results.every(r => r.success) ? 'complete' : 'incomplete';
+        trip.mlab.status = results.every(r => r.success)
+          ? 'complete'
+          : 'incomplete';
         lastHeavyEnd = clock.now();
         continue;
       }
@@ -470,7 +567,11 @@ export async function runSchedule(deps, options) {
           });
         }
         if (
-          reserve(trip, 'diagnostics', requestedPayload(candidate, DIAGNOSTIC_CONFIG))
+          reserve(
+            trip,
+            'diagnostics',
+            requestedPayload(candidate, DIAGNOSTIC_CONFIG),
+          )
         ) {
           await probe(candidate, slot.scheduledAt);
         } else {
@@ -519,6 +620,7 @@ export async function runSchedule(deps, options) {
   }
 
   await openSegment();
+  armBoundary();
   await sink.event('session_started', { startedAt: iso(startedAt) });
   const controller = control().catch(error => {
     finish('baseline_error');
@@ -530,6 +632,8 @@ export async function runSchedule(deps, options) {
     finish('baseline_error');
     throw error;
   } finally {
+    boundaryWake.abort();
+    graceWake.abort();
     external?.removeEventListener('abort', onExternal);
     await controller;
     await closeSegment(trip.reason ?? 'operator_stop');

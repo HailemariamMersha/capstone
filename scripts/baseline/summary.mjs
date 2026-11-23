@@ -1,12 +1,20 @@
+import { measurementOutcome } from '../../src/measurements/outcome.ts';
 /** Aggregates shared by the run summary and the phone comparison. */
 import { latencySummary } from '../../src/measurements/statistics.ts';
 
 export const SUMMARY_SCHEMA = 'skymeasure-baseline-1';
-export const PROBE_TYPES = ['icmp_burst', 'udp_echo', 'control_icmp', 'control_gateway'];
+export const PROBE_TYPES = [
+  'icmp_burst',
+  'udp_echo',
+  'control_icmp',
+  'control_gateway',
+];
 
 export const quantile = (sorted, q) =>
   sorted.length ? sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)] : null;
-export const median = values => latencySummary(values.map((rttMs, sequence) => ({ rttMs, sequence }))).medianMs;
+export const median = values =>
+  latencySummary(values.map((rttMs, sequence) => ({ rttMs, sequence })))
+    .medianMs;
 
 /** 95% Wilson interval, in percent. Treats probes as independent, which bursts are not. */
 export function wilson(failures, total) {
@@ -15,7 +23,8 @@ export function wilson(failures, total) {
   const p = failures / total;
   const d = 1 + (z * z) / total;
   const centre = (p + (z * z) / (2 * total)) / d;
-  const half = (z / d) * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total));
+  const half =
+    (z / d) * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total));
   return [Math.max(0, centre - half) * 100, Math.min(1, centre + half) * 100];
 }
 
@@ -36,23 +45,30 @@ export function protocolSummary(type, all) {
     .map(m => m.value)
     .sort((a, b) => a - b);
   // Loss counts only probes that were sent and then answered or timed out.
-  const outcomes = samples.filter(s => s.errorType === 'timeout' || typeof s.rttMs === 'number');
+  const outcomes = samples.filter(
+    s => s.errorType === 'timeout' || typeof s.rttMs === 'number',
+  );
   const lost = outcomes.filter(s => typeof s.rttMs !== 'number').length;
   return {
     type,
     attempts: rows.length,
     successful: rows.filter(m => m.success).length,
-    failed: rows.filter(m => m.success === false).length,
+    failed: rows.filter(m => measurementOutcome(m) === 'failure').length,
+    interrupted: rows.filter(m => measurementOutcome(m) === 'interrupted')
+      .length,
     timeouts: rows.filter(m => m.errorType === 'timeout').length,
     capped: 0,
     timingExcluded: rows.length - timed.length,
-    incompleteBursts: burst ? rows.filter(m => m.details && !m.details.complete).length : 0,
+    incompleteBursts: burst
+      ? rows.filter(m => m.details && !m.details.complete).length
+      : 0,
     reached: rows.filter(m => m.route?.reached).length,
     sampleCount: samples.length,
     replies: rtts.length,
     medianMs: burst || /tcp/.test(type) ? median(rtts) : null,
     p95Ms: burst || /tcp/.test(type) ? quantile(rtts, 0.95) : null,
-    lossPercent: burst && outcomes.length ? (100 * lost) / outcomes.length : null,
+    lossPercent:
+      burst && outcomes.length ? (100 * lost) / outcomes.length : null,
     lossInterval95: burst ? wilson(lost, outcomes.length) : null,
     unit: rows.find(m => m.unit)?.unit ?? null,
     medianValue: median(values),
@@ -62,4 +78,6 @@ export function protocolSummary(type, all) {
   };
 }
 export const summarize = measurements =>
-  [...new Set(measurements.map(m => m.type))].sort().map(type => protocolSummary(type, measurements));
+  [...new Set(measurements.map(m => m.type))]
+    .sort()
+    .map(type => protocolSummary(type, measurements));
