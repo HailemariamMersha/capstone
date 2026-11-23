@@ -1,12 +1,12 @@
-# Collector scheduling and evidence — policy collector-scheduler-2026-11-08
+# Collector scheduling and evidence — policy collector-scheduler-2026-11-23
 
-> Introduced in pilot 1.1.4 and retained in 1.1.5. Qualification is now separately documented by the [ASN-only policy](../measurements/flight-collection.md); historical GPS-based admission does not apply to new automatic trips.
+> Pilot 1.2.6 adds bounded boundary grace and upload-service handoff. Older runs retain their saved scheduler and transfer policies. Qualification is separately documented by the [ASN-only policy](../measurements/flight-collection.md); historical GPS-based admission does not apply to new automatic trips.
 
 The collector changes how existing tests are scheduled and explained. It adds
 no network measurement method, changes no historical record, and does not
 claim that Android always permits continuous background work. New sessions use
 `collectorVersion=skymeasure-libraries-2` and the complete
-`collectorPolicy=collector-scheduler-2026-11-08` configuration. Transfer budgets,
+`collectorPolicy=collector-scheduler-2026-11-23` configuration. Transfer budgets,
 consent, ownership, probe libraries and flight qualification remain versioned
 by their existing policy.
 
@@ -32,8 +32,14 @@ offsets. Overdue transfer opportunities advance to a future slot; an unstarted
 M-Lab job is deferred with new randomized spacing. Elapsed time is not invented
 measurement coverage.
 
-The control lane cancels the current job at a segment boundary. The worker waits
-for native cleanup before closing the immutable session and attempting uploads.
+At a segment boundary, the control lane stops admission of new measurement jobs.
+An in-flight ICMP, UDP, TCP or traceroute job can finish within ten seconds of the
+scheduled boundary; the timer cancels it if that grace expires. Controlled HTTP
+and M-Lab transfers are cancelled immediately. The worker waits for native cleanup
+before closing the immutable session and attempting uploads. Grace is measured
+from the scheduled boundary, not the next worker callback. The next boundary
+remains on the original fifteen-minute schedule; grace does not accumulate.
+`segment_drain` records the cleanup interval separately from `upload_pause`.
 Control observations during the pause are bounded, persisted in the owned local
 trip and written to the next segment with `bufferedDuringUpload`. Recovery after
 interruption preserves surviving buffered observations in an interrupted evidence
@@ -67,12 +73,15 @@ that direction for the trip. Boundary cancellations and timing interruptions do
 not count as endpoint failures. No reservation is refunded or silently moved
 between budget categories.
 
-All automatic downloads use `@dr.pogodin/react-native-fs`, including the 5 MB
-payload; this avoids full-body conversion in JavaScript. Download connection and
-read-idle limits are ten and thirty seconds. The total controlled-transfer
-deadline is `min(90s, max(30s, 10s + bytes * 8 / 500000))`: 0.5 Mbps is a policy
-assumption, not an inferred capacity. A 5 MB download gets ninety seconds and a
-1 MB upload gets thirty. The detector continues while either is in progress.
+All automatic downloads use `@dr.pogodin/react-native-fs`, avoiding full-body
+conversion in JavaScript. New pilot trips request **500,000 bytes** with a
+**45-second** total deadline. Controlled uploads remain 1,000,000 bytes with a
+30-second deadline. Connection and read-idle limits remain ten and thirty seconds.
+Older hourly pilot trips retain 5,000,000-byte downloads and the saved 90-second
+deadline; do not reinterpret their results as the new size. Non-overridden
+transfer deadlines use `min(90s, max(30s, 10s + bytes * 8 / 500000))`; 0.5 Mbps
+is a scheduling assumption, not an inferred capacity. The detector continues
+while either transfer is in progress.
 
 Failed downloads retain the last observed native file-byte count when available.
 Unknown progress stays null, including uploads without a complete server
@@ -111,10 +120,12 @@ not multiply the duration by the number of packets.
 | `upload_pause` | Actual pause interval, nominal 25 s limit, intended boundary and outcome; ISO times in new exports. |
 | `segment_health` | Expected/started/settled jobs by type, skipped jobs by reason, gap count, unobserved duration and maximum nonnegative lateness. Counts describe measurement jobs/bursts, not individual packets. |
 
-Timing-invalid attempts become interrupted with a null headline value. Their
+Boundary-cancelled, participant-stopped and timing-invalid attempts are
+interruptions, separate from network/measurement failures. New records retain an
+explicit `interruptionReason` and null headline value. Their
 original samples, callbacks and reported headline value remain available for
 audit. Trip-card timing medians exclude explicitly flagged attempts, while reply
-observations and unsuccessful-parent counts remain visible. The session table
+observations and separate interruption counts remain visible. The session table
 labels timing evidence and omits flagged headline values, median, p95 and
 successive-difference statistics. Its individual samples and original downloads
 retain the recorded values. Scheduling uses the new scheduler invocation time
@@ -128,6 +139,51 @@ These additive fields remain in original JSON and combined exports. Existing
 focused CSV projections retain their format; use the original JSON and event
 details for the additional scheduler evidence. No positions or raw location
 objects enter these records.
+
+## Upload lifecycle and transport
+
+Each live upload opportunity starts after durable segment closure and has one
+absolute 25-second deadline shared by all requests. The service and detector
+remain alive. After Stop, collection releases its routing/activity lease and
+the existing foreground service switches in place to `dataSync`. The uploader
+uses successive 180-second passes, stopping when final receipts reconcile,
+authentication/conflict needs attention, Android expires execution, a new Start
+preempts it, or ten minutes pass without new record/completion acknowledgements.
+Connectivity/backoff waits do not reset that no-progress timer. Pending evidence
+stays local. Headless OS opportunities remain bounded to 25 seconds and cannot
+cancel a service-owned drain.
+
+V2 transport gzip-compresses bodies of at least 1 KiB when compression saves
+bytes. The server limits both encoded and decoded bodies to 8 MiB. Record batches
+target at most 200 records and 512 KiB decoded; an individually larger record
+stays intact. Until the server advertises support, clients retain the 50-record
+identity-encoding contract. Android React Native's `NetworkingModule` strips
+`Content-Encoding` for binary request bodies, so the client also supplies the
+negotiated `X-SkyMeasure-Content-Encoding: gzip` alias. The API uses the same
+strict gzip decoder for both headers and rejects conflicting labels. This avoids
+recompressing a string natively with an unobservable compressed size.
+
+An owner/API-scoped fingerprint records accepted immutable session manifests.
+Unchanged accepted manifests are skipped; changed accepted bodies require review.
+Trip registration snapshots retain their accepted revision, while compact receipts
+verify final segment reconciliation. Exact record ID/version acknowledgements
+are durably applied even if a response arrives after opportunity cancellation.
+
+The 20 MiB live-upload allocation is unchanged. New-policy requests reserve the
+encoded body plus 64 KiB, then settle a known response to encoded request bytes
+plus UTF-8 response-body bytes. A dispatched request without a response keeps
+its full reservation; only a proven pre-dispatch failure is free. Crash-surviving
+reservations are conservatively charged on recovery. Headers, TLS/TCP overhead,
+retransmissions and authentication traffic remain outside this payload account.
+Old trip policies retain their original accounting rather than being rewritten.
+
+The `react-native-background-actions@4.1.0` patch is checked in under `patches/`.
+It changes service type/notification without restarting Headless JS, returns
+Android's accepted type for verification, and forwards OS expiration. `npm ci`
+applies it with `patch-package --error-on-fail`; incompatibility must fail setup.
+Run the executor/coordinator tests and an Android build after any library update.
+See the [dated validation report](upload-validation-2026-11-23.md) for measured
+results and platform limits; implementation intent is not endurance evidence.
 
 ## Battery configuration and validation
 

@@ -1,6 +1,6 @@
 # SkyMeasure staging setup
 
-> Current phone UX and limits are defined by [pilot 1.2.5](uncapped-pilot.md): no phone Google/researcher controls, required NYU NetID and flight/route details, pilot test-ASN normal admission and uncapped M-Lab. Google configuration below applies to the researcher website and historical clients.
+> Current phone UX and limits are defined by [pilot 1.2.6](uncapped-pilot.md): no phone Google/researcher controls, required NYU NetID and flight/route details, pilot test-ASN normal admission and uncapped M-Lab. Delivery now uses gzip/200-record targeting, durable receipts and a foreground drain after Stop. Google configuration below applies to the researcher website and historical clients.
 
 > Current hosting: isolated SkyMeasure API/UDP services on the shared lab host, Supabase PostgreSQL/Auth, and Vercel dashboard. The deployed region label remains `lab-location-unconfirmed`; Ashburn is an [unconfirmed location inference](lab-migration.md#location-update--23-november-2026). DigitalOcean instructions below document the original deployment and retained rollback host; do not reprovision it for the current pilot. Current qualification is [ASN-only](../measurements/flight-collection.md).
 

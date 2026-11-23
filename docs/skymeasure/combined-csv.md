@@ -23,4 +23,8 @@ Empty cells mean not supplied, not applicable, or unavailable following an unsuc
 
 Traceroute `kind` labels are the library's classifications. Historical labels such as `port_unreachable` are not independent proof that ICMP type/code was observed. A target address copied into an old library result is not necessarily an observed reply source. UDP timeouts do not prove that react-native-udp cannot measure RTT.
 
-Read the [measurement guide](../measurements/guide.md), [column dictionary](../measurements/columns.md), and [machine-readable dictionary](../../scripts/measurements/columns.json). Existing wide CSV exports and their definitions remain unchanged. Unknown future scalar fields appear by their raw JSON path; consult the collector version before assigning an interpretation to them. Original JSON preserves all fields, including future nested objects and arrays.
+Read the [measurement guide](../measurements/guide.md), [column dictionary](../measurements/columns.md), and [machine-readable dictionary](../../scripts/measurements/columns.json). Saved historical exports are not rewritten. New exports add the outcome columns described below while retaining original values and units. Unknown future scalar fields appear by their raw JSON path; consult the collector version before assigning an interpretation to them. Original JSON preserves all fields, including future nested objects and arrays.
+
+## Outcome classification (delivery update)
+
+`measurement.outcome` derives success, failure, interrupted or unavailable. Cancellations and callback/process interruptions are not network failures. `measurement.interruptionReason` identifies explicit causes such as segment_boundary; historical unrecorded reasons stay blank. Both columns repeat for every child sample, so count distinct parent measurement IDs. Original `measurement.success`, errors and raw JSON are preserved. Dashboard failure totals exclude interruptions and show them separately.

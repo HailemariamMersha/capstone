@@ -1,6 +1,6 @@
-# Account-free phone pilot — updated 20 November 2026
+# Account-free phone pilot — updated 23 November 2026
 
-Pilot 1.2.3 uses trip policy `flight-pilot-hourly-2026-11-20` and consent `skymeasure-flight-payment-2026-11-20`. This is a private evaluation build, not public recruitment or validated flight detection.
+Pilot 1.2.6 uses trip policy `flight-pilot-delivery-2026-11-23` and consent `skymeasure-flight-payment-2026-11-20`. The prior 1.2.3 hourly policy remains valid for saved trips. This is a private evaluation build, not public recruitment or validated flight detection.
 
 ## Participant flow
 
@@ -22,7 +22,7 @@ Non-pilot configuration disables this test entry. A normal build's native adapte
 
 ## M-Lab traffic and safeguards
 
-The private pilot removes the 90 MiB per-direction cutoff and the 200 MiB reservation. Nullable byte-limit/requested-size fields use JSON null, meaning **unbounded by bytes**, not zero traffic. The native client provenance is `ndt7-client-android`, `0.2.2-skymeasure.2`; upstream remains pinned and locally patched.
+The private pilot removes the 90 MiB per-direction cutoff and the 200 MiB reservation. Nullable byte-limit/requested-size fields use JSON null, meaning **unbounded by bytes**, not zero traffic. The native client provenance is `ndt7-client-android`, `0.2.2-skymeasure.3`; upstream remains pinned and locally patched.
 
 M-Lab is outside the remaining allocations: 60 MiB controlled transfers, 20 MiB diagnostics/context, 20 MiB live record uploads. There is no overall 300 MiB ceiling for this pilot. The protocol's normal duration, 60-second pair watchdog, per-direction wait/connection timeouts, Wi-Fi binding, Stop, one pair per trip and four reserved attempts per 24 hours remain. Memory/control-message limits remain too. Fifteen-minute segment rotation can still cancel a long operation; dedicated measurement-block scheduling is not implemented.
 
@@ -34,7 +34,11 @@ M-Lab public-IP/results publication is still disclosed; removing phone sign-in d
 
 ## Upload retry fairness
 
-Post-trip upload opportunities remain bounded to 25 seconds. A persisted cursor scoped to the owner rotates between pending trips and the historical standalone-session queue, so an old backlog cannot monopolize every opportunity. Records within each trip remain ordered oldest first. The cursor advances before work, including on timeout or failure; committed records still require exact acknowledgements and server reconciliation. No record is dropped to advance the cursor. A cancelled opportunity leaves evidence saved for retry rather than requiring a new measurement run.
+In pilot 1.2.6, live and headless OS upload opportunities remain bounded to 25 seconds. After Stop the existing foreground service transitions to dataSync and drains successive 180-second passes, including while backgrounded. It stops after reconciliation or ten minutes without progress, and handles Android expiration. A persisted cursor scoped to the owner rotates between pending trips and the historical standalone-session queue, so an old backlog cannot monopolize every opportunity. Records within each trip remain ordered oldest first. The cursor advances before work, including on timeout or failure; committed records still require exact acknowledgements and server reconciliation. No record is dropped to advance the cursor. A cancelled opportunity leaves evidence saved for retry rather than requiring a new measurement run.
+
+After a no-progress cutoff, automatic foreground retries wait at least fifteen
+minutes rather than immediately restarting another stalled service. Existing
+per-session backoff and server Retry-After deadlines can delay a retry further.
 
 ## Compatibility, build and validation
 
@@ -51,3 +55,9 @@ Deploy the backend before installing 1.2.3. Run `python -m backend.research.mana
 New trips send a separate idempotent `PUT /api/v2/trips/{id}/payment` after trip registration. Ownership comes from the verified token. The phone keeps this record in a separate SQLite table until acknowledged; account deletion removes it. `GET /api/v2/admin/payments` is administrator-only, paginated and marked no-store. Administrators see payment mappings under Participants → Payment reconciliation. NetIDs are not proof of flight, identity or payment eligibility. They are excluded from ordinary researcher routes, measurement JSON/CSV, M-Lab inputs and logs. Approved research text must describe this identifiable payment mapping before recruitment.
 
 Consent is now `skymeasure-flight-payment-2026-11-20`; the M-Lab publication authorization retains its existing identifier because its publication terms have not changed. Previous consent versions remain valid for historical uploads. Existing users review the new payment disclosure before starting new trips.
+
+## Pilot 1.2.6 delivery update
+
+New trips use policy `flight-pilot-delivery-2026-11-23`: controlled download 500,000 bytes / 45 seconds; upload remains 1,000,000 bytes. M-Lab remains a separate normal-duration pair with the same publication consent and quotas. Redacted transport callbacks now retain phase, close code, queued bytes, HTTP status and allowlisted failure category; no signed URLs, close text or exception messages. Partial results never become completed speed results.
+
+Deploy the compatible backend before the APK. This update adds no PostgreSQL tables or destructive migration; durable client receipts/journals use owner-scoped entries in existing local app_settings, and outstanding live reservations stay in local trip state. Previous policies remain uploadable unchanged. The foreground service needs the added dataSync declaration/permission, with a checked patch-package patch to change phase without restarting its Headless JS task. See [delivery validation](upload-validation-2026-11-23.md).

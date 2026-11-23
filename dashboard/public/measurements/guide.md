@@ -1,6 +1,6 @@
 # Understanding our measurements
 
-Start with the six focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **70 current columns do not mean 70 independent network measurements** (historical format 3 had 84).
+Start with the six focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **72 current columns do not mean 72 independent network measurements** (historical format 3 had 84).
 
 Current format-4 CSVs omit custom-only socket/kernel fields. Historical JSON and audit reports remain available for earlier comparisons. The result of the original audit is that our current libraries can collect basic network performance and some useful per-probe evidence. The custom engine adds original error-queue fields, socket timing and handset TCP kernel telemetry. Neither implementation captures all network packets or explains congestion during a transfer. See the [requirements and evidence comparison](comparison.md).
 

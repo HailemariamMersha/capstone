@@ -1,5 +1,22 @@
 # SkyMeasure implementation and validation history
 
+## 23 November: compressed delivery and boundary grace
+
+Pilot 1.2.6 adds gzip/200-record targeting, durable manifest acknowledgements,
+compact trip receipts and service-owned post-Stop draining. Light probes receive
+up to ten seconds of boundary grace; application interruptions are shown
+separately from failures. New downloads use 500,000 bytes / 45 seconds while
+historical policies retain their saved values.
+
+355 mobile tests, 70 backend tests, 23 browser tests, eight native tests and 26
+baseline tests passed; one optional PostgreSQL integration check was skipped.
+Both TypeScript projects and the production dashboard build passed. A fresh
+monitoring-only phone check reconciled 10/10 records about nine seconds after
+Stop; an earlier failed transport check retained and later reconciled all 13
+records. Extended screen-locked ground validation is in progress. See the
+[dated delivery report](upload-validation-2026-11-23.md) for faults found,
+exact conditions, results and remaining platform checks.
+
 ## 21 November: overnight archive and fresh end-to-end ground test
 
 The participant's existing 11 h 18 min trip was closed and all 46 local segments preserved: 2,078 measurements, including five unsuccessful records. A fresh 9 min 58 s AS5384 ground trip recorded 32 successful measurements, including 90/90 ICMP replies, 180/180 UDP replies, 9/9 TCP connections, a library-reported traceroute completion, both fixed-size transfers and both M-Lab directions (130.851/103.195 Mbps). Required NetID stayed in its separate payment mapping; new configuration omitted expected duration.
