@@ -29,6 +29,9 @@ class BoundedClientTest {
         try {
             if (upload) up.beginUpload(url, client) else down.beginDownload(url, client)
             assertTrue("client must finish", done.await(5, TimeUnit.SECONDS))
+            val request = server.takeRequest(1, TimeUnit.SECONDS)
+            assertEquals("SkyMeasure/1 ndt7-android/0.2.2-skymeasure.3", request?.getHeader("User-Agent"))
+            assertEquals("net.measurementlab.ndt.v7", request?.getHeader("Sec-WebSocket-Protocol"))
             if (upload) up.cancel() else down.cancel()
             assertEquals(1, count.get())
             assertNotNull(result)
