@@ -68,7 +68,10 @@ The protected cloud archives are retained at
 `/var/backups/skymeasure/cleanup-20261123/` on the lab host, separate from the live
 Supabase database. Evidence archive SHA-256:
 `fca72d4b1a7f4326d9dc7eb47db20b894942263ac2063963a55ca50d3398042d`.
-The phone archive and separate payment file are protected locally under
+A byte-identical cloud archive, separate payment file and manifest are also
+protected locally under `build/cleanup/2026-11-23/cloud-complete/`; the Mac repeated
+the full restore verification successfully. Temporary transfer fragments were
+removed after both copies matched. The phone archive and separate payment file are protected locally under
 `build/cleanup/2026-11-23/phone-v2/`. SQLite SHA-256:
 `18356e75effaf41e4a5ef2eff60772190c3794618a26e3294bf4b0bf9d42bdf7`.
 
@@ -110,6 +113,8 @@ zero samples**: this deliberately short check ended before packet measurements,
 M-Lab or controlled transfers. It validates the new post-reset ownership/storage/
 upload path, not network measurement correctness. Selected-trip detail took
 **1.629 seconds** on the service host. The phone returned to Home with Start
-available and no collection left running. One new labelled ground trip remains
+available and no collection left running. Its aggregate queue diagnostic reported
+one Uploaded session, thirteen acknowledged records, zero attempts/retries and
+no pending errors. Android reported no running SkyMeasure service. One new labelled ground trip remains
 intentionally; the old history stays archived/removed. Linux reference comparisons,
 unplugged endurance and actual-flight validation remain separate work.
