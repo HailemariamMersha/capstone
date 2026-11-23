@@ -56,8 +56,37 @@ const cancel = () => {
 };
 export const syncAccount = Object.assign(
   (options: AccountUploadOptions = {}): Promise<SyncResult> => {
-    if (syncing) return syncing;
     const mode = options.mode ?? 'foreground';
+    const deferred = () =>
+      Promise.resolve({
+        ...emptySyncResult(),
+        pending: true,
+        outcome: 'deferred' as const,
+      });
+    if (syncing) {
+      // A bounded OS job must never join an extended visible/service pass.
+      if (mode === 'background' && activeMode !== 'background')
+        return deferred();
+      if (mode !== 'service' || !activeController) return syncing;
+      // Adopt an existing pass: changing only its caller would leave the real
+      // fetch alive after service expiration or a new collection handoff.
+      activeMode = 'service';
+      const current = activeController;
+      const abort = () => current.abort();
+      if (options.signal?.aborted) abort();
+      options.signal?.addEventListener('abort', abort);
+      const timer = setTimeout(
+        abort,
+        Math.max(0, Math.min(options.budgetMs ?? 180000, 180000)),
+      );
+      return syncing.finally(() => {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', abort);
+      });
+    }
+    // Root status/network callbacks may run after Stop but before the drain's
+    // first await settles. They must not create a screen-owned competing pass.
+    if (mode !== 'service' && foregroundService.uploading()) return deferred();
     const budget = Math.min(
       options.budgetMs ?? (mode === 'background' ? 25000 : 180000),
       mode === 'background' ? 25000 : 180000,

@@ -1,6 +1,7 @@
 const mockStorage = new Map<string, string>();
 let mockCursorHook: (() => void) | null = null;
 let mockDrainHandler: unknown;
+let mockServiceUploading = false;
 const mockNetworkListeners = new Set<(network: any) => void>();
 const mockLegacy = Object.assign(
   jest.fn(async () => {}),
@@ -57,7 +58,7 @@ jest.mock('../src/sync/accountSync', () => ({
 }));
 jest.mock('../src/background/serviceCoordinator', () => ({
   foregroundService: {
-    uploading: () => false,
+    uploading: () => mockServiceUploading,
     registerDrain: (handler: unknown) => {
       mockDrainHandler = handler;
       return () => {
@@ -74,6 +75,7 @@ beforeEach(() => {
   jest.setSystemTime(1000000);
   jest.clearAllMocks();
   mockStorage.clear();
+  mockServiceUploading = false;
   mockNetworkListeners.clear();
   mockCursorHook = null;
   mockTrips.length = 0;
@@ -323,6 +325,60 @@ test('activity teardown preserves the process-owned upload handoff', () => {
   expect(mockDrainHandler).toBe(drainPostTrip);
   stop();
   expect(mockDrainHandler).toBe(drainPostTrip);
+});
+
+test('screen callbacks cannot start a separate pass while the service is acquiring ownership', async () => {
+  mockTrips.push(trip('saved', 1));
+  mockServiceUploading = true;
+  expect(await syncAccount()).toMatchObject({ outcome: 'deferred' });
+  expect(mockUpload).not.toHaveBeenCalled();
+});
+
+test('a service adopts the actual cancellation of an already-running visible pass', async () => {
+  mockTrips.push(trip('saved', 1));
+  let requestSignal!: AbortSignal;
+  mockUpload.mockImplementation(
+    async (_t, _l, _w, _p, _o, options) =>
+      new Promise(resolve => {
+        requestSignal = options.signal;
+        requestSignal.addEventListener('abort', () => resolve(undefined), {
+          once: true,
+        });
+      }),
+  );
+  const visible = syncAccount();
+  await jest.advanceTimersByTimeAsync(1);
+  const abort = new AbortController();
+  const service = syncAccount({ mode: 'service', signal: abort.signal });
+  syncAccount.cancelForeground();
+  expect(requestSignal.aborted).toBe(false);
+  expect(await syncAccount({ mode: 'background' })).toMatchObject({
+    outcome: 'deferred',
+  });
+  abort.abort();
+  await Promise.all([visible, service]);
+  expect(requestSignal.aborted).toBe(true);
+  expect(mockTrips[0].uploadedRevision).toBeUndefined();
+});
+
+test('adopting a pass keeps the shorter service stall deadline', async () => {
+  mockTrips.push(trip('saved', 1));
+  let requestSignal!: AbortSignal;
+  mockUpload.mockImplementation(
+    async (_t, _l, _w, _p, _o, options) =>
+      new Promise(resolve => {
+        requestSignal = options.signal;
+        requestSignal.addEventListener('abort', () => resolve(undefined), {
+          once: true,
+        });
+      }),
+  );
+  const visible = syncAccount();
+  await jest.advanceTimersByTimeAsync(1);
+  const service = syncAccount({ mode: 'service', budgetMs: 10 });
+  await jest.advanceTimersByTimeAsync(10);
+  await Promise.all([visible, service]);
+  expect(requestSignal.aborted).toBe(true);
 });
 
 test.each([false, true])(
