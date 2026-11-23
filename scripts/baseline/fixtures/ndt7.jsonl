@@ -1,0 +1,11 @@
+{"Key":"starting","Value":{"Test":"download"}}
+{"Key":"connected","Value":{"Test":"download","Server":"ndt-mlab1-xyz01.mlab-oti.measurement-lab.org"}}
+{"Key":"measurement","Value":{"AppInfo":{"NumBytes":1000000,"ElapsedTime":500000},"Origin":"client","Test":"download"}}
+{"Key":"measurement","Value":{"AppInfo":{"NumBytes":125000000,"ElapsedTime":10000000},"Origin":"client","Test":"download"}}
+{"Key":"complete","Value":{"Test":"download"}}
+{"Key":"starting","Value":{"Test":"upload"}}
+{"Key":"connected","Value":{"Test":"upload","Server":"ndt-mlab1-xyz01.mlab-oti.measurement-lab.org"}}
+{"Key":"measurement","Value":{"AppInfo":{"NumBytes":70000000,"ElapsedTime":10000000},"Origin":"client","Test":"upload"}}
+{"Key":"measurement","Value":{"TCPInfo":{"BytesReceived":62500000,"ElapsedTime":10000000},"Origin":"server","Test":"upload"}}
+{"Key":"complete","Value":{"Test":"upload"}}
+{"ServerFQDN":"summary-line-without-key"}

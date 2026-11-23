@@ -1,0 +1,4 @@
+PING google.com (142.251.210.46): 64 data bytes
+
+--- google.com ping statistics ---
+1 packets transmitted, 0 packets received, 100.0% packet loss

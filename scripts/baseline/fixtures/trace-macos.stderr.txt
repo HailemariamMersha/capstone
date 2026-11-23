@@ -1,0 +1,1 @@
+traceroute to google.com (142.250.200.46), 20 hops max, 60 byte packets

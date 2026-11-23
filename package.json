@@ -15,6 +15,9 @@
     "postinstall": "patch-package --error-on-fail && npm run reference:bundle",
     "measurements:analyze": "node --experimental-strip-types scripts/measurements/analyze.cjs",
     "measurements:docs": "node scripts/measurements/dictionary.cjs",
+    "baseline:run": "node --experimental-strip-types --no-warnings scripts/baseline/run.mjs",
+    "baseline:compare": "node --experimental-strip-types --no-warnings scripts/baseline/compare.mjs",
+    "baseline:test": "node --experimental-strip-types --no-warnings --test scripts/baseline/baseline.test.mjs",
     "skymeasure:configure": "node scripts/configure-skymeasure.cjs",
     "skymeasure:docs": "node scripts/skymeasure-docs.cjs"
   },
