@@ -118,3 +118,20 @@ one Uploaded session, thirteen acknowledged records, zero attempts/retries and
 no pending errors. Android reported no running SkyMeasure service. One new labelled ground trip remains
 intentionally; the old history stays archived/removed. Linux reference comparisons,
 unplugged endurance and actual-flight validation remain separate work.
+
+
+## Standalone guide restored
+
+The sidebar again includes **Measurement guide**, available at `/guide` without
+selecting a trip. Its source-linked catalog explains actual Android/TypeScript
+library calls, HTTP requests, targets, ports, payloads, timing boundaries, formulas
+and saved fields. Linux comparison commands are labelled separately. It includes
+current automatic methods, M-Lab counter selection and the HTTP/loaded-latency
+tooling paths that are not scheduled in automatic trips. Search covers current
+trip-table aliases and event fields as well as measurement/sample/scheduling fields.
+
+**22 browser tests**, dashboard TypeScript and the production build passed after
+this follow-up. The new narrow-screen guide check verifies implementation snippets,
+port/event definitions and absence of trip/session evidence fetches. It does not
+execute the displayed commands or initiate network experiments. Phone collection
+and server behavior are unchanged by this guide update.

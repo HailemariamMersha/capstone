@@ -30,7 +30,8 @@ fs.writeFileSync(
   fs
     .readFileSync('docs/skymeasure/dashboard-filters.md', 'utf8')
     .replaceAll('(../measurements/', '(/measurements/')
-    .replaceAll('(combined-csv.md)', '(/measurement-guide.md)'),
+    .replaceAll('(combined-csv.md)', '(/measurement-guide.md)')
+    .replaceAll('(trip-workspace.md)', '(https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/trip-workspace.md)'),
 );
 console.log(
   'Dashboard measurement documentation refreshed from the repository dictionary.',

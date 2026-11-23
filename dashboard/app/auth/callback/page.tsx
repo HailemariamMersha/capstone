@@ -26,7 +26,9 @@ export default function Callback() {
         const target = sessionStorage.getItem('skymeasure.returnTo');
         sessionStorage.removeItem('skymeasure.returnTo');
         window.location.replace(
-          target && /^\/trips\/[a-f0-9]{32}$/.test(target) ? target : '/',
+          target && /^(?:\/trips\/[a-f0-9]{32}|\/guide)$/.test(target)
+            ? target
+            : '/',
         );
       })
       .catch(() =>

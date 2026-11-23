@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowDownToLine,
+  BookOpen,
   LayoutDashboard,
   LogOut,
   Plane,
@@ -27,8 +28,9 @@ import { TripTimeline } from './trip-timeline';
 import { TripEvidence } from './trip-evidence';
 import { PaymentReconciliation } from './payment-reconciliation';
 import { RouteMap } from './trip-route-map';
+import { MeasurementGuide } from './measurement-guide';
 export type Profile = { role: string; participantId: string };
-export type Section = 'overview' | 'trips' | 'participants';
+export type Section = 'overview' | 'trips' | 'participants' | 'guide';
 const queryOptions = {
   retry: false,
   refetchIntervalInBackground: false,
@@ -1045,6 +1047,12 @@ export function TripWorkspace({
               href: '/participants',
               icon: Users,
             },
+            {
+              key: 'guide',
+              name: 'Measurement guide',
+              href: '/guide',
+              icon: BookOpen,
+            },
           ].map(({ key, name, href, icon: Icon }) => (
             <Link
               href={href}
@@ -1089,6 +1097,11 @@ export function TripWorkspace({
           <Overview />
         ) : section === 'participants' ? (
           <Participants profile={profile} />
+        ) : section === 'guide' ? (
+          <div className="space-y-6">
+            <h1 className="text-3xl font-semibold">Measurement guide</h1>
+            <MeasurementGuide />
+          </div>
         ) : (
           <TripList />
         )}

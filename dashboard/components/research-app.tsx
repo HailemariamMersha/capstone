@@ -88,7 +88,11 @@ function Entry({
           <Button
             disabled={!configured}
             onClick={async () => {
-              if (/^\/trips\/[a-f0-9]{32}$/.test(window.location.pathname))
+              if (
+                /^(?:\/trips\/[a-f0-9]{32}|\/guide)$/.test(
+                  window.location.pathname,
+                )
+              )
                 sessionStorage.setItem(
                   'skymeasure.returnTo',
                   window.location.pathname,

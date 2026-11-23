@@ -1,7 +1,7 @@
 # Research workspace: trips before records
 
-The researcher workspace has three destinations: **Overview**, **Trips** and
-**Participants**. Researcher Google sign-in and administrator-only team/payment
+The researcher workspace has four destinations: **Overview**, **Trips**,
+**Participants** and **Measurement guide**. Researcher Google sign-in and administrator-only team/payment
 access remain in place. Participant phones continue using installation identities.
 
 ## Finding and comparing trips
@@ -55,6 +55,20 @@ A charging flag does not prove whether a cable was physically connected.
 The collapsed route illustration uses bundled airport/city references and an
 illustrative arc. It does not use phone coordinates, external geocoding or a
 recorded aircraft track. Ambiguous or unmatched locations stay textual.
+
+## Measurement guide
+
+Open **Measurement guide** in the sidebar, or go directly to `/guide`. It works
+without selecting a trip and explains each measurement method, its limitations,
+missing versus zero values, and parent/sample row granularity. Expand a method for
+its actual library call or HTTP request, targets/ports/payloads, timing boundaries,
+formula, saved evidence and linked implementation source. Linux comparison commands
+are labelled separately from the code the app executes. The source-linked method
+catalog lives in `dashboard/lib/measurement-methods.ts`; update it when changing
+collector behavior. Search the variable
+reference and filter by table to see datatypes, units, sources, formulas and reasons
+for blank values. It also links the complete export dictionary. Column help remains
+available within trip evidence tables.
 
 ## Investigating and exporting
 

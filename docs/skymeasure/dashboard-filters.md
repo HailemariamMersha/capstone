@@ -21,6 +21,7 @@ Left/Right buttons. “The server took too long” describes a web request timeo
 not a measurement of signal strength or proof of missing records. Failed refreshes
 retain previously loaded evidence; retry or return to the compact Trips list.
 
-The retired top-level Sessions/Downloads/Measurement guide navigation and the
-all-session client-side filter behavior described in the October implementation
-are historical. Phone collection methods and original raw exports remain unchanged.
+The **Measurement guide** is available independently from the sidebar at `/guide`,
+including method descriptions, searchable variable definitions and the full export
+dictionary. The retired top-level Sessions/Downloads navigation and the all-session
+client-side filter behavior described in the October implementation are historical. Phone collection methods and original raw exports remain unchanged.

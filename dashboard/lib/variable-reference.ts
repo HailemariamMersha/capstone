@@ -25,6 +25,7 @@ const aliases: Record<string, string> = {
   scheduled: 'scheduledAt',
   executed: 'timestamp',
   delayMs: 'durationMs',
+  port: 'targetPort',
 };
 const sourceOverrides: Record<string, Record<string, string>> = {
   Measurements: {
@@ -50,6 +51,11 @@ const sourceOverrides: Record<string, Record<string, string>> = {
     loadBytes: 'measurement.details.load.transferredBytes',
     library: 'measurement.raw.library',
     errorType: 'measurement.errorType',
+    success: 'measurement.success',
+    targetHost: 'measurement.targetHost ?? measurement.probeServer',
+    probeServer: 'measurement.probeServer',
+    replyCount: 'measurement.details.summary.replies',
+    port: 'measurement.details.targetPort ?? measurement.raw.request.port',
     network: 'measurement.networkSnapshot.type',
     signal: 'measurement.networkSnapshot.signalStrength',
     battery: 'measurement.networkSnapshot.batteryPercent',
@@ -64,6 +70,8 @@ const sourceOverrides: Record<string, Record<string, string>> = {
     address: 'sample.address (library result only)',
     kind: 'sample.kind',
     parent: 'parent measurement.id',
+    measurementId: 'parent measurement.id',
+    timestamp: 'sample.timestamp ?? parent measurement.timestamp',
     target: 'parent measurement.targetHost ?? parent measurement.probeServer',
     observed: 'sample.timestamp ?? ISO(sample.observedAtMs)',
     errorType: 'sample.errorType',
@@ -88,6 +96,45 @@ const sourceOverrides: Record<string, Record<string, string>> = {
   },
 };
 export function variableDefinition(group: string, key: string): Definition {
+  if (group === 'Events') {
+    const definitions: Record<string, Definition> = {
+      timestamp: {
+        datatype: 'ISO-8601 string',
+        units: 'UTC',
+        source: 'event.timestamp',
+        calculation:
+          'Event recording time. Original observation time can be recorded separately in details.at or details.observedAt.',
+        blank:
+          'Observation was not supplied; never infer a packet timestamp from this field.',
+      },
+      kind: {
+        datatype: 'string',
+        units: 'none',
+        source: 'event.kind',
+        calculation:
+          'Copy the recorded event category, such as flight_detection, collector_gap or upload_pause.',
+        blank: 'No event category was supplied.',
+      },
+      details: {
+        datatype: 'object',
+        units: 'event-specific',
+        source: 'event.details',
+        calculation:
+          'Recorded structured evidence; keys depend on the event category. A detector event is not a packet measurement.',
+        blank:
+          'This event did not supply these details. Missing values are not zero.',
+      },
+      sessionId: {
+        datatype: 'string',
+        units: 'none',
+        source: 'event.sessionId / server record.session_id',
+        calculation:
+          'Identifier of the segment containing the event; join to its session and trip.',
+        blank: 'No segment association was supplied.',
+      },
+    };
+    return definitions[key];
+  }
   if (key === 'timingStatus')
     return {
       datatype: 'string',
@@ -122,7 +169,7 @@ export function variableDefinition(group: string, key: string): Definition {
       'Executed wall-clock milliseconds minus scheduled wall-clock milliseconds. Clock changes can affect this; it is not RTT.';
   if (key === 'value')
     definition.calculation =
-      'ICMP/UDP: median valid probe RTT; TCP: connection callback duration; HTTP RTT: full response duration; download/upload: payload bytes × 8 / durationMs / 1000; loaded latency: median overlapping HTTP samples; traceroute: reached-hop result. Always read Unit and Method.';
+      'ICMP/UDP: median valid probe RTT; TCP: connection callback duration; HTTP RTT: full response duration; controlled download/upload: confirmed payload bytes × 8 / durationMs / 1000; NDT7: selected client-received (download) or server-received (upload) bytes × 8 / reference.elapsedSeconds / 1000000; loaded latency: median overlapping HTTP samples; traceroute: reached-hop result. Always read Unit, Method and reference.source.';
   if (key === 'lossPercent')
     definition.calculation =
       'UDP: (sentCount − valid unique replies) / sentCount × 100. ICMP: (requestedCount − replies) / requestedCount × 100, only for a complete burst with valid outcomes. An unavailable statistic stays blank.';
@@ -132,6 +179,9 @@ export function variableDefinition(group: string, key: string): Definition {
   if (key === 'address')
     definition.calculation =
       'Copy sample.address only; never fill it using the target hostname or resolved destination.';
+  if (group === 'Samples' && key === 'timestamp')
+    definition.calculation =
+      'Use the recorded sample timestamp when available; the trip table can fall back to its parent measurement timestamp. An inherited time is not a fresh packet observation or a kernel timestamp.';
   return definition;
 }
 export const measurementFields: Field[] = [

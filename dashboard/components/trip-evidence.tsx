@@ -22,20 +22,22 @@ function column(
   key: string,
   title: string,
   description: string,
+  scope?: 'Measurements' | 'Samples' | 'Events',
 ): ColumnDef<Row> {
   const definition = variableDefinition(
-    [
-      'protocol',
-      'sequence',
-      'rttMs',
-      'outcome',
-      'address',
-      'hop',
-      'phase',
-      'measurementId',
-    ].includes(key)
-      ? 'Samples'
-      : 'Measurements',
+    scope ??
+      ([
+        'protocol',
+        'sequence',
+        'rttMs',
+        'outcome',
+        'address',
+        'hop',
+        'phase',
+        'measurementId',
+      ].includes(key)
+        ? 'Samples'
+        : 'Measurements'),
     key,
   );
   return {
@@ -95,6 +97,7 @@ export function TripEvidence({
             'timestamp',
             'Observed (UTC)',
             'Recorded observation time; not a kernel timestamp.',
+            'Samples',
           ),
           column(
             'protocol',
@@ -131,17 +134,20 @@ export function TripEvidence({
             'timestamp',
             'Observed (UTC)',
             'Event recording time; see details for original observation time.',
+            'Events',
           ),
-          column('kind', 'Event', 'Collector activity or decision.'),
+          column('kind', 'Event', 'Collector activity or decision.', 'Events'),
           column(
             'details',
             'Details',
             'Scheduling evidence and recorded reasons.',
+            'Events',
           ),
           column(
             'sessionId',
             'Segment ID',
             'Closed collection fragment containing the event.',
+            'Events',
           ),
         ]
       : [

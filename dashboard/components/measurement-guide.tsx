@@ -1,66 +1,71 @@
 'use client';
 import { useState } from 'react';
+import { measurementMethods } from '@/lib/measurement-methods';
 import {
   measurementFields,
   probeFields,
   scheduleFields,
   variableDefinition,
+  type Field,
 } from '@/lib/variable-reference';
 
-const methods = [
-  [
-    'ICMP echo',
-    'icmpenguin 1.0.0-rc.3 through the Android adapter',
-    'The library sends an echo and reports RTT and received ICMP bytes. We validate the echo type, sequence and payload, decode header fields, and summarize valid replies in a burst.',
-    'RTT is in milliseconds. Reply TTL is a remaining hop limit, not a direct hop count. Captured bytes contain the ICMP message, not the outer IP header or every packet on the phone.',
-  ],
-  [
-    'TCP connection',
-    'react-native-tcp-socket 6.4.3',
-    'performance.now() at connection initiation is subtracted from the time of the connected callback. The socket is then closed.',
-    'Includes name resolution, native dispatch and callback delay. This is not isolated SYN RTT, TLS time, congestion window or kernel RTT.',
-  ],
-  [
-    'UDP echo',
-    'react-native-udp 4.1.7',
-    'Send 128-byte payloads carrying a run identifier and sequence to the echo service. Match replies and subtract the application send timestamp from callback receipt time. Track unique replies, timeouts, duplicates and reordering.',
-    'RTT includes callback scheduling. Loss is non-response to this echo service within the test deadline; it does not locate the dropped packet or establish an outage.',
-  ],
-  [
-    'Traceroute',
-    'icmpenguin 1.0.0-rc.3 through the Android adapter',
-    'The library sends UDP probes with increasing hop limits and reports probe RTT, hop, responder/offender address and result classification. We retain its results through a thin adapter.',
-    'Hop RTT is the round trip to that responding hop, not just one link. host_unreachable and port_unreachable are qualified library labels; they are not independently decoded ICMP type/code or proof that the destination was reached.',
-  ],
-  [
-    'HTTP latency',
-    'React Native fetch and TypeScript timing',
-    'Measure performance.now() from starting the /ping request through consuming and validating the complete response body.',
-    'Includes applicable DNS, TCP/TLS setup, server processing and body delivery. Connection reuse changes the scope. This is an HTTP transaction, not pure packet RTT.',
-  ],
-  [
-    'Download and upload throughput',
-    'fetch; @dr.pogodin/react-native-fs 2.40.3 for downloads larger than 8 MiB',
-    'Download a configured payload (large downloads stream to a file), or upload a prepared payload and validate the server byte acknowledgement. Mbps = confirmed payload bytes × 8 / elapsed milliseconds / 1000.',
-    'Application throughput includes operation overhead; payload bytes exclude IP/TCP/TLS headers. MiB = 1,048,576 bytes; Mbps uses decimal millions of bits per second.',
-  ],
-  [
-    'Latency under load',
-    'The same HTTP libraries and TypeScript coordinator',
-    'Collect HTTP baseline probes, start a bounded download or upload, and collect HTTP probes during the transfer. Only probes fully inside the transfer interval enter the loaded summary.',
-    'The parent result is loaded median latency in ms, not transfer Mbps. The embedded load has separate byte and throughput fields. A transfer that finishes too quickly may have no usable overlapping samples.',
-  ],
-  [
-    'Network, battery and schedule context',
-    'NetInfo, react-native-device-info and the application scheduler',
-    'Read connection type and optional Wi-Fi details from NetInfo; read battery level and charging state from DeviceInfo. Save wall-clock scheduled and actual execution times and associate a context snapshot with measurements.',
-    'Wi-Fi strength is a 0–100 score, not dBm or satellite signal strength. Repeated context is not a new reading for each packet. Schedule delay can include prior tests and OS scheduling, and wall-clock changes affect it.',
-  ],
-];
 const groups = {
-  Measurements: measurementFields,
-  Samples: probeFields,
+  Measurements: [
+    ...measurementFields,
+    [
+      'success',
+      'Succeeded',
+      'Boolean parent result; individual probes can still time out.',
+    ],
+    [
+      'targetHost',
+      'Target host',
+      'Current trip-table target column; uses probeServer when targetHost is absent.',
+    ],
+    [
+      'probeServer',
+      'Probe endpoint',
+      'Service URL saved with the measurement.',
+    ],
+    [
+      'replyCount',
+      'Replies',
+      'Current trip-table name for the valid reply count.',
+    ],
+    [
+      'port',
+      'Port',
+      'Destination port from the measurement details or library request.',
+    ],
+  ] as Field[],
+  Samples: [
+    ...probeFields,
+    [
+      'measurementId',
+      'Measurement ID',
+      'Trip-table parent identifier; the older filtered view calls this parent.',
+    ],
+    [
+      'timestamp',
+      'Observed (UTC)',
+      'Sample time when available; can inherit parent time when absent.',
+    ],
+  ] as Field[],
   Scheduling: scheduleFields,
+  Events: [
+    ['timestamp', 'Observed (UTC)', 'Time the event was recorded.'],
+    ['kind', 'Event', 'Collector activity or decision category.'],
+    [
+      'details',
+      'Details',
+      'Structured reasons, scheduling or detector evidence.',
+    ],
+    [
+      'sessionId',
+      'Segment ID',
+      'The collection segment containing this event.',
+    ],
+  ] as Field[],
 };
 
 export function MeasurementGuide() {
@@ -100,8 +105,10 @@ export function MeasurementGuide() {
         <p>
           Our Android adapter exposes an existing ICMP/traceroute library. It
           does not turn these results into a complete packet capture. The
-          current collector does not supply TCP congestion windows, kernel RTT,
-          retransmission counters or full IP/TCP headers.
+          current collector does not read the phone’s TCP congestion windows,
+          kernel RTT, retransmission counters or full IP/TCP headers. M-Lab
+          callbacks can include server TCPInfo; that describes the remote
+          server, not the phone’s kernel state.
         </p>
         <p>
           When using the complete combined CSV, count distinct measurement IDs:
@@ -112,19 +119,134 @@ export function MeasurementGuide() {
       <section className="space-y-3" aria-label="Collection methods">
         <h2 className="text-xl font-semibold">What we measure and how</h2>
         <p className="muted text-sm">
-          These describe the current library collector. For historical sessions,
-          check their saved method and library/version provenance.
+          These describe the current Android collector and pilot defaults. The
+          saved configuration and provenance for each trip take precedence. The
+          app makes library calls and network requests; it does not execute
+          shell commands. Code excerpts below omit validation/cancellation
+          bookkeeping; linked source files contain the complete implementation.
         </p>
-        {methods.map(([name, library, how, limits]) => (
-          <details key={name} className="panel p-5">
+        {measurementMethods.map(method => (
+          <details key={method.name} className="panel min-w-0 p-5">
             <summary className="cursor-pointer font-semibold py-2">
-              {name}
+              {method.name}
             </summary>
-            <p className="text-sm text-teal-800 my-3">{library}</p>
-            <p>{how}</p>
-            <p className="muted mt-3">{limits}</p>
+            <p className="text-sm text-teal-800 my-3">{method.library}</p>
+            <p className="text-sm muted mb-3">{method.schedule}</p>
+            <p>{method.how}</p>
+            <h3 className="font-semibold mt-5 mb-2">
+              Actual target and request
+            </h3>
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {method.request}
+            </p>
+            <h3 className="font-semibold mt-5 mb-2">App call (abridged)</h3>
+            <pre
+              aria-label={`${method.name} app call`}
+              className="max-w-full overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-50"
+            >
+              <code>{method.appCall}</code>
+            </pre>
+            <dl className="space-y-4 mt-5 text-sm">
+              <div>
+                <dt className="font-semibold">When timing starts and stops</dt>
+                <dd>{method.timing}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">
+                  Calculation and reported value
+                </dt>
+                <dd>{method.calculation}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">
+                  Where to find the saved evidence
+                </dt>
+                <dd>{method.evidence}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Limitations</dt>
+                <dd>{method.limits}</dd>
+              </div>
+            </dl>
+            {method.terminal && (
+              <div className="mt-5 space-y-2">
+                <h3 className="font-semibold">Linux comparison command</h3>
+                <p className="text-sm muted">
+                  A comparison command, not a command executed by the app. Use
+                  the same network, resolved destination and time window; tool
+                  timing, payloads, headers and probe spacing can differ. These
+                  commands do not reproduce the app’s Wi-Fi binding or all
+                  response validation.
+                </p>
+                <pre className="max-w-full overflow-x-auto rounded-xl bg-slate-100 p-4 text-xs">
+                  <code>{method.terminal}</code>
+                </pre>
+              </div>
+            )}
+            <div className="mt-5 space-y-1 text-xs">
+              <p className="font-semibold">Implementation source</p>
+              {method.sources.map(path => (
+                <a
+                  key={path}
+                  className="block underline break-all"
+                  href={`https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/${path}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {path}
+                </a>
+              ))}
+            </div>
           </details>
         ))}
+      </section>
+      <section
+        className="panel p-6 space-y-3"
+        aria-label="Shared statistical calculations"
+      >
+        <h2 className="text-xl font-semibold">How summaries are calculated</h2>
+        <p>
+          Only non-null, finite, nonnegative RTT values enter the sorted
+          summary; zero remains valid. For n valid values sorted from smallest
+          to largest, the app uses:
+        </p>
+        <pre className="max-w-full overflow-x-auto rounded-xl bg-slate-100 p-4 text-xs">
+          <code>{`medianMs = middle value, or mean of the two middle values when n is even
+p95Ms = sorted[Math.ceil(0.95 * n) - 1]  // nearest-rank percentile
+successiveDifferenceMs = mean(abs(RTT[i] - RTT[i-1]))
+  // only consecutive sequence numbers with both RTTs available
+no valid replies => medianMs and p95Ms are null
+no valid consecutive pair => successiveDifferenceMs is null`}</code>
+        </pre>
+        <p className="text-sm">
+          The successive-difference field is our documented jitter statistic; it
+          is not an RFC jitter estimator. Missing probes are not bridged. ICMP
+          non-response and UDP loss percentages use their complete-burst rules
+          described above, rather than treating an interrupted burst as a full
+          experiment.
+        </p>
+        <p className="text-sm">
+          A trip summary pools valid individual samples for its exact median;
+          timeline points normally show each recorded burst’s median. Dense
+          timeline bins summarize parent points, not a new pooled packet
+          measurement. Parent rows can repeat in the combined CSV, so count
+          distinct measurement IDs.
+        </p>
+        <p className="text-sm">
+          Wall-clock timestamps locate observations in time; monotonic clocks
+          measure durations where available. The collector compares Android
+          elapsed time with callback duration and marks a detected timing gap
+          invalid, retaining the original observations. A valid timing flag does
+          not independently establish network measurement accuracy.
+        </p>
+        <a
+          className="text-xs underline"
+          href="https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/src/measurements/statistics.ts"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Source: src/measurements/statistics.ts
+        </a>
       </section>
       <section aria-label="Variable definitions" className="space-y-4">
         <h2 className="text-xl font-semibold">Variable reference</h2>

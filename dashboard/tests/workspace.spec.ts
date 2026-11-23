@@ -390,8 +390,11 @@ test('overview is trip-first without duplicated session/download navigation', as
   await expect(
     nav.getByRole('link', { name: 'Trips', exact: true }),
   ).toBeVisible();
-  for (const name of ['Sessions', 'Downloads', 'Measurement guide'])
+  for (const name of ['Sessions', 'Downloads'])
     await expect(nav.getByRole('link', { name, exact: true })).toHaveCount(0);
+  await expect(
+    nav.getByRole('link', { name: 'Measurement guide', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('GPS-supported', { exact: false })).toHaveCount(
     0,
   );
@@ -399,6 +402,110 @@ test('overview is trip-first without duplicated session/download navigation', as
   await expect(
     page.getByText('Last updated', { exact: false }).first(),
   ).toBeVisible();
+});
+test('measurement guide stays accessible without trips and supports variable lookup', async ({
+  page,
+}) => {
+  await signedIn(page, { empty: true });
+  await page.goto('/');
+  await page
+    .getByRole('navigation')
+    .getByRole('link', { name: 'Measurement guide', exact: true })
+    .click();
+  await expect(page).toHaveURL('/guide');
+  await expect(
+    page.getByRole('heading', { name: 'Measurement guide', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Unavailable does not mean zero.', { exact: true }),
+  ).toBeVisible();
+  await page.getByText('M-Lab NDT7 speed test', { exact: true }).click();
+  await expect(
+    page.getByText(
+      'ndt7-client-android 0.2.2-skymeasure.2 through the Android adapter',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByLabel('Search variables').fill('rttMs');
+  await page.getByLabel('Variable table').selectOption('Samples');
+  const variable = page
+    .locator('details')
+    .filter({ has: page.getByText('Samples · rttMs', { exact: true }) });
+  await variable.locator('summary').click();
+  await expect(
+    variable.getByText('Why it may be empty', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    variable.getByText('sample.rttMs', { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Measurement guide', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'All export column definitions' }),
+  ).toHaveAttribute('href', '/measurements/columns.md');
+});
+test('guide shows real app requests and calculations without loading trip evidence', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signedIn(page, { empty: true });
+  const recordRequests: string[] = [];
+  page.on('request', request => {
+    if (/\/api\/v2\/research\/(trips|sessions)(?:[/?]|$)/.test(request.url()))
+      recordRequests.push(request.url());
+  });
+  await page.goto('/guide');
+  for (const [name, implementation] of [
+    ['ICMP echo', 'Pinger(host = host'],
+    [
+      'TCP connection',
+      'socket.connect({ host, port, connectTimeout: timeoutMs }',
+    ],
+    ['HTTP latency', 'await response.text()'],
+    ['Controlled download', 'fs.downloadFile({'],
+    ['Controlled upload', '/api/v1/probe/upload?request='],
+    [
+      'M-Lab NDT7 speed test',
+      'test.startTest(NDTTest.TestType.DOWNLOAD_AND_UPLOAD)',
+    ],
+  ]) {
+    await page.getByText(name, { exact: true }).click();
+    await expect(page.getByLabel(`${name} app call`)).toContainText(
+      implementation,
+    );
+  }
+  await expect(
+    page.getByRole('heading', { name: 'How summaries are calculated' }),
+  ).toBeVisible();
+  await page.getByLabel('Search variables').fill('port');
+  await page.getByLabel('Variable table').selectOption('Measurements');
+  const port = page
+    .locator('details')
+    .filter({ has: page.getByText('Measurements · port', { exact: true }) });
+  await port.locator('summary').click();
+  await expect(
+    port.getByText(
+      'measurement.details.targetPort ?? measurement.raw.request.port',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByLabel('Search variables').fill('details');
+  await page.getByLabel('Variable table').selectOption('Events');
+  const details = page
+    .locator('details')
+    .filter({ has: page.getByText('Events · details', { exact: true }) });
+  await details.locator('summary').click();
+  await expect(
+    details.getByText('event.details', { exact: true }),
+  ).toBeVisible();
+  expect(recordRequests).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
 });
 test('slow provider statistics never block the trip list', async ({ page }) => {
   await signedIn(page, { providerFailure: true });
