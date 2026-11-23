@@ -8,12 +8,16 @@ up to ten seconds of boundary grace; application interruptions are shown
 separately from failures. New downloads use 500,000 bytes / 45 seconds while
 historical policies retain their saved values.
 
-355 mobile tests, 70 backend tests, 23 browser tests, eight native tests and 26
+364 mobile tests, 70 backend tests, 23 browser tests, eight native tests and 26
 baseline tests passed; one optional PostgreSQL integration check was skipped.
 Both TypeScript projects and the production dashboard build passed. A fresh
 monitoring-only phone check reconciled 10/10 records about nine seconds after
 Stop; an earlier failed transport check retained and later reconciled all 13
-records. Extended screen-locked ground validation is in progress. See the
+records. The extended ground-run checkpoint reconciled 5,686 records across
+nineteen closed segments; final trip closure and local queue comparison await
+the phone. An Android 16 synthetic emulator check verified OS-expiration
+cancellation, preservation of fourteen pending versions and duplicate-free
+retry, and exposed/fixed adoption of a screen-owned pass by the service. See the
 [dated delivery report](upload-validation-2026-11-23.md) for faults found,
 exact conditions, results and remaining platform checks.
 
