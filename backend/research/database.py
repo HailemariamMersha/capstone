@@ -2,7 +2,7 @@
 import os
 from functools import lru_cache
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, String, JSON, Integer, Boolean, ForeignKey, Float
+from sqlalchemy import create_engine, String, JSON, Integer, Boolean, ForeignKey, Float, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -116,3 +116,35 @@ class TripPayment(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey('sky_accounts.user_id'), index=True)
     netid: Mapped[str] = mapped_column(String(32))
     received_at: Mapped[str] = mapped_column(String(40), default=now)
+
+
+class ReadRevision(Base):
+    __tablename__ = 'sky_read_revisions'
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ViewCache(Base):
+    __tablename__ = 'sky_view_cache'
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    computed_at: Mapped[float] = mapped_column(Float)
+    payload: Mapped[dict] = mapped_column(json_type)
+
+
+class HistoryReset(Base):
+    __tablename__ = 'sky_history_resets'
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    cutoff_ms: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[str] = mapped_column(String(40), default=now)
+    archive_sha256: Mapped[str] = mapped_column(String(64))
+    maintenance: Mapped[bool] = mapped_column(Boolean, default=False)
+    applied: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RemovedObject(Base):
+    __tablename__ = 'sky_removed_objects'
+    kind: Mapped[str] = mapped_column(String(20), primary_key=True)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
+    reset_id: Mapped[str] = mapped_column(String(32))

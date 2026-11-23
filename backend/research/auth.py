@@ -2,7 +2,7 @@
 import os
 from uuid import uuid4
 import httpx
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -33,8 +33,13 @@ def identity(credentials: HTTPAuthorizationCredentials | None = Depends(bearer))
         raise HTTPException(503, 'Authentication temporarily unavailable')
 
 
-def account(user_id: str = Depends(identity), db: Session = Depends(database)):
-    value = db.scalar(select(Account).where(Account.user_id == user_id).with_for_update())
+def account(request: Request, user_id: str = Depends(identity), db: Session = Depends(database)):
+    # Long research GETs must not serialize behind a lock on the same account.
+    # Mutations retain the lock so deletion and ingestion cannot race.
+    statement = select(Account).where(Account.user_id == user_id)
+    if request.method not in ('GET', 'HEAD'):
+        statement = statement.with_for_update()
+    value = db.scalar(statement)
     if not value:
         value = Account(user_id=user_id, participant_id=uuid4().hex, role='participant')
         db.add(value)
@@ -42,7 +47,7 @@ def account(user_id: str = Depends(identity), db: Session = Depends(database)):
             db.commit()
         except IntegrityError:
             db.rollback()
-        value = db.scalar(select(Account).where(Account.user_id == user_id).with_for_update())
+        value = db.scalar(statement)
     if value.deleted:
         raise HTTPException(403, 'Account deletion requested; uploads are disabled')
     return value

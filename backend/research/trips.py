@@ -6,6 +6,8 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import ResearchTrip, TripSegment, ResearchSession, TripPayment, database, now
 from .auth import account, researcher, administrator
+from .read_cache import invalidate
+from .history_reset import guard
 from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, require_consent
 
 router = APIRouter()
@@ -51,6 +53,7 @@ class TripUpdate(BaseModel):
 
 @router.put('/trips/{trip_id}')
 def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database)):
+    guard(db, 'trip', trip_id, a.user_id, body.startedAt)
     require_consent(a, body.policyVersion)
     if body.policyVersion in (PILOT_POLICY, HISTORICAL_PILOT_POLICY):
         if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')):
@@ -78,6 +81,7 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
     if body.policyVersion == PILOT_POLICY:
         raw['flight'].pop('expectedMinutes', None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
+    changed = t is None or t.raw != raw
     if t:
         if t.owner_id != a.user_id: raise HTTPException(404, 'Trip not found')
         if body.revision < t.revision or (body.revision == t.revision and raw != t.raw):
@@ -107,6 +111,7 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
     else:
         t = ResearchTrip(id=trip_id, owner_id=a.user_id, participant_id=a.participant_id, revision=body.revision, raw=raw)
         db.add(t)
+    if changed: invalidate(db, trip_id)
     db.commit()
     return describe(db, t)
 
@@ -148,7 +153,10 @@ def own_trips(a=Depends(account), db: Session=Depends(database), offset: int=Que
     return listing(db, a.user_id, offset, limit)
 
 @router.get('/research/trips')
-def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None, includeGroundTests: bool=False):
+def research_trips(a=Depends(researcher), db: Session=Depends(database), offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=100), confidence: str | None=None, provider: str | None=None, includeGroundTests: bool=False, view: str=Query('full', pattern='^(full|compact)$'), q: str='', kind: str=Query('all', pattern='^(all|study|ground)$'), since: str | None=None, until: str | None=None):
+    if view == 'compact':
+        from .trip_views import compact_listing
+        return compact_listing(db, offset, limit, q, provider or '', kind, since, until)
     return listing(db, None, offset, limit, confidence, provider, include_summary=True, include_ground=includeGroundTests)
 
 

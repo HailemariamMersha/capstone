@@ -10,6 +10,8 @@ from .database import Account, ResearchSession, Record, Sample, ResearchTrip, Tr
 from .auth import account, researcher, administrator, identity
 from .exports import samples, combined_rows, csv_text
 from .presentation import readable, evidence_response
+from .read_cache import invalidate
+from .history_reset import guard
 
 def number(value):
     try:
@@ -67,6 +69,9 @@ def delete_account(user_id=Depends(identity), db: Session = Depends(database)):
     a = db.scalar(select(Account).where(Account.user_id == user_id).with_for_update())
     if not a:
         raise HTTPException(404, 'Account not found')
+    from .database import ViewCache
+    db.execute(delete(ViewCache))
+    invalidate(db)
     ids = select(ResearchSession.id).where(ResearchSession.owner_id == a.user_id)
     db.execute(delete(TripPayment).where(TripPayment.owner_id == a.user_id))
     db.execute(delete(TripSegment).where(TripSegment.trip_id.in_(select(ResearchTrip.id).where(ResearchTrip.owner_id == a.user_id))))
@@ -120,6 +125,7 @@ class Batch(Strict):
 
 
 def owned(db, session_id, a, lock=False):
+    guard(db, 'session', session_id, a.user_id)
     statement = select(ResearchSession).where(ResearchSession.id == session_id)
     if lock:
         statement = statement.with_for_update()
@@ -134,6 +140,7 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
     require_consent(a)
     if body.session.get('id') != session_id or body.session.get('state') not in ('completed', 'interrupted'):
         raise HTTPException(422, 'Only a closed session can be uploaded')
+    guard(db, 'session', session_id, a.user_id, body.session.get('startedAt'))
     config = body.session.get('config') or {}
     if config.get('collectionMode') in ('research_manual', 'detector_shadow') and a.role not in ('researcher', 'administrator'):
         raise HTTPException(403, 'Researcher access required')
@@ -167,6 +174,7 @@ def manifest(session_id: str, body: Manifest, a=Depends(account), db: Session = 
         db.flush()
         if trip_id is not None:
             db.add(TripSegment(trip_id=trip_id, ordinal=ordinal, session_id=session_id))
+        invalidate(db, trip_id)
         db.commit()
     return {'registered': True}
 
@@ -195,6 +203,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
         if not ground_trip or not ground_trip.raw.get('groundTest'):
             raise HTTPException(422, 'Test ASN evidence requires ground-test trip provenance')
     seen = set()
+    changed = False
     for item in body.records:
         key = (item.type, item.id)
         if key in seen or expected.get(key) != item.version:
@@ -213,6 +222,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
             continue
         if s.completed_at:
             raise HTTPException(409, 'Completed session is immutable')
+        changed = True
         raw = item.payload
         context = raw.get('networkSnapshot') if isinstance(raw.get('networkSnapshot'), dict) else raw if item.type == 'snapshot' else {}
         provenance = raw.get('raw') if isinstance(raw.get('raw'), dict) else {}
@@ -225,6 +235,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
         if item.type == 'measurement':
             for ordinal, (phase, sample) in enumerate(samples(raw)):
                 db.add(Sample(session_id=session_id, measurement_id=item.id, ordinal=ordinal, phase=phase, raw=sample, sequence=integer(sample.get('sequence')), hop=integer(sample.get('hop')), rtt_ms=number(sample.get('rttMs')), outcome=string(sample.get('kind') or sample.get('errorType') or ('reply' if sample.get('rttMs') is not None else None))))
+    if changed: invalidate(db, (s.raw.get('config') or {}).get('tripId'))
     db.commit()
     return {'acknowledged': [r.model_dump(exclude={'payload'}) for r in body.records]}
 
@@ -234,8 +245,9 @@ def complete(session_id: str, a=Depends(account), db: Session = Depends(database
     s = owned(db, session_id, a, lock=True)
     saved = set(db.execute(select(Record.kind, Record.id, Record.version).where(Record.session_id == session_id)).all())
     missing = [r for r in s.manifest['expected'] if (r['type'], r['id'], r['version']) not in saved]
-    if not missing:
-        s.completed_at = s.completed_at or now()
+    if not missing and not s.completed_at:
+        s.completed_at = now()
+        invalidate(db, (s.raw.get('config') or {}).get('tripId'))
         db.commit()
     return {'complete': not missing, 'missing': missing[:50]}
 
@@ -371,3 +383,6 @@ def membership(participant_id: str, body: Membership, a=Depends(administrator), 
 
 from .trips import router as trip_router
 router.include_router(trip_router)
+
+from .trip_views import router as trip_views_router
+router.include_router(trip_views_router)
