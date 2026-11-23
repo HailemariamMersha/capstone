@@ -380,10 +380,14 @@ export function createRepository(
           [ownerId],
         );
         await db.execute('DELETE FROM sessions WHERE owner_id=?', [ownerId]);
-        await db.execute('DELETE FROM app_settings WHERE key=? OR key LIKE ?', [
-          `last_session_config:${ownerId}`,
-          `upload-retry:${ownerId}:%`,
-        ]);
+        await db.execute(
+          'DELETE FROM app_settings WHERE key=? OR key LIKE ? OR key LIKE ?',
+          [
+            `last_session_config:${ownerId}`,
+            `upload-retry:${ownerId}:%`,
+            `upload-batch:${ownerId}:%`,
+          ],
+        );
       }),
     saveSnapshot: (sessionId, snapshot) =>
       write(async () => {
@@ -563,7 +567,36 @@ export function createRepository(
         ).rows[0];
         return !row || JSON.parse(String(row.value_json)).nextAt <= Date.now();
       }),
-    deferUpload: (ownerId, sessionId, reset = false) =>
+    uploadBatchLimit: (ownerId, sessionId) =>
+      read(async () => {
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            `upload-batch:${ownerId}:${sessionId}`,
+          ])
+        ).rows[0];
+        const value = row ? Number(JSON.parse(String(row.value_json))) : 50;
+        return Number.isFinite(value)
+          ? Math.max(1, Math.min(50, Math.floor(value)))
+          : 50;
+      }),
+    reduceUploadBatchLimit: (ownerId, sessionId) =>
+      write(async () => {
+        const key = `upload-batch:${ownerId}:${sessionId}`;
+        const row = (
+          await db.execute('SELECT value_json FROM app_settings WHERE key=?', [
+            key,
+          ])
+        ).rows[0];
+        const value = row ? Number(JSON.parse(String(row.value_json))) : 50;
+        const limit = Number.isFinite(value)
+          ? Math.max(1, Math.min(50, Math.floor(value)))
+          : 50;
+        await db.execute(
+          'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
+          [key, JSON.stringify(Math.max(1, Math.floor(limit / 2)))],
+        );
+      }),
+    deferUpload: (ownerId, sessionId, reset = false, failure) =>
       write(async () => {
         const key = `upload-retry:${ownerId}:${sessionId}`;
         if (reset) {
@@ -582,7 +615,32 @@ export function createRepository(
           Math.min(3600000, 15000 * 2 ** Math.min(attempts - 1, 8));
         await db.execute(
           'INSERT OR REPLACE INTO app_settings(key,value_json) VALUES (?,?)',
-          [key, JSON.stringify({ attempts, nextAt })],
+          [
+            key,
+            JSON.stringify({
+              attempts,
+              nextAt,
+              ...(failure
+                ? {
+                    stage: ['manifest', 'records', 'complete'].includes(
+                      failure.stage,
+                    )
+                      ? failure.stage
+                      : 'manifest',
+                    code:
+                      failure.code === 'REQUEST_TIMEOUT'
+                        ? 'REQUEST_TIMEOUT'
+                        : 'REQUEST_FAILED',
+                    status:
+                      Number.isInteger(failure.status) &&
+                      failure.status! >= 100 &&
+                      failure.status! <= 599
+                        ? failure.status
+                        : null,
+                  }
+                : {}),
+            }),
+          ],
         );
       }),
     requeueSync: records =>

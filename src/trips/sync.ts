@@ -105,7 +105,7 @@ export async function uploadTrip(
   };
   const upload = createAccountSync({
     store,
-    tripWindow: true,
+    tripWindow: live,
     now: Date.now,
     identity: async () => ({
       owner: t.ownerId,

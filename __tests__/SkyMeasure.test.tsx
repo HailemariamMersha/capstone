@@ -395,3 +395,39 @@ test('new Home requires NetID without collecting expected duration', async () =>
     jest.restoreAllMocks();
   }
 });
+
+test('Stop re-enables Start while the upload remains pending', async () => {
+  const runtime = require('../src/trips/runtime');
+  const running = jest.spyOn(runtime, 'tripRunning').mockReturnValue(true);
+  const saved = jest.spyOn(runtime, 'currentTrip').mockReturnValue({
+    ownerId: 'account-a',
+    phase: 'watching',
+    startedAt: Date.now(),
+    flight: { flightNumber: 'TEST' },
+  });
+  const { syncAccount } = require('../src/sync/background');
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => {
+    finish = resolve;
+  });
+  try {
+    await render();
+    syncAccount.mockReturnValueOnce(pending);
+    runtime.stopTrip.mockImplementationOnce(async () => {
+      running.mockReturnValue(false);
+      saved.mockReturnValue(null);
+    });
+    await press('Stop trip');
+    const start = renderer.root
+      .findAllByType(Button)
+      .find(b => b.props.title === 'Start trip');
+    expect(start).toBeDefined();
+    expect(start!.props.disabled).toBe(false);
+  } finally {
+    finish();
+    await act(async () => {
+      await pending;
+    });
+    jest.restoreAllMocks();
+  }
+});

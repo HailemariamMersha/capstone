@@ -186,3 +186,8 @@ The dashboard images use synthetic browser-test records; the Android image shows
 - [Android welcome](previews/android-welcome.png)
 - [Research overview](previews/research-overview.png)
 - [Session evidence](previews/session-detail.png)
+
+
+## 22 November 2026 — Start/upload handoff
+
+See the [dated upload validation](upload-validation-2026-11-22.md) for cancellation, adaptive retry batches, completion-query checks, phone installation and partial overnight-trip evidence.

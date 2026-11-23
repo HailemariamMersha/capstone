@@ -19,6 +19,11 @@ export interface SessionEvent {
   kind: string;
   details: Record<string, unknown>;
 }
+export interface UploadFailure {
+  stage: 'manifest' | 'records' | 'complete';
+  code: 'REQUEST_TIMEOUT' | 'REQUEST_FAILED';
+  status: number | null;
+}
 export interface MeasurementStore {
   saveTripPayment(owner: string, tripId: string, netId: string): Promise<void>;
   tripPayment(
@@ -45,10 +50,13 @@ export interface MeasurementStore {
   acknowledgeSync(records: SyncRecord[]): Promise<void>;
   requeueSync(records: SyncRecord[]): Promise<void>;
   uploadReady(ownerId: string, sessionId: string): Promise<boolean>;
+  uploadBatchLimit(ownerId: string, sessionId: string): Promise<number>;
+  reduceUploadBatchLimit(ownerId: string, sessionId: string): Promise<void>;
   deferUpload(
     ownerId: string,
     sessionId: string,
     reset?: boolean,
+    failure?: UploadFailure,
   ): Promise<void>;
   failSync(records: SyncRecord[], error: string): Promise<void>;
   initialize(recoverActive?: boolean): Promise<void>;

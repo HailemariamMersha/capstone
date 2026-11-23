@@ -90,6 +90,12 @@ export const syncAccount = Object.assign(
         // Advance before work: cancellation, process death or a failing old trip
         // must not monopolize every later 25-second upload opportunity.
         await secureStorage.setItem(cursorKey, task.id);
+        if (
+          isTripArmed() ||
+          currentActivity() ||
+          generation !== cancellationGeneration
+        )
+          break;
         try {
           await task.run();
         } catch (error) {

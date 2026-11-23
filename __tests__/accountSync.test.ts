@@ -1,5 +1,9 @@
 import { createAccountSync } from '../src/sync/accountSync';
-import { acquireActivity, currentActivity } from '../src/services/activityGate';
+import {
+  acquireActivity,
+  acquireMeasurementActivity,
+  currentActivity,
+} from '../src/services/activityGate';
 const session = {
   id: 's',
   ownerId: 'a',
@@ -13,6 +17,8 @@ function fixture() {
   const store: any = {
     initialize: jest.fn(),
     uploadReady: jest.fn().mockResolvedValue(true),
+    uploadBatchLimit: jest.fn().mockResolvedValue(50),
+    reduceUploadBatchLimit: jest.fn(),
     deferUpload: jest.fn(),
     requeueSync: jest.fn(),
     hasActiveSession: jest.fn().mockResolvedValue(false),
@@ -132,4 +138,118 @@ test('persisted backoff skips uploads and server reconciliation requeues only ow
     's',
     'Saved locally',
   );
+});
+
+test('Start aborts an upload without failing or acknowledging pending evidence', async () => {
+  const f = fixture();
+  let started!: () => void;
+  const ready = new Promise<void>(resolve => {
+    started = resolve;
+  });
+  f.request.mockImplementation(
+    (
+      _path: string,
+      _body: unknown,
+      _owner: string,
+      _method: string,
+      signal: AbortSignal,
+    ) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('cancelled')));
+        started();
+      }),
+  );
+  const uploading = f.run();
+  await ready;
+  const release = await acquireMeasurementActivity();
+  await uploading;
+  expect(currentActivity()).toBe('measurement');
+  expect(f.store.failSync).not.toHaveBeenCalled();
+  expect(f.store.deferUpload).not.toHaveBeenCalled();
+  expect(f.store.acknowledgeSync).not.toHaveBeenCalled();
+  release();
+});
+test('a late response is durably acknowledged before handing collection the lease', async () => {
+  const f = fixture();
+  let respond!: (value: unknown) => void;
+  let arrived!: () => void;
+  const ready = new Promise<void>(resolve => {
+    arrived = resolve;
+  });
+  f.request.mockImplementation(async (path: string) => {
+    if (path.endsWith('/records'))
+      return new Promise(resolve => {
+        respond = resolve;
+        arrived();
+      });
+    return {};
+  });
+  const uploading = f.run();
+  await ready;
+  const start = acquireMeasurementActivity();
+  expect(currentActivity()).toBe('sync');
+  respond({ acknowledged: [record] });
+  const release = await start;
+  await uploading;
+  expect(f.store.acknowledgeSync).toHaveBeenCalledWith([
+    expect.objectContaining({ id: 's', version: 2 }),
+  ]);
+  expect(f.request.mock.calls.map((c: any[]) => c[0])).not.toContain(
+    '/sessions/s/complete',
+  );
+  expect(f.store.failSync).not.toHaveBeenCalled();
+  release();
+});
+test.each(['manifest', 'records', 'complete'])(
+  'timeouts at %s preserve records and tune only record batches',
+  async stage => {
+    const f = fixture();
+    const ordinary = f.request.getMockImplementation()!;
+    f.request.mockImplementation((path: string, ...args: any[]) => {
+      if (path.endsWith('/' + stage))
+        throw Object.assign(new Error('timeout'), { code: 'REQUEST_TIMEOUT' });
+      return ordinary(path, ...args);
+    });
+    await f.run();
+    expect(f.store.reduceUploadBatchLimit).toHaveBeenCalledTimes(
+      stage === 'records' ? 1 : 0,
+    );
+    expect(f.store.deferUpload).toHaveBeenCalledWith('a', 's', false, {
+      stage,
+      code: 'REQUEST_TIMEOUT',
+      status: null,
+    });
+    if (stage === 'complete')
+      expect(f.store.failSync).toHaveBeenCalledWith([], expect.any(String));
+  },
+);
+test('subsequent retries use the persisted smaller batch size', async () => {
+  const f = fixture();
+  f.store.uploadBatchLimit.mockResolvedValue(12);
+  await f.run();
+  expect(f.store.getSyncBatch).toHaveBeenCalledWith(12, 'a', 's');
+});
+
+test('cancelled trip registration settles quietly and releases the upload gate', async () => {
+  const f = fixture();
+  let registered!: () => void;
+  const ready = new Promise<void>(resolve => {
+    registered = resolve;
+  });
+  const run = createAccountSync({
+    ...f,
+    beforeSessions: signal =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () =>
+          reject(new Error('opportunity ended')),
+        );
+        registered();
+      }),
+  });
+  const uploading = run();
+  await ready;
+  const release = await acquireMeasurementActivity();
+  await expect(uploading).resolves.toBeUndefined();
+  expect(f.request).not.toHaveBeenCalled();
+  release();
 });

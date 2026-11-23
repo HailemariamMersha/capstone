@@ -624,3 +624,35 @@ test('new trip and payment mapping commit atomically without embedding the NetID
     uploaded: false,
   });
 });
+
+test('timeout batch limits survive restart, remain owner scoped and never split a record', async () => {
+  await store.initialize();
+  expect(await store.uploadBatchLimit('a', 's')).toBe(50);
+  await store.reduceUploadBatchLimit('a', 's');
+  expect(await store.uploadBatchLimit('a', 's')).toBe(25);
+  db.close();
+  open();
+  expect(await store.uploadBatchLimit('a', 's')).toBe(25);
+  expect(await store.uploadBatchLimit('b', 's')).toBe(50);
+  for (let i = 0; i < 8; i++) await store.reduceUploadBatchLimit('a', 's');
+  expect(await store.uploadBatchLimit('a', 's')).toBe(1);
+  await store.deferUpload('a', 's', false, {
+    stage: 'records',
+    code: 'REQUEST_TIMEOUT',
+    status: null,
+    secret: 'must not persist',
+  });
+  const retry = JSON.parse(
+    db
+      .prepare('SELECT value_json FROM app_settings WHERE key=?')
+      .get('upload-retry:a:s').value_json,
+  );
+  expect(retry).toMatchObject({
+    stage: 'records',
+    code: 'REQUEST_TIMEOUT',
+    status: null,
+  });
+  expect(retry.secret).toBeUndefined();
+  await store.deleteAccountRecords('a');
+  expect(await store.uploadBatchLimit('a', 's')).toBe(50);
+});

@@ -313,3 +313,15 @@ test('upload parent cancellation does not replace the per-request timeout', asyn
   expect((fetch as jest.Mock).mock.calls[0][1].signal).not.toBe(parent.signal);
   jest.useRealTimers();
 });
+
+test('an already cancelled upload does not refresh credentials or send a request', async () => {
+  const parent = new AbortController();
+  parent.abort();
+  globalThis.fetch = jest.fn() as any;
+  await expect(
+    api('/sessions/s/records', { method: 'POST', signal: parent.signal }, 'a'),
+  ).rejects.toThrow('opportunity ended');
+  expect(auth.auth.getSession).not.toHaveBeenCalled();
+  expect(auth.auth.refreshSession).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});

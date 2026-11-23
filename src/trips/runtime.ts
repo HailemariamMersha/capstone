@@ -19,7 +19,11 @@ import {
 } from './scheduler';
 import DeviceInfo from 'react-native-device-info';
 import { measurementStore as store } from '../storage/database';
-import { acquireActivity, setTripArmed } from '../services/activityGate';
+import {
+  acquireActivity,
+  acquireMeasurementActivity,
+  setTripArmed,
+} from '../services/activityGate';
 import { createBackgroundExecutor } from '../background/backgroundExecutor';
 import { runProbe } from '../measurements/runProbe';
 import { runDiagnostic } from '../measurements/diagnostics';
@@ -314,7 +318,7 @@ export async function startTrip(
   const netId = normalizeNetId(options.netId ?? '');
   starting = true;
   try {
-    release = acquireActivity('measurement');
+    release = await acquireMeasurementActivity();
   } catch (e) {
     starting = false;
     throw e;

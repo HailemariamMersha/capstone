@@ -80,7 +80,15 @@ export default function FlightHome({ owner }: { owner: string }) {
     try {
       if (active) {
         await stopTrip();
-        await syncAccount();
+        // Closing the trip must not keep Start disabled for an upload window.
+        syncAccount().catch(e => {
+          if (!tripRunning())
+            setError(
+              e instanceof Error
+                ? e.message
+                : 'Upload pending. Your trip is saved.',
+            );
+        });
       } else {
         details = requireFlightDetails(details);
         const paymentNetId = normalizeNetId(netId);

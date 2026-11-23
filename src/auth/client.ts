@@ -237,6 +237,8 @@ export async function api<T>(
   options: RequestInit = {},
   owner?: string,
 ): Promise<T> {
+  if (options.signal?.aborted)
+    throw new Error('Upload opportunity ended; retry pending');
   const initial = await validSession(owner);
   if (options.signal?.aborted)
     throw new Error('Upload opportunity ended; retry pending');

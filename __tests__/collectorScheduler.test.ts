@@ -50,3 +50,19 @@ test('a supplied cancellation signal does not disable the request timeout', asyn
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
 });
+
+test('parent cancellation never becomes a timeout while its request is settling', async () => {
+  jest.useFakeTimers();
+  const parent = new AbortController();
+  const request = deadline(100, parent.signal);
+  parent.abort();
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(request.timedOut()).toBe(false);
+  request.dispose();
+  const immediate = deadline(100, parent.signal);
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(immediate.signal.aborted).toBe(true);
+  expect(immediate.timedOut()).toBe(false);
+  immediate.dispose();
+  jest.useRealTimers();
+});

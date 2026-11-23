@@ -232,7 +232,7 @@ def ingest(session_id: str, body: Batch, a=Depends(account), db: Session = Depen
 @router.post('/sessions/{session_id}/complete')
 def complete(session_id: str, a=Depends(account), db: Session = Depends(database)):
     s = owned(db, session_id, a, lock=True)
-    saved = {(r.kind, r.id, r.version) for r in db.scalars(select(Record).where(Record.session_id == session_id))}
+    saved = set(db.execute(select(Record.kind, Record.id, Record.version).where(Record.session_id == session_id)).all())
     missing = [r for r in s.manifest['expected'] if (r['type'], r['id'], r['version']) not in saved]
     if not missing:
         s.completed_at = s.completed_at or now()

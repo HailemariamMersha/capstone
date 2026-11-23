@@ -633,3 +633,20 @@ def test_payment_is_owner_written_admin_read_only_and_not_in_research_data(clien
         assert 'abc123' not in client.get('/api/v2'+url, headers=auth('researcher')).text
     assert client.delete('/api/v2/account', headers=auth()).status_code == 200
     assert client.get('/api/v2/admin/payments', headers=auth('admin')).json()['total'] == 0
+
+
+def test_completion_reads_identifiers_without_loading_raw_evidence(client):
+    sid, manifest, records = register(client)
+    assert client.post(f'/api/v2/sessions/{sid}/records', headers=auth(), json={'records': records}).status_code == 200
+    statements = []
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.lower())
+    event.listen(engine(), 'before_cursor_execute', capture)
+    try:
+        result = client.post(f'/api/v2/sessions/{sid}/complete', headers=auth())
+    finally:
+        event.remove(engine(), 'before_cursor_execute', capture)
+    assert result.json() == {'complete': True, 'missing': []}
+    evidence_queries = [q for q in statements if 'from sky_records' in q]
+    assert evidence_queries
+    assert all('raw' not in q and 'payload' not in q for q in evidence_queries)

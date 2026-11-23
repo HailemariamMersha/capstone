@@ -537,3 +537,17 @@ test.each([
       expect(currentTrip()!.evidence!.asn.reason).toBe(unavailable);
   },
 );
+
+test('Start takes priority over a cancellable upload while preserving exclusive traffic', async () => {
+  const { acquireActivity } = require('../src/services/activityGate');
+  let cancelled = false;
+  const finishUpload = acquireActivity('sync', () => {
+    cancelled = true;
+    Promise.resolve().then(finishUpload);
+  });
+  await startTrip('owner', { flightNumber: 'TEST' });
+  expect(cancelled).toBe(true);
+  expect(tripRunning()).toBe(true);
+  expect(currentActivity()).toBe('measurement');
+  expect(isTripArmed()).toBe(true);
+});

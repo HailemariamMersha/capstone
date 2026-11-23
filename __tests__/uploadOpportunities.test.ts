@@ -1,4 +1,5 @@
 const mockStorage = new Map<string, string>();
+let mockCursorHook: (() => void) | null = null;
 const mockLegacy = Object.assign(
   jest.fn(async () => {}),
   { cancel: jest.fn() },
@@ -28,6 +29,7 @@ jest.mock('../src/auth/client', () => ({
     getItem: async (k: string) => mockStorage.get(k) ?? null,
     setItem: async (k: string, v: string) => {
       mockStorage.set(k, v);
+      mockCursorHook?.();
     },
   },
 }));
@@ -54,6 +56,7 @@ beforeEach(() => {
   jest.setSystemTime(1000000);
   jest.clearAllMocks();
   mockStorage.clear();
+  mockCursorHook = null;
   mockTrips.length = 0;
   mockSessions.length = 0;
   setTripArmed(false);
@@ -179,4 +182,11 @@ test('automatic manifest failure backoff survives foreground scheduler recreatio
     stop();
     AppState.currentState = old;
   }
+});
+
+test('a trip starting during cursor persistence prevents the next upload task', async () => {
+  mockTrips.push(trip('pending', 1));
+  mockCursorHook = () => setTripArmed(true);
+  await syncAccount();
+  expect(mockUpload).not.toHaveBeenCalled();
 });
