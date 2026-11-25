@@ -74,7 +74,7 @@ def compact_items(db, trips):
         saved, measurements, failures, interruptions = records.get(t.id, (0, 0, 0, 0))
         declared = t.raw.get('segmentCount', 0)
         result.append({'id': t.id, 'participantId': t.participant_id,
-            **{k: t.raw.get(k) for k in ('flight', 'startedAt', 'endedAt', 'state', 'phase', 'provider', 'reason', 'firstQualifiedAt')},
+            **{k: t.raw.get(k) for k in ('flight', 'startedAt', 'endedAt', 'state', 'phase', 'provider', 'reason', 'firstQualifiedAt', 'measurementSuiteVersion')},
             'groundTest': bool(t.raw.get('groundTest') or t.raw.get('shadow')),
             'receivedAt': t.received_at, 'segmentCount': declared,
             'receivedSegments': received, 'completeSegments': complete,
@@ -198,7 +198,7 @@ def detail_model(db, trip):
         for protocol in summary['protocols']:protocol['medianMbps']=statistics.median(values[protocol['type']]) if protocol['type'] in values else None
         controls['health']['timingExcluded'] = sum(p.get('timingExcluded', 0) for p in summary['protocols'])
         return {'summary': summary, **controls}
-    statistics_view = cached(db, f'trip:{trip.id}:detail:outcomes-v1', f'trip:{trip.id}', compute, lifetime=3600)
+    statistics_view = cached(db, f'trip:{trip.id}:detail:paper-v1', f'trip:{trip.id}', compute, lifetime=3600)
     return {**compact_items(db, [trip])[0], **statistics_view}
 
 
@@ -214,18 +214,20 @@ def timeline(trip_id: str, request: Request, maxPoints: int=Query(2000, ge=100, 
         ids = select(TripSegment.session_id).where(TripSegment.trip_id == trip_id)
         rows = db.execute(select(Record.id, Record.timestamp, Record.protocol, Record.value, Record.success,
             Record.raw['targetHost'], Record.raw['probeServer'], Record.raw['errorType'],
-            Record.raw['scheduling']['timingValid'], Record.raw['durationMs'], Record.raw['transferredBytes'])
+            Record.raw['scheduling']['timingValid'], Record.raw['durationMs'], Record.raw['transferredBytes'],
+            Record.raw['targetId'], Record.raw['paper']['provider'], Record.raw['paper'])
             .where(Record.session_id.in_(ids), Record.kind == 'measurement').order_by(Record.timestamp, Record.id))
         groups = {}
-        for rid, timestamp, protocol, value, success, host, server, error, valid, duration, size in rows:
+        for rid, timestamp, protocol, value, success, host, server, error, valid, duration, size, target_id, cdn_provider, paper in rows:
             at = epoch_ms(timestamp)
             if at is None: continue
             p = {'id': rid, 'at': at, 'type': protocol, 'value': value if valid is not False and success is True else None,
                 'success': success, 'outcome': measurement_outcome({'success': success, 'errorType': error}), 'target': host or server, 'error': error, 'timingValid': valid is not False,
-                'durationMs': duration, 'bytes': size}
-            groups.setdefault(protocol or 'unknown', []).append(p)
+                'durationMs': duration, 'bytes': size, 'targetId': target_id, 'cdnProvider': cdn_provider,
+                'phases': {k: v for k, v in (paper or {}).items() if k in ('dnsLookupMs','tcpConnectMs','tlsHandshakeMs','responseHeadersAfterMs','bodyReadMs','totalMs')}}
+            groups.setdefault((protocol or 'unknown', target_id or (host if protocol in ('cdn_fetch','traceroute') else None)), []).append(p)
         series = []
-        for protocol, points in groups.items():
+        for (protocol, target_id), points in groups.items():
             width = max(1, math.ceil((points[-1]['at']-points[0]['at']+1)/maxPoints)) if len(points)>maxPoints else 1
             if len(points)>maxPoints:
                 bins = {}
@@ -236,15 +238,15 @@ def timeline(trip_id: str, request: Request, maxPoints: int=Query(2000, ge=100, 
                     reduced.append({**values[0], 'value': statistics.median(usable) if usable else None, 'pointCount': len(values),
                         'failures': sum(p['outcome'] == 'failure' for p in values), 'interruptions': sum(p['outcome'] == 'interrupted' for p in values), 'min': min(usable) if usable else None, 'max': max(usable) if usable else None})
                 points=reduced
-            series.append({'type': protocol, 'bucketMs': width, 'points': points})
+            series.append({'type': protocol, 'targetId': target_id, 'cdnProvider': points[0].get('cdnProvider'), 'bucketMs': width, 'points': points})
         return {'series': series, 'clock': 'recorded_wall_clock_utc', 'rttMeaning': 'median within each recorded burst; no kernel timestamps'}
-    result = cached(db, f'trip:{trip_id}:timeline:{maxPoints}:outcomes-v1', f'trip:{trip_id}', compute, lifetime=3600)
+    result = cached(db, f'trip:{trip_id}:timeline:{maxPoints}:paper-v1', f'trip:{trip_id}', compute, lifetime=3600)
     return evidence_response(result, request.headers.get('accept-encoding', ''))
 
 
 @router.get('/research/trips/{trip_id}/evidence')
 def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pattern='^(measurements|samples|events)$'),
-             protocol: str='', outcome: str=Query('', pattern='^(|success|failure|timeout|interrupted)$'),
+             protocol: str='', targetId: str=Query('', max_length=100), cdnProvider: str=Query('', max_length=100), outcome: str=Query('', pattern='^(|success|failure|timeout|interrupted)$'),
              offset: int=Query(0, ge=0), limit: int=Query(50, ge=1, le=200),
              a=Depends(researcher), db: Session=Depends(database)):
     get_trip(db, trip_id)
@@ -253,6 +255,8 @@ def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pa
         query=select(Sample, Record.timestamp, Record.protocol, Record.raw['targetHost']).join(Record,
             and_(Record.session_id==Sample.session_id, Record.id==Sample.measurement_id, Record.kind=='measurement')).where(Sample.session_id.in_(ids))
         if protocol: query=query.where(Record.protocol==protocol)
+        if targetId: query=query.where(Record.raw['targetId'].as_string()==targetId)
+        if cdnProvider: query=query.where(Record.raw['paper']['provider'].as_string()==cdnProvider)
         if outcome=='timeout': query=query.where(Sample.outcome=='timeout')
         elif outcome=='success': query=query.where(Sample.rtt_ms>=0)
         elif outcome=='failure': query=query.where(Sample.rtt_ms.is_(None), func.coalesce(Sample.outcome, '').not_in(['cancelled','interrupted']))
@@ -266,6 +270,8 @@ def evidence(trip_id: str, request: Request, layer: str=Query('measurements', pa
     else:
         query=select(Record).where(Record.session_id.in_(ids), Record.kind==('event' if layer=='events' else 'measurement'))
         if protocol: query=query.where(Record.protocol==protocol)
+        if targetId: query=query.where(Record.raw['targetId'].as_string()==targetId)
+        if cdnProvider: query=query.where(Record.raw['paper']['provider'].as_string()==cdnProvider)
         if outcome=='success': query=query.where(Record.success.is_(True))
         if outcome=='failure': query=query.where(failed())
         if outcome=='interrupted': query=query.where(interrupted())

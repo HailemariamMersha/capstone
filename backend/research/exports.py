@@ -35,6 +35,8 @@ def flatten(value, prefix=''):
             continue
         if isinstance(item, dict):
             result.update(flatten(item, name + '.'))
+        elif isinstance(item, list) and prefix.startswith('measurement.paper.'):
+            result[name] = json.dumps(item, separators=(',', ':'))
         elif not isinstance(item, list):
             result[name] = item
     return result
@@ -62,7 +64,7 @@ def combined_rows(data):
         parent['measurement.interruptionReason'] = measurement.get('interruptionReason')
         config = data['session'].get('config') or {}
         if config.get('tripId'):
-            parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight', 'transferSchedule') if k in config}, 'session.'))
+            parent.update(flatten({k: config[k] for k in ('tripId', 'segmentIndex', 'collectionMode', 'flight', 'transferSchedule', 'measurementSuiteVersion') if k in config}, 'session.'))
             if isinstance(config.get('detectorPolicy'), dict):
                 parent['session.detectorPolicyVersion'] = config['detectorPolicy'].get('version')
         trip = data.get('trip') or {}

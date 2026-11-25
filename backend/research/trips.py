@@ -8,7 +8,7 @@ from .database import ResearchTrip, TripSegment, ResearchSession, TripPayment, d
 from .auth import account, researcher, administrator
 from .read_cache import invalidate
 from .history_reset import guard
-from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, HOURLY_PILOT_POLICIES, require_consent
+from .policies import PILOT_POLICY, HISTORICAL_PILOT_POLICY, HOURLY_PILOT_POLICIES, PAPER_POLICY, PAPER_SUITE, require_consent
 
 router = APIRouter()
 
@@ -50,18 +50,23 @@ class TripUpdate(BaseModel):
     groundTest: bool | None = None
     mlabUsage: MlabUsage | None = None
     transferSchedule: Literal['hourly-v1'] | None = None
+    measurementSuiteVersion: Literal['paper-core-v1'] | None = None
 
 @router.put('/trips/{trip_id}')
 def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=Depends(database), view: str=Query('full', pattern='^(full|receipt)$')):
     guard(db, 'trip', trip_id, a.user_id, body.startedAt)
     require_consent(a, body.policyVersion)
-    if body.policyVersion in HOURLY_PILOT_POLICIES | {HISTORICAL_PILOT_POLICY}:
+    if body.policyVersion in HOURLY_PILOT_POLICIES | {HISTORICAL_PILOT_POLICY, PAPER_POLICY}:
         if any(not getattr(body.flight, k) or not getattr(body.flight, k).strip() for k in ('flightNumber', 'departure', 'arrival')):
             raise HTTPException(422, 'Flight number, departure and arrival are required')
         if body.groundTest is None:
             raise HTTPException(422, 'Pilot requires explicit test provenance')
     if body.policyVersion in HOURLY_PILOT_POLICIES and (body.transferSchedule != 'hourly-v1' or body.flight.expectedMinutes is not None):
         raise HTTPException(422, 'New pilot trips require hourly scheduling without expected duration')
+    if body.policyVersion == PAPER_POLICY and (body.measurementSuiteVersion != PAPER_SUITE or body.transferSchedule is not None or body.flight.expectedMinutes is not None):
+        raise HTTPException(422, 'Paper trips require paper-core-v1 without controlled transfers or expected duration')
+    if body.policyVersion != PAPER_POLICY and body.measurementSuiteVersion is not None:
+        raise HTTPException(422, 'Measurement suite does not match the trip policy')
     if len(trip_id) != 32 or any(c not in '0123456789abcdef' for c in trip_id):
         raise HTTPException(422, 'Invalid trip identifier')
     if body.shadow and a.role not in ('researcher', 'administrator'):
@@ -75,10 +80,10 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
         raise HTTPException(422, 'Transfer reservation exceeds versioned policy')
     raw = body.model_dump()
     # Preserve the exact legacy manifest shape for unchanged revision retries.
-    for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage', 'transferSchedule'):
+    for field in ('detectorPolicyVersion', 'groundTest', 'mlabUsage', 'transferSchedule', 'measurementSuiteVersion'):
         if getattr(body, field) is None:
             raw.pop(field, None)
-    if body.policyVersion in HOURLY_PILOT_POLICIES:
+    if body.policyVersion in HOURLY_PILOT_POLICIES | {PAPER_POLICY}:
         raw['flight'].pop('expectedMinutes', None)
     t = db.scalar(select(ResearchTrip).where(ResearchTrip.id == trip_id).with_for_update())
     changed = t is None or t.raw != raw
@@ -99,6 +104,8 @@ def update_trip(trip_id: str, body: TripUpdate, a=Depends(account), db: Session=
             raise HTTPException(409, 'Trip transfer schedule cannot change')
         if body.detectorPolicyVersion != t.raw.get('detectorPolicyVersion'):
             raise HTTPException(409, 'Trip detector policy cannot change')
+        if body.measurementSuiteVersion != t.raw.get('measurementSuiteVersion'):
+            raise HTTPException(409, 'Trip measurement suite cannot change')
         if body.startedAt != t.raw['startedAt'] or body.segmentCount < t.raw['segmentCount']:
             raise HTTPException(409, 'Trip history cannot move backwards')
         if any(raw['used'][k] < t.raw['used'][k] for k in raw['used']):

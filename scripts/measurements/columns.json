@@ -31,7 +31,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -62,7 +64,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -82,7 +86,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -124,7 +130,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -177,7 +185,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -197,7 +207,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -324,7 +336,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -343,7 +357,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -396,7 +412,9 @@
         "udp.csv",
         "http.csv",
         "http-latency-samples.csv",
-        "measurements.csv"
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -573,7 +591,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -707,7 +727,7 @@
       "example": 200,
       "calculation": "Copied from the stated source; no calculation.",
       "blank": "Unavailable or not applicable to this row; never substitute zero.",
-      "applicableFiles": ["measurements.csv", "http.csv"],
+      "applicableFiles": ["measurements.csv", "http.csv", "cdn.csv", "dns.csv"],
       "applicableRows": "HTTP transactions/transfers or loaded HTTP tests."
     },
     "ttl": {
@@ -883,7 +903,7 @@
     },
     "signalStrength": {
       "datatype": "integer",
-      "units": "0–100 scale",
+      "units": "0\u2013100 scale",
       "meaning": "NetInfo Wi-Fi strength, not dBm or satellite RF signal strength.",
       "source": "n.signalStrength <- NetInfo.details.strength",
       "example": 99,
@@ -1501,7 +1521,9 @@
         "traceroute.csv",
         "udp.csv",
         "http.csv",
-        "http-latency-samples.csv"
+        "http-latency-samples.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "All applicable record types; availability depends on collection method."
     },
@@ -1701,9 +1723,357 @@
         "tcp.csv",
         "traceroute.csv",
         "udp.csv",
-        "http.csv"
+        "http.csv",
+        "cdn.csv",
+        "dns.csv"
       ],
       "applicableRows": "Measurement attempts."
+    },
+    "targetId": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Versioned target/provider registry identifier; compare the same ID within one suite.",
+      "source": "m.targetId",
+      "example": "google_domain",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv",
+        "traceroute.csv"
+      ],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "targetMode": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "literal bypasses DNS; hostname is resolved on the selected Wi-Fi.",
+      "source": "m.targetMode",
+      "example": "hostname",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv",
+        "traceroute.csv"
+      ],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "resolvedAddress": {
+      "datatype": "string",
+      "units": "IP address",
+      "meaning": "IPv4 selected for this attempt; hostname runs may use different addresses between rounds.",
+      "source": "m.resolvedAddress",
+      "example": "192.0.2.8",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv",
+        "traceroute.csv"
+      ],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "roundId": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Qualification-anchored fifteen-minute suite round; persists across segment uploads.",
+      "source": "m.roundId",
+      "example": "1730000000000:0",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv",
+        "traceroute.csv"
+      ],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "resolutionMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Selected-network hostname resolution before traceroute; excluded from library hop RTT.",
+      "source": "m.resolutionMs",
+      "example": 0,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": [
+        "measurements.csv",
+        "cdn.csv",
+        "dns.csv",
+        "traceroute.csv"
+      ],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "suiteVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Version of the recorded target, content and timing policy.",
+      "source": "m.paper.suiteVersion",
+      "example": "paper-core-v1",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "provider": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "CDN registry label; not the satellite provider or a verified edge location.",
+      "source": "m.paper.provider",
+      "example": "cloudflare",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "url": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Allowlisted CDN object URL. DNS discovery uses a random nonce host without identifiers.",
+      "source": "m.paper.url",
+      "example": "https://code.jquery.com/jquery-3.6.0.min.js",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "bodyBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Body bytes read by OkHttp, excluding headers, TLS and retransmissions. Partial attempts retain known bytes.",
+      "source": "m.paper.bodyBytes",
+      "example": 89501,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "chargedBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Accounted CDN body charge. Known bytes are charged up to ceiling; uncertain attempts reserve the ceiling. Not wire traffic.",
+      "source": "m.paper.chargedBytes",
+      "example": 89501,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "byteLimit": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Per-request body safety ceiling; not a speed-test cap.",
+      "source": "m.paper.byteLimit",
+      "example": 524288,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "bodyComplete": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Body reached EOF before cancellation, deadline or byte ceiling. Does not imply correct content.",
+      "source": "m.paper.bodyComplete",
+      "example": true,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "contentMatches": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "CDN bytes and SHA-256 equal the versioned common object. Not applicable to DNS discovery.",
+      "source": "m.paper.contentMatches",
+      "example": true,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "sha256": {
+      "datatype": "string",
+      "units": "hex SHA-256",
+      "meaning": "Digest of the received object when hashing completed; no downloaded content is stored.",
+      "source": "m.paper.sha256",
+      "example": "ff1523fb7389539c84c65aba19260648793bb4f5e29329d2ee8804bc37a3fe6e",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "dnsLookupMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "OkHttp dnsEnd minus dnsStart using System.nanoTime; Android resolver caches may contribute. Not authoritative DNS RTT.",
+      "source": "m.paper.dnsLookupMs",
+      "example": 0,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "tcpConnectMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "connectStart to secureConnectStart for HTTPS (connectEnd otherwise). Excludes TLS.",
+      "source": "m.paper.tcpConnectMs",
+      "example": 12.5,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "tlsHandshakeMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "secureConnectEnd minus secureConnectStart; fresh HTTP connection but OS/TLS caches can remain.",
+      "source": "m.paper.tlsHandshakeMs",
+      "example": 24.2,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "responseHeadersAfterMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "responseHeadersEnd offset from native attempt start; cumulative, includes earlier DNS/TCP/TLS. Do not sum with those phases.",
+      "source": "m.paper.responseHeadersAfterMs",
+      "example": 75.1,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "bodyReadMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "responseBodyEnd minus responseBodyStart; library callback interval, may include partial/failed close.",
+      "source": "m.paper.bodyReadMs",
+      "example": 4.5,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "totalMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Native monotonic complete attempt duration, including all phases and adapter processing; DNS discovery HTTP duration is not DNS RTT.",
+      "source": "m.paper.totalMs",
+      "example": 81.2,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "remoteAddress": {
+      "datatype": "string",
+      "units": "IP address",
+      "meaning": "IPv4 connected peer reported by OkHttp; not an authoritative CDN edge city.",
+      "source": "m.paper.remoteAddress",
+      "example": "192.0.2.8",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "httpVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Actual library protocol; this suite forces HTTP/1.1.",
+      "source": "m.paper.httpVersion",
+      "example": "http/1.1",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "headers": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Allowlisted cache/edge response headers, bounded and excluding cookies, credentials and redirect queries.",
+      "source": "m.paper.headers",
+      "example": {
+        "x-cache": "HIT"
+      },
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "edgeCodes": {
+      "datatype": "JSON array",
+      "units": "none",
+      "meaning": "Unverified edge codes parsed only from known header conventions. No city or geolocation is inferred.",
+      "source": "m.paper.edgeCodes",
+      "example": ["DXB"],
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "configuredDnsServers": {
+      "datatype": "JSON array",
+      "units": "IP addresses",
+      "meaning": "DNS server IPs configured on selected Wi-Fi; may be a local forwarder and differ from observed recursive resolver.",
+      "source": "m.paper.configuredDnsServers",
+      "example": ["192.0.2.53"],
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "observedResolverIp": {
+      "datatype": "string",
+      "units": "IP address",
+      "meaning": "Recursive resolver literal IP explicitly reported by NextDNS, if present. Not copied from configured DNS or destination.",
+      "source": "m.paper.observedResolverIp",
+      "example": "192.0.2.54",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "resolverStatus": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "NextDNS response status; unconfigured is a normal successful discovery response.",
+      "source": "m.paper.resolverStatus",
+      "example": "unconfigured",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "resolverUnavailableReason": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Why a resolver address is absent, such as resolver_address_not_reported.",
+      "source": "m.paper.resolverUnavailableReason",
+      "example": "resolver_address_not_reported",
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
+    },
+    "privateDnsActive": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Selected Wi-Fi LinkProperties private DNS state on supported Android versions; no private DNS hostname stored.",
+      "source": "m.paper.privateDnsActive",
+      "example": false,
+      "calculation": "Copied from the stated source; monotonic phase differences are calculated by the recorded OkHttp adapter.",
+      "blank": "Not observed, not applicable or not completed; never substitute zero.",
+      "applicableFiles": ["measurements.csv", "cdn.csv", "dns.csv"],
+      "applicableRows": "Paper-core-v1 HTTP or traceroute attempts, as applicable."
     }
   },
   "files": {
@@ -1716,6 +2086,35 @@
         "type",
         "method",
         "targetHost",
+        "targetId",
+        "targetMode",
+        "resolvedAddress",
+        "roundId",
+        "resolutionMs",
+        "suiteVersion",
+        "provider",
+        "url",
+        "bodyBytes",
+        "chargedBytes",
+        "byteLimit",
+        "bodyComplete",
+        "contentMatches",
+        "sha256",
+        "dnsLookupMs",
+        "tcpConnectMs",
+        "tlsHandshakeMs",
+        "responseHeadersAfterMs",
+        "bodyReadMs",
+        "totalMs",
+        "remoteAddress",
+        "httpVersion",
+        "headers",
+        "edgeCodes",
+        "configuredDnsServers",
+        "observedResolverIp",
+        "resolverStatus",
+        "resolverUnavailableReason",
+        "privateDnsActive",
         "scheduledAt",
         "timestamp",
         "state",
@@ -2044,7 +2443,12 @@
         "payloadBytes",
         "routeReached",
         "reachedHop",
-        "errorType"
+        "errorType",
+        "targetId",
+        "targetMode",
+        "resolvedAddress",
+        "roundId",
+        "resolutionMs"
       ],
       "overrides": {
         "library": {
@@ -2164,6 +2568,81 @@
           "meaning": "Full transaction latency for this one baseline or during-transfer sample; not the parent median."
         }
       }
+    },
+    "cdn.csv": {
+      "kind": "focused",
+      "row": "One CDN object fetch attempt, including failed, partial and interrupted attempts. Phases are not packet captures or capacity tests.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "targetId",
+        "targetMode",
+        "resolvedAddress",
+        "roundId",
+        "outcome",
+        "interruptionReason",
+        "errorType",
+        "httpStatus",
+        "suiteVersion",
+        "provider",
+        "url",
+        "bodyBytes",
+        "chargedBytes",
+        "byteLimit",
+        "bodyComplete",
+        "contentMatches",
+        "sha256",
+        "dnsLookupMs",
+        "tcpConnectMs",
+        "tlsHandshakeMs",
+        "responseHeadersAfterMs",
+        "bodyReadMs",
+        "totalMs",
+        "remoteAddress",
+        "httpVersion",
+        "headers",
+        "edgeCodes"
+      ]
+    },
+    "dns.csv": {
+      "kind": "focused",
+      "row": "One NextDNS discovery attempt. Configured DNS and observed recursive resolver are distinct; HTTPS total is not DNS RTT.",
+      "columns": [
+        "sessionId",
+        "measurementId",
+        "measurementType",
+        "method",
+        "library",
+        "libraryVersion",
+        "recordPath",
+        "sampleTimestamp",
+        "targetHost",
+        "targetId",
+        "targetMode",
+        "resolvedAddress",
+        "roundId",
+        "outcome",
+        "interruptionReason",
+        "errorType",
+        "httpStatus",
+        "suiteVersion",
+        "bodyBytes",
+        "byteLimit",
+        "bodyComplete",
+        "totalMs",
+        "configuredDnsServers",
+        "observedResolverIp",
+        "resolverStatus",
+        "resolverUnavailableReason",
+        "privateDnsActive"
+      ]
     }
   },
   "combinedPacketProjection": {
@@ -2539,6 +3018,181 @@
       "calculation": "Copied.",
       "example": "segment_boundary",
       "blank": "Not interrupted or reason unrecorded."
+    },
+    "session.measurementSuiteVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Recorded measurement suite; absent on historical trips.",
+      "source": "session.config.measurementSuiteVersion",
+      "blank": "Historical collector without suite metadata."
+    },
+    "measurement.paper.suiteVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Version of the recorded target, content and timing policy.",
+      "source": "m.paper.suiteVersion",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.provider": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "CDN registry label; not the satellite provider or a verified edge location.",
+      "source": "m.paper.provider",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.url": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Allowlisted CDN object URL. DNS discovery uses a random nonce host without identifiers.",
+      "source": "m.paper.url",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.bodyBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Body bytes read by OkHttp, excluding headers, TLS and retransmissions. Partial attempts retain known bytes.",
+      "source": "m.paper.bodyBytes",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.chargedBytes": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Accounted CDN body charge. Known bytes are charged up to ceiling; uncertain attempts reserve the ceiling. Not wire traffic.",
+      "source": "m.paper.chargedBytes",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.byteLimit": {
+      "datatype": "integer",
+      "units": "bytes",
+      "meaning": "Per-request body safety ceiling; not a speed-test cap.",
+      "source": "m.paper.byteLimit",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.bodyComplete": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Body reached EOF before cancellation, deadline or byte ceiling. Does not imply correct content.",
+      "source": "m.paper.bodyComplete",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.contentMatches": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "CDN bytes and SHA-256 equal the versioned common object. Not applicable to DNS discovery.",
+      "source": "m.paper.contentMatches",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.sha256": {
+      "datatype": "string",
+      "units": "hex SHA-256",
+      "meaning": "Digest of the received object when hashing completed; no downloaded content is stored.",
+      "source": "m.paper.sha256",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.dnsLookupMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "OkHttp dnsEnd minus dnsStart using System.nanoTime; Android resolver caches may contribute. Not authoritative DNS RTT.",
+      "source": "m.paper.dnsLookupMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.tcpConnectMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "connectStart to secureConnectStart for HTTPS (connectEnd otherwise). Excludes TLS.",
+      "source": "m.paper.tcpConnectMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.tlsHandshakeMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "secureConnectEnd minus secureConnectStart; fresh HTTP connection but OS/TLS caches can remain.",
+      "source": "m.paper.tlsHandshakeMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.responseHeadersAfterMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "responseHeadersEnd offset from native attempt start; cumulative, includes earlier DNS/TCP/TLS. Do not sum with those phases.",
+      "source": "m.paper.responseHeadersAfterMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.bodyReadMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "responseBodyEnd minus responseBodyStart; library callback interval, may include partial/failed close.",
+      "source": "m.paper.bodyReadMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.totalMs": {
+      "datatype": "number",
+      "units": "ms",
+      "meaning": "Native monotonic complete attempt duration, including all phases and adapter processing; DNS discovery HTTP duration is not DNS RTT.",
+      "source": "m.paper.totalMs",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.remoteAddress": {
+      "datatype": "string",
+      "units": "IP address",
+      "meaning": "IPv4 connected peer reported by OkHttp; not an authoritative CDN edge city.",
+      "source": "m.paper.remoteAddress",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.httpVersion": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Actual library protocol; this suite forces HTTP/1.1.",
+      "source": "m.paper.httpVersion",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.headers": {
+      "datatype": "JSON object",
+      "units": "none",
+      "meaning": "Allowlisted cache/edge response headers, bounded and excluding cookies, credentials and redirect queries.",
+      "source": "m.paper.headers",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.edgeCodes": {
+      "datatype": "JSON array",
+      "units": "none",
+      "meaning": "Unverified edge codes parsed only from known header conventions. No city or geolocation is inferred.",
+      "source": "m.paper.edgeCodes",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.configuredDnsServers": {
+      "datatype": "JSON array",
+      "units": "IP addresses",
+      "meaning": "DNS server IPs configured on selected Wi-Fi; may be a local forwarder and differ from observed recursive resolver.",
+      "source": "m.paper.configuredDnsServers",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.observedResolverIp": {
+      "datatype": "string",
+      "units": "IP address",
+      "meaning": "Recursive resolver literal IP explicitly reported by NextDNS, if present. Not copied from configured DNS or destination.",
+      "source": "m.paper.observedResolverIp",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.resolverStatus": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "NextDNS response status; unconfigured is a normal successful discovery response.",
+      "source": "m.paper.resolverStatus",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.resolverUnavailableReason": {
+      "datatype": "string",
+      "units": "none",
+      "meaning": "Why a resolver address is absent, such as resolver_address_not_reported.",
+      "source": "m.paper.resolverUnavailableReason",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
+    },
+    "measurement.paper.privateDnsActive": {
+      "datatype": "boolean",
+      "units": "none",
+      "meaning": "Selected Wi-Fi LinkProperties private DNS state on supported Android versions; no private DNS hostname stored.",
+      "source": "m.paper.privateDnsActive",
+      "blank": "Not observed, not applicable or not completed; never substitute zero."
     }
   }
 }

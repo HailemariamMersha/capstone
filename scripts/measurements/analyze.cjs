@@ -56,7 +56,8 @@ function typedRow(row) {
     Object.entries(row).map(([k, v]) => {
       const type = catalog.fields[k]?.datatype;
       if (v === '') return [k, null];
-      if (type === 'JSON object') return [k, JSON.parse(v)];
+      if (type === 'JSON object' || type === 'JSON array')
+        return [k, JSON.parse(v)];
       if (type === 'number' || type === 'integer') return [k, Number(v)];
       if (type === 'boolean') return [k, v === 'true'];
       // Undo only the exporter's formula protection, not arbitrary apostrophes.
@@ -514,6 +515,8 @@ function analyze(data) {
         'upload',
         'loaded_download',
         'loaded_upload',
+        'cdn_fetch',
+        'dns_resolver',
       ].includes(m.type)
     )
       note(
@@ -652,7 +655,7 @@ function analyze(data) {
         );
     }
     inspectPacket(m.packet, at + '/packet');
-    if (m.success === true)
+    if (m.success === true && m.type !== 'dns_resolver')
       check(
         'success_value',
         rttValid(m.value),
@@ -798,6 +801,11 @@ function analyze(data) {
     const payload = payloadCandidates.find(([value]) => present(value));
     const focused = {
       ...row,
+      targetId: m.targetId,
+      targetMode: m.targetMode,
+      resolvedAddress: m.resolvedAddress,
+      roundId: m.roundId,
+      resolutionMs: m.resolutionMs,
       interruptionReason: m.interruptionReason ?? null,
       recordPath: at,
       library,
@@ -863,6 +871,58 @@ function analyze(data) {
       interruptionReason: m.interruptionReason ?? null,
       errorType: m.errorType,
     };
+    if (['cdn_fetch', 'dns_resolver'].includes(m.type)) {
+      const paper = m.paper ?? {};
+      views[m.type === 'cdn_fetch' ? 'cdn.csv' : 'dns.csv'].push({
+        ...base,
+        ...paper,
+        targetId: m.targetId,
+        targetMode: m.targetMode,
+        resolvedAddress: m.resolvedAddress,
+        roundId: m.roundId,
+        httpStatus: m.httpStatus,
+      });
+      for (const key of [
+        'bodyBytes',
+        'chargedBytes',
+        'byteLimit',
+        'dnsLookupMs',
+        'tcpConnectMs',
+        'tlsHandshakeMs',
+        'responseHeadersAfterMs',
+        'bodyReadMs',
+        'totalMs',
+      ])
+        if (paper[key] != null)
+          check(
+            'paper_counter',
+            validNumber(paper[key]) && paper[key] >= 0,
+            base.recordPath + '/paper/' + key,
+            'Paper counters must be nonnegative finite numbers.',
+          );
+      if (paper.bodyBytes != null && paper.byteLimit != null)
+        check(
+          'paper_body_limit',
+          paper.bodyBytes <= paper.byteLimit,
+          base.recordPath,
+          'Body bytes exceed the recorded request ceiling.',
+        );
+      if (m.type === 'dns_resolver')
+        check(
+          'dns_discovery_value',
+          m.value == null,
+          base.recordPath,
+          'DNS discovery HTTP duration must not be presented as DNS RTT.',
+        );
+      if (m.type === 'cdn_fetch' && m.success) {
+        check(
+          'cdn_content_match',
+          paper.contentMatches === true && paper.bodyComplete === true,
+          base.recordPath,
+          'Successful CDN comparison requires complete matching content.',
+        );
+      }
+    }
     if (m.type === 'tcp_connect') {
       const cb =
         list(raw.callbacks).find(c => c.value?.event === 'connected')?.value ??

@@ -1,4 +1,5 @@
 """Small trip summaries from parent records and indexed samples, never CSV rows."""
+import statistics
 from sqlalchemy import select, func, case, and_
 from .database import TripSegment, ResearchSession, Record, Sample
 from .outcomes import failed, interrupted
@@ -81,6 +82,35 @@ def summaries(db, trip_ids):
         .where(2 * ranked.c.rank >= ranked.c.count, 2 * ranked.c.rank <= ranked.c.count + 2)
         .group_by(ranked.c.trip_id, ranked.c.protocol)):
         metrics[(key, protocol)]['medianMs'] = median
+    # Parent-only paper comparisons, separated by target; never pool different CDN objects.
+    paper_groups = {}
+    for tid, protocol, raw in db.execute(select(TripSegment.trip_id, Record.protocol, Record.raw)
+        .join(Record, Record.session_id == TripSegment.session_id)
+        .where(TripSegment.trip_id.in_(trip_ids), Record.kind == 'measurement',
+               Record.protocol.in_(['cdn_fetch','dns_resolver','traceroute']))):
+        target = raw.get('targetId') or raw.get('targetHost') or 'historical_unknown'
+        group = paper_groups.setdefault((tid,protocol,target), {'type':protocol,'targetId':target,
+            'target':raw.get('targetHost'), 'provider':(raw.get('paper') or {}).get('provider'),
+            'attempts':0,'successful':0,'reached':0,'phaseValues':{}})
+        group['attempts'] += 1
+        group['successful'] += raw.get('success') is True
+        group['reached'] += (raw.get('route') or {}).get('reached') is True
+        paper = raw.get('paper') or {}
+        if protocol == 'dns_resolver':
+            history = result[tid].setdefault('resolvers', [])
+            if len(history) < 2000:
+                history.append({k:v for k,v in {**paper,'timestamp':raw.get('timestamp'),'measurementId':raw.get('id'),
+                    'success':raw.get('success'),'errorType':raw.get('errorType')}.items()
+                    if k in ('timestamp','measurementId','success','errorType','configuredDnsServers','observedResolverIp',
+                             'resolverStatus','resolverUnavailableReason','privateDnsActive')})
+        if raw.get('success') is True and (raw.get('scheduling') or {}).get('timingValid') is not False:
+            for field in ('dnsLookupMs','tcpConnectMs','tlsHandshakeMs','responseHeadersAfterMs','bodyReadMs','totalMs'):
+                value = paper.get(field)
+                if isinstance(value,(int,float)) and not isinstance(value,bool) and value >= 0:
+                    group['phaseValues'].setdefault(field, []).append(value)
+    for (tid,_,_), group in paper_groups.items():
+        group['medianPhasesMs'] = {key:statistics.median(values) for key,values in group.pop('phaseValues').items()}
+        result[tid].setdefault('paperTargets', []).append(group)
     for value in result.values():
         value['protocols'].sort(key=lambda item: item['type'])
     return result

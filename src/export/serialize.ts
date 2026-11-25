@@ -1,3 +1,4 @@
+import columnDictionary from './columnDictionary.cjs';
 import { measurementOutcome } from '../measurements/outcome.ts';
 type Row = Record<string, unknown>;
 const object = (value: unknown): Row =>
@@ -120,58 +121,7 @@ export function packetJsonLines(records: Row[]): string {
   }
   return lines.length ? lines.join('\n') + '\n' : '';
 }
-const measurementColumns = [
-  'id',
-  'sessionId',
-  'type',
-  'method',
-  'targetHost',
-  'scheduledAt',
-  'timestamp',
-  'state',
-  'success',
-  'outcome',
-  'interruptionReason',
-  'value',
-  'unit',
-  'durationMs',
-  'requestedBytes',
-  'transferredBytes',
-  'httpStatus',
-  'errorType',
-  'errorMessage',
-  'probeServer',
-  'probeRegion',
-  'ttl',
-  'library',
-  'libraryVersion',
-  'rawSource',
-  'sampleCount',
-  'replyCount',
-  'medianMs',
-  'p95Ms',
-  'successiveDifferenceMs',
-  'nonResponsePercent',
-  'lossPercent',
-  'sentCount',
-  'duplicateCount',
-  'reorderedCount',
-  'targetPort',
-  'routeReached',
-  'reachedHop',
-  'routeStopReason',
-  'loadTransferredBytes',
-  'loadMbps',
-  ...contextColumns,
-  'networkSnapshot',
-  'details',
-  'reference',
-  'route',
-  'speedchecker',
-  'raw',
-  ...packetColumns,
-  'rawRecordJson',
-];
+const measurementColumns = columnDictionary.files['measurements.csv'].columns;
 export function measurementCsv(records: Row[]): string {
   return csv(
     measurementColumns,
@@ -184,6 +134,7 @@ export function measurementCsv(records: Row[]): string {
       return {
         ...context(m.networkSnapshot),
         ...m,
+        ...object(m.paper),
         outcome: measurementOutcome(m),
         library: raw.library ?? route.library,
         libraryVersion: raw.version ?? route.version,
@@ -372,6 +323,31 @@ export function sampleCsv(records: Row[]): string {
   }
   return csv(sampleColumns, samples);
 }
+/** Small readable parent views share their headers with the documented dictionary. */
+export function paperCsv(
+  name: 'cdn.csv' | 'dns.csv',
+  measurements: Row[],
+): string {
+  return csv(
+    columnDictionary.files[name].columns,
+    measurements
+      .filter(
+        m => m.type === (name === 'cdn.csv' ? 'cdn_fetch' : 'dns_resolver'),
+      )
+      .map(m => ({
+        ...m,
+        ...object(m.paper),
+        sessionId: m.sessionId,
+        measurementId: m.id,
+        measurementType: m.type,
+        sampleTimestamp: m.timestamp,
+        library: object(m.raw).library,
+        libraryVersion: object(m.raw).version,
+        outcome: measurementOutcome(m),
+        recordPath: `/measurements/${measurements.indexOf(m)}`,
+      })),
+  );
+}
 export interface ExportFile {
   name: string;
   content: string;
@@ -435,6 +411,8 @@ export function sessionExportFiles(data: Row): ExportFile[] {
     },
     { name: 'measurements.csv', content: measurementCsv(measurements) },
     { name: 'samples.csv', content: sampleCsv(measurements) },
+    { name: 'cdn.csv', content: paperCsv('cdn.csv', measurements) },
+    { name: 'dns.csv', content: paperCsv('dns.csv', measurements) },
     { name: 'packets.jsonl', content: packetJsonLines(measurements) },
     {
       name: 'library-callbacks.jsonl',

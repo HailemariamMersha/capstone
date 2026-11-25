@@ -162,7 +162,7 @@ test('empty sessions export headers and legacy results remain unchanged in JSON'
   expect(parseCsv(files.find(f => f.name === 'samples.csv').content)).toEqual(
     [],
   );
-  expect(files).toHaveLength(8);
+  expect(files).toHaveLength(10);
 });
 
 test('library CSVs omit custom-only fields while JSON retains historical native evidence', () => {

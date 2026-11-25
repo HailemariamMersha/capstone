@@ -415,7 +415,7 @@ test('incomplete bursts cannot produce validated loss, while zero-reply UDP is a
 
 test('all outputs are present for empty sessions and JSON shape errors fail clearly', () => {
   const result = analyze(session());
-  expect(Object.keys(outputFiles(result))).toHaveLength(9);
+  expect(Object.keys(outputFiles(result))).toHaveLength(11);
   expect(errors(result)).toEqual([]);
   expect(parseCsv(outputFiles(result)['icmp.csv']).rows).toEqual([]);
   expect(() => analyze({ session: { id: 's' }, measurements: [] })).toThrow(
@@ -529,4 +529,58 @@ test('CLI writes reports, refuses overwrite, leaves source intact and returns da
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('paper views retain zero, nullable discovery, partial bytes and source identifiers', () => {
+  const cdn = measurement('cdn_fetch', {
+    targetId: 'google',
+    roundId: '0:0',
+    paper: {
+      suiteVersion: 'paper-core-v1',
+      provider: 'google',
+      bodyBytes: 89501,
+      chargedBytes: 89501,
+      byteLimit: 524288,
+      bodyComplete: true,
+      contentMatches: true,
+      dnsLookupMs: 0,
+      totalMs: 0,
+    },
+  });
+  const dns = measurement('dns_resolver', {
+    id: 'dns',
+    value: null,
+    targetId: 'nextdns',
+    paper: {
+      bodyBytes: 0,
+      byteLimit: 16384,
+      totalMs: 0,
+      configuredDnsServers: ['192.0.2.53'],
+      observedResolverIp: null,
+      resolverStatus: 'ok',
+    },
+  });
+  const result = analyze(session([cdn, dns]));
+  expect(errors(result)).toEqual([]);
+  const files = outputFiles(result);
+  const row = parseCsv(files['cdn.csv']).rows[0];
+  expect(row.dnsLookupMs).toBe('0');
+  expect(row.recordPath).toBe('/measurements/0');
+  const resolver = parseCsv(files['dns.csv']).rows[0];
+  expect(resolver.observedResolverIp).toBe('');
+  expect(resolver.configuredDnsServers).toBe('["192.0.2.53"]');
+  const bad = analyze(
+    session([
+      measurement('cdn_fetch', {
+        paper: {
+          bodyBytes: 524289,
+          byteLimit: 524288,
+          bodyComplete: false,
+          contentMatches: false,
+        },
+      }),
+    ]),
+  );
+  expect(errors(bad).map(e => e.code)).toContain('paper_body_limit');
+  expect(errors(bad).map(e => e.code)).toContain('cdn_content_match');
 });
