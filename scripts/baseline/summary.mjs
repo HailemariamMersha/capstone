@@ -44,6 +44,10 @@ export function protocolSummary(type, all) {
     .filter(m => m.success && typeof m.value === 'number')
     .map(m => m.value)
     .sort((a, b) => a - b);
+  const separateTargets =
+    type === 'cdn_fetch' ||
+    (type === 'traceroute' &&
+      new Set(rows.map(m => m.targetId ?? m.targetHost)).size > 1);
   // Loss counts only probes that were sent and then answered or timed out.
   const outcomes = samples.filter(
     s => s.errorType === 'timeout' || typeof s.rttMs === 'number',
@@ -71,9 +75,10 @@ export function protocolSummary(type, all) {
       burst && outcomes.length ? (100 * lost) / outcomes.length : null,
     lossInterval95: burst ? wilson(lost, outcomes.length) : null,
     unit: rows.find(m => m.unit)?.unit ?? null,
-    medianValue: median(values),
-    minValue: values[0] ?? null,
-    maxValue: values[values.length - 1] ?? null,
+    // CDN completion times belong to different providers. Use target-aware paper summaries.
+    medianValue: separateTargets ? null : median(values),
+    minValue: separateTargets ? null : values[0] ?? null,
+    maxValue: separateTargets ? null : values[values.length - 1] ?? null,
     methods: [...new Set(rows.map(m => m.method))],
   };
 }

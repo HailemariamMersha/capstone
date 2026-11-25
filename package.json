@@ -18,6 +18,8 @@
     "baseline:run": "node --experimental-strip-types --no-warnings scripts/baseline/run.mjs",
     "baseline:compare": "node --experimental-strip-types --no-warnings scripts/baseline/compare.mjs",
     "baseline:test": "node --experimental-strip-types --no-warnings --test scripts/baseline/baseline.test.mjs",
+    "baseline:lint": "eslint scripts/baseline --ext .mjs",
+    "baseline:verify": "node --experimental-strip-types --no-warnings scripts/baseline/verify.mjs",
     "skymeasure:configure": "node scripts/configure-skymeasure.cjs",
     "skymeasure:docs": "node scripts/skymeasure-docs.cjs",
     "uploads:size": "node scripts/measurements/upload-sizing.cjs"

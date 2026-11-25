@@ -63,10 +63,7 @@ export const CONTROLS = {
   control_tcp: { offsetMs: 24000, intervalMs: 60000, worstCaseMs: 11000 },
 };
 
-/**
- * Interleave with a phone that qualified at phoneAt: light probes 30 s apart, heavy
- * tests outside the phone's own M-Lab (+1 to +3.5 min) and transfer (+5 to +7 min) windows.
- */
+/** Offset light probes by 30 s. Heavy-test offsets below serve historical policies only. */
 export function pairedTimes(phoneAt, now) {
   const steps = Math.max(
     0,
@@ -104,6 +101,14 @@ export async function runSchedule(deps, options) {
   // Historical reference fixtures explicitly supply their collected policy.
   const policy = options.policy ?? PAPER_TRIP_POLICY;
   const paper = isPaperPolicy(policy.version);
+  // Without live coordination, a 30 s offset cannot isolate two 90 s CDN tests.
+  // Run the full paper suite separately, then compare its per-target observations.
+  const pairedLight = paper && !!options.paired;
+  if (pairedLight && options.mlab)
+    throw new Error(
+      'Paired validation runs light probes only. Run M-Lab separately without --phone-qualified-at.',
+    );
+  const paperEnabled = paper && !pairedLight;
   const collector = options.collectorPolicy ?? COLLECTOR_POLICY;
   const uploadPauseMs = options.uploadPauseMs ?? DEFAULT_UPLOAD_PAUSE_MS;
   const random = options.random ?? Math.random;
@@ -116,6 +121,7 @@ export async function runSchedule(deps, options) {
     startedAt,
     endedAt: null,
     phase: 'watching',
+    validationMode: pairedLight ? 'paired_light_only' : 'standalone_full_suite',
     reason: null,
     flight: {},
     policy,
@@ -484,16 +490,17 @@ export async function runSchedule(deps, options) {
   }
 
   function dueControl(now) {
-    const enabled =
-      options.controls === true
-        ? Object.keys(CONTROLS)
-        : options.controls || [];
+    const enabled = pairedLight
+      ? []
+      : options.controls === true
+      ? Object.keys(CONTROLS)
+      : options.controls || [];
     if (!enabled.length) return null;
     for (const [type, spec] of Object.entries(CONTROLS))
       trip.controlDue[type] ??= now + spec.offsetMs;
     const nextApp = Math.min(
       ...Object.values(trip.due),
-      ...(paper
+      ...(paperEnabled
         ? paperJobs(qualifiedAt, trip.paperSchedule.roundIndex)
             .filter(j => !trip.paperSchedule.completed.includes(j.key))
             .map(j => j.scheduledAt)
@@ -561,7 +568,7 @@ export async function runSchedule(deps, options) {
           trip.controlDue[type] = now + spec.offsetMs;
       }
       if (paper) delete trip.due.traceroute;
-      const paperReady = paper
+      const paperReady = paperEnabled
         ? readyPaperJobs(trip.paperSchedule, now)
         : { ready: [], skipped: [] };
       for (const { job, count } of paperReady.skipped) {
@@ -718,6 +725,19 @@ export async function runSchedule(deps, options) {
   await openSegment();
   armBoundary();
   await sink.event('session_started', { startedAt: iso(startedAt) });
+  if (pairedLight)
+    await sink.event('validation_scope', {
+      mode: 'paired_light_only',
+      excluded: [
+        'traceroute',
+        'cdn_fetch',
+        'dns_resolver',
+        'ndt7_download',
+        'ndt7_upload',
+      ],
+      reason:
+        'Avoid adding a second heavy test on the shared link; phone-heavy overlaps must still be excluded during comparison.',
+    });
   const controller = control().catch(error => {
     finish('baseline_error');
     throw error;

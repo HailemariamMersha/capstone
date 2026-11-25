@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /** Phone export(s) against a baseline run. Reports differences; sets no pass/fail limits. */
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import net from 'node:net';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import {
   median,
   protocolSummary,
@@ -12,6 +14,13 @@ import {
   summarize,
   usable,
 } from './summary.mjs';
+import {
+  createPrivateDirectory,
+  csv,
+  sealEvidence,
+  verifyEvidence,
+  writePrivate,
+} from './evidence.mjs';
 
 /** Interleaved bursts are 30 s apart; beyond this they are not the same minute. */
 export const PAIR_WINDOW_MS = 45000;
@@ -30,6 +39,11 @@ export function loadSessions(values, role) {
         `A ${role} input has the wrong kind of data (${
           value.session.config?.collectionMode ?? 'unlabelled'
         }).`,
+      );
+    const previous = found.get(value.session.id);
+    if (previous && !isDeepStrictEqual(previous, value))
+      throw new Error(
+        `Conflicting exports for session ${value.session.id}. Choose one authoritative export.`,
       );
     found.set(value.session.id, value);
   }
@@ -51,18 +65,69 @@ const match = (a, b) =>
     : [...a].some(v => b.has(v))
     ? 'partial'
     : 'mismatch';
-const targetOf = m => {
-  const s = m.details?.samples?.find(
-    x => x.packet?.resolvedAddress ?? x.resolvedAddress,
-  );
+/** A burst involving multiple resolved destinations cannot be compared as one target. */
+export function endpointOf(m) {
+  const callbacks = (m.raw?.callbacks ?? []).map(c => c.value ?? {});
+  const addresses = [
+    ...new Set(
+      [
+        m.resolvedAddress,
+        m.baseline?.resolvedAddress,
+        m.raw?.request?.host,
+        m.targetHost,
+        ...callbacks.map(c => c.remoteAddress),
+        ...(m.details?.samples ?? []).flatMap(s => [
+          s.resolvedAddress,
+          s.packet?.resolvedAddress,
+        ]),
+      ].filter(a => typeof a === 'string' && net.isIP(a)),
+    ),
+  ];
+  const ports = [
+    ...new Set(
+      [
+        m.details?.targetPort,
+        m.raw?.request?.port,
+        ...callbacks.map(c => c.remotePort),
+      ].filter(p => Number.isInteger(p) && p > 0 && p <= 65535),
+    ),
+  ];
+  const protocol = { icmp_burst: 'icmp', udp_echo: 'udp', tcp_connect: 'tcp' }[
+    m.type
+  ];
+  const reason =
+    addresses.length > 1
+      ? 'mixed_target_addresses'
+      : !addresses.length
+      ? 'unknown_target'
+      : protocol !== 'icmp' && ports.length !== 1
+      ? 'unknown_or_mixed_port'
+      : null;
+  return {
+    protocol,
+    address: addresses.length === 1 ? addresses[0] : null,
+    port: protocol === 'icmp' ? null : ports.length === 1 ? ports[0] : null,
+    reason,
+  };
+}
+const targetOf = m => endpointOf(m).address;
+const sameEndpoint = (p, b) => {
+  const a = endpointOf(p),
+    c = endpointOf(b);
   return (
-    m.resolvedAddress ??
-    s?.packet?.resolvedAddress ??
-    s?.resolvedAddress ??
-    m.baseline?.resolvedAddress ??
-    null
+    !a.reason &&
+    !c.reason &&
+    a.protocol === c.protocol &&
+    a.address === c.address &&
+    a.port === c.port
   );
 };
+const sameObservedNetwork = (p, b) =>
+  ['publicIp', 'asn'].every(key => {
+    const a = p.networkSnapshot?.[key],
+      c = b.networkSnapshot?.[key];
+    return a == null || c == null || a === c;
+  });
 const targets = measurements =>
   new Set(
     measurements
@@ -72,12 +137,12 @@ const targets = measurements =>
   );
 
 /** One-to-one nearest pairs, so no burst is counted twice. */
-export function pairUp(phone, baseline) {
+export function pairUp(phone, baseline, compatible = sameEndpoint) {
   const candidates = phone
     .flatMap((p, i) =>
       baseline
         .map((b, j) => ({ i, j, gap: Math.abs(startOf(p) - startOf(b)) }))
-        .filter(c => c.gap <= PAIR_WINDOW_MS),
+        .filter(c => c.gap <= PAIR_WINDOW_MS && compatible(p, baseline[c.j])),
     )
     .sort((a, b) => a.gap - b.gap);
   const usedPhone = new Set();
@@ -91,13 +156,94 @@ export function pairUp(phone, baseline) {
   }
   return pairs;
 }
-function pairedResult(type, phone, baseline) {
-  const good = list =>
-    list.filter(
-      m =>
-        m.type === type && m.success && usable(m) && Number.isFinite(m.value),
-    );
-  const pairs = pairUp(good(phone), good(baseline));
+const HEAVY_TYPES = [
+  'cdn_fetch',
+  'download',
+  'upload',
+  'ndt7_download',
+  'ndt7_upload',
+];
+const endOf = m => {
+  const callback = Date.parse(m.scheduling?.callbackAt);
+  return Number.isFinite(callback)
+    ? callback
+    : startOf(m) + Math.max(0, m.durationMs ?? 0);
+};
+const overlaps = (a, b) => startOf(a) < endOf(b) && startOf(b) < endOf(a);
+
+function pairedResult(type, phone, baseline, environment, comparability) {
+  const excluded = [],
+    eligible = { phone: [], baseline: [] };
+  const source = {
+    phone: phone.filter(m => m.type === type),
+    baseline: baseline.filter(m => m.type === type),
+  };
+  const contextReason = environment.vpnAllowed
+    ? 'baseline_vpn'
+    : environment.wifi === false
+    ? 'baseline_not_wifi'
+    : environment.clock?.ok === false
+    ? 'clock_not_synchronised'
+    : comparability.publicIp === 'mismatch' || comparability.asn === 'mismatch'
+    ? 'different_network'
+    : null;
+  const exclude = (m, role, reason) =>
+    excluded.push({
+      role,
+      measurementId: m.id ?? null,
+      sessionId: m.sessionId ?? null,
+      type,
+      startedAt: m.scheduling?.startedAt ?? m.timestamp ?? null,
+      ...endpointOf(m),
+      reason,
+      valueMs: m.value ?? null,
+      rawFile: m.raw?.request?.outputFile ?? null,
+    });
+  for (const [role, rows] of Object.entries(source)) {
+    const other = role === 'phone' ? baseline : phone;
+    for (const m of rows) {
+      const reason = !m.success
+        ? 'unsuccessful_attempt'
+        : !usable(m)
+        ? 'invalid_clock_domain'
+        : !Number.isFinite(m.value)
+        ? 'unavailable_value'
+        : !Number.isFinite(startOf(m))
+        ? 'invalid_timestamp'
+        : endpointOf(m).reason ??
+          contextReason ??
+          (other.some(x => HEAVY_TYPES.includes(x.type) && overlaps(m, x))
+            ? 'other_device_heavy_overlap'
+            : null);
+      if (reason) exclude(m, role, reason);
+      else eligible[role].push(m);
+    }
+  }
+  const pairs = pairUp(
+    eligible.phone,
+    eligible.baseline,
+    (p, b) => sameEndpoint(p, b) && sameObservedNetwork(p, b),
+  );
+  const used = new Set(pairs.flat());
+  for (const [role, rows] of Object.entries(eligible))
+    for (const m of rows) {
+      if (used.has(m)) continue;
+      const peers = eligible[role === 'phone' ? 'baseline' : 'phone'];
+      const nearby = peers.filter(
+        x => Math.abs(startOf(x) - startOf(m)) <= PAIR_WINDOW_MS,
+      );
+      exclude(
+        m,
+        role,
+        nearby.some(x => sameEndpoint(m, x) && sameObservedNetwork(m, x))
+          ? 'reference_already_paired'
+          : nearby.some(x => sameEndpoint(m, x))
+          ? 'different_network'
+          : nearby.length
+          ? 'different_destination'
+          : 'no_eligible_reference_within_window',
+      );
+    }
   const d = pairs.map(([p, b]) => p.value - b.value).sort((a, b) => a - b);
   const n = d.length;
   const mean = n ? d.reduce((a, b) => a + b, 0) / n : null;
@@ -107,10 +253,34 @@ function pairedResult(type, phone, baseline) {
       : null;
   return {
     pairs: n,
-    sameTargetPairs: pairs.filter(
-      ([p, b]) => targetOf(p) && targetOf(p) === targetOf(b),
-    ).length,
-    medianDifferenceMs: n ? median(d.map(v => v + 1e9)) - 1e9 : null,
+    sameTargetPairs: n,
+    excludedCounts: Object.fromEntries(
+      ['phone', 'baseline'].map(role => [
+        role,
+        excluded.filter(x => x.role === role).length,
+      ]),
+    ),
+    excluded,
+    records: pairs.map(([p, b]) => ({
+      type,
+      protocol: endpointOf(p).protocol,
+      address: targetOf(p),
+      port: endpointOf(p).port,
+      phoneMeasurementId: p.id ?? null,
+      baselineMeasurementId: b.id ?? null,
+      phoneSessionId: p.sessionId ?? null,
+      baselineSessionId: b.sessionId ?? null,
+      phoneStartedAt: p.scheduling?.startedAt ?? p.timestamp,
+      baselineStartedAt: b.scheduling?.startedAt ?? b.timestamp,
+      separationMs: Math.abs(startOf(p) - startOf(b)),
+      phoneValueMs: p.value,
+      baselineValueMs: b.value,
+      differenceMs: p.value - b.value,
+      baselineRawFile: b.raw?.request?.outputFile ?? null,
+    })),
+    medianDifferenceMs: n
+      ? (d[Math.floor((n - 1) / 2)] + d[Math.floor(n / 2)]) / 2
+      : null,
     meanDifferenceMs: mean,
     sdDifferenceMs: sd,
     limitsOfAgreementMs:
@@ -222,7 +392,7 @@ export function compare(
     flags.push(`Provider ASN: ${comparability.asn}.`);
   if (comparability.googleTargets !== 'match')
     flags.push(
-      `Google addresses: ${comparability.googleTargets}. Use the same-target pair count for ICMP.`,
+      `Google addresses: ${comparability.googleTargets}. Only pairs with a verified identical destination contribute to differences.`,
     );
   if (comparability.baselineVpn)
     flags.push('The baseline ran with --allow-vpn. It is not comparable.');
@@ -234,7 +404,7 @@ export function compare(
     );
   const types = [...new Set([...phone, ...baseline].map(m => m.type))].sort();
   return {
-    schema: 'skymeasure-comparison-1',
+    schema: 'skymeasure-comparison-2',
     paper: Object.fromEntries(
       ['phone', 'baseline'].map(role => [
         role,
@@ -249,7 +419,10 @@ export function compare(
     ),
     controls: summarize(controls),
     paired: Object.fromEntries(
-      PAIRED_TYPES.map(t => [t, pairedResult(t, phone, baseline)]),
+      PAIRED_TYPES.map(t => [
+        t,
+        pairedResult(t, phone, baseline, environment, comparability),
+      ]),
     ),
     scheduling: Object.fromEntries(
       types.map(t => [
@@ -353,6 +526,7 @@ ${table(
     'Measurement',
     'Pairs',
     'Same target',
+    'Excluded phone / baseline',
     'Median difference',
     'Middle half',
     'Limits of agreement',
@@ -360,14 +534,18 @@ ${table(
   Object.entries(r.paired).map(([t, v]) => [
     t,
     v.pairs,
-    t === 'icmp_burst' ? v.sameTargetPairs : '-',
+    v.sameTargetPairs,
+    `${v.excludedCounts.phone} / ${v.excludedCounts.baseline}`,
     f(v.medianDifferenceMs, 1, ' ms'),
     range(v.middleHalfMs),
     range(v.limitsOfAgreementMs),
   ]),
 )}
 
-Positive means the phone reported a larger value. Each pair is two burst medians at most 45 s apart.
+Positive means the phone reported a larger value. Each pair is at most 45 s apart, with the same protocol, verified destination IP and (for TCP/UDP) port. ICMP/UDP use burst medians; TCP uses connection duration including resolution/callback scope.
+
+Unknown or mixed destinations, failed/interrupted attempts, invalid clocks, known network/VPN mismatches and observations overlapping the other device's heavy test are excluded. Unknown network/clock context remains a limitation, not proof of comparability.
+See [individual paired observations](paired.csv), [every excluded measurement and reason](excluded.csv), and [saved input sessions and provenance](inputs.json).
 
 ## Is UDP slow, or is the server far away?
 
@@ -501,17 +679,19 @@ ${table(
 `;
 }
 
-export async function readInputs(inputs) {
+export async function readInputs(inputs, provenance = []) {
   const result = [];
   for (const input of inputs) {
     const info = await stat(input);
     const files = info.isDirectory()
       ? (await readdir(input))
+          .sort()
           .filter(n => n.endsWith('.json'))
           .map(n => path.join(input, n))
       : [input];
     for (const file of files) {
-      const value = JSON.parse(await readFile(file, 'utf8'));
+      const bytes = await readFile(file);
+      const value = JSON.parse(bytes.toString('utf8'));
       // A run summary has a numeric `segments` count, so only arrays are lists of sessions.
       const list = [value, value.sessions, value.segments].find(
         Array.isArray,
@@ -522,10 +702,78 @@ export async function readInputs(inputs) {
       // Directories can hold other JSON; a file named explicitly must be usable.
       if (!sessions.length && !info.isDirectory())
         throw new Error(`No session evidence in ${file}`);
+      if (sessions.length)
+        provenance.push({
+          path: path.resolve(file),
+          bytes: bytes.length,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        });
       result.push(...sessions);
     }
   }
   return result;
+}
+
+export async function saveComparison(directory, result, inputs) {
+  await createPrivateDirectory(directory);
+  const paired = Object.values(result.paired).flatMap(v => v.records);
+  const excluded = Object.values(result.paired).flatMap(v => v.excluded);
+  await writePrivate(directory, 'comparison.json', result);
+  await writePrivate(directory, 'comparison.md', markdown(result));
+  await writePrivate(
+    directory,
+    'paired.csv',
+    csv(
+      [
+        'type',
+        'protocol',
+        'address',
+        'port',
+        'phoneMeasurementId',
+        'baselineMeasurementId',
+        'phoneSessionId',
+        'baselineSessionId',
+        'phoneStartedAt',
+        'baselineStartedAt',
+        'separationMs',
+        'phoneValueMs',
+        'baselineValueMs',
+        'differenceMs',
+        'baselineRawFile',
+      ],
+      paired,
+    ),
+  );
+  await writePrivate(
+    directory,
+    'excluded.csv',
+    csv(
+      [
+        'role',
+        'measurementId',
+        'sessionId',
+        'type',
+        'startedAt',
+        'protocol',
+        'address',
+        'port',
+        'reason',
+        'valueMs',
+        'rawFile',
+      ],
+      excluded,
+    ),
+  );
+  // Preserve the exact parsed sessions used for the computation, including unfamiliar fields.
+  // Original command-output files remain in the identified baseline run folder.
+  await writePrivate(directory, 'inputs.json', {
+    schema: 'skymeasure-comparison-inputs-1',
+    ...inputs,
+  });
+  await sealEvidence(directory, {
+    kind: 'comparison',
+    schemaVersion: result.schema,
+  });
 }
 async function main() {
   const { values: v } = parseArgs({
@@ -543,9 +791,10 @@ async function main() {
     if (!v.help) process.exitCode = 1;
     return;
   }
-  const phone = loadSessions(await readInputs(v.phone), 'phone');
+  const sources = { phone: [], baseline: [] };
+  const phone = loadSessions(await readInputs(v.phone, sources.phone), 'phone');
   const baseline = loadSessions(
-    (await readInputs([v.baseline])).filter(isBaseline),
+    (await readInputs([v.baseline], sources.baseline)).filter(isBaseline),
     'baseline',
   );
   const readOptional = async (name, fallback) =>
@@ -555,17 +804,35 @@ async function main() {
   const { measurements: controls } = await readOptional('control.json', {
     measurements: [],
   });
-  const { environment } = await readOptional('run.json', { environment: {} });
+  const run = await readOptional('run.json', { environment: {} });
+  const environment = run.environment ?? {};
+  let integrity = 'historical_or_unfinished';
+  if (existsSync(path.join(v.baseline, 'manifest.json'))) {
+    const check = await verifyEvidence(v.baseline);
+    if (!check.ok)
+      throw new Error(
+        'Baseline integrity verification failed. Run baseline:verify to inspect changed or missing files.',
+      );
+    integrity = 'verified';
+  }
   const result = compare(phone, baseline, controls, environment);
-  await mkdir(v.out, { recursive: true });
-  // Never overwrite an earlier report.
-  await writeFile(
-    path.join(v.out, 'comparison.json'),
-    JSON.stringify(result, null, 1),
-    { flag: 'wx' },
-  );
-  await writeFile(path.join(v.out, 'comparison.md'), markdown(result), {
-    flag: 'wx',
+  if (integrity !== 'verified')
+    result.flags.push(
+      'This baseline has no final integrity manifest; it is historical or unfinished.',
+    );
+  if (run.status && !['complete', 'stopped'].includes(run.status))
+    result.flags.push(
+      `Baseline status is ${run.status}; these are partial observations.`,
+    );
+  await saveComparison(v.out, result, {
+    sources,
+    baselineDirectory: path.resolve(v.baseline),
+    phoneSessions: phone,
+    baselineSessions: baseline,
+    controls,
+    environment,
+    baselineStatus: run.status ?? 'historical_unknown',
+    baselineIntegrity: integrity,
   });
   for (const flag of result.flags) console.log(`  warning: ${flag}`);
   console.log(`Wrote ${path.join(v.out, 'comparison.md')}`);

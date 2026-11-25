@@ -44,6 +44,10 @@ export function exec(command, args, { signal, timeoutMs, input } = {}) {
     const started = performance.now();
     let stdout = '';
     let stderr = '';
+    let stdoutBytes = 0,
+      stderrBytes = 0;
+    const stdoutChunks = [],
+      stderrChunks = [];
     let stoppedBy = null;
     let spawnError = null;
     let killTimer;
@@ -78,10 +82,14 @@ export function exec(command, args, { signal, timeoutMs, input } = {}) {
       ? setTimeout(() => kill('timeout'), timeoutMs)
       : undefined;
     child.stdout.on('data', d => {
-      if (stdout.length < MAX_OUTPUT) stdout += d;
+      if (stdoutBytes < MAX_OUTPUT)
+        stdoutChunks.push(d.subarray(0, MAX_OUTPUT - stdoutBytes));
+      stdoutBytes += d.length;
     });
     child.stderr.on('data', d => {
-      if (stderr.length < MAX_OUTPUT) stderr += d;
+      if (stderrBytes < MAX_OUTPUT)
+        stderrChunks.push(d.subarray(0, MAX_OUTPUT - stderrBytes));
+      stderrBytes += d.length;
     });
     child.stdin.on('error', () => {});
     child.stdin.end(input);
@@ -89,6 +97,8 @@ export function exec(command, args, { signal, timeoutMs, input } = {}) {
       spawnError = error.code ?? String(error);
     });
     child.on('close', code => {
+      stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      stderr = Buffer.concat(stderrChunks).toString('utf8');
       clearTimeout(timer);
       clearTimeout(killTimer);
       signal?.removeEventListener('abort', cancel);
@@ -96,6 +106,13 @@ export function exec(command, args, { signal, timeoutMs, input } = {}) {
         code,
         stdout,
         stderr,
+        outputCapture: {
+          limitBytesPerStream: MAX_OUTPUT,
+          stdoutBytes,
+          stderrBytes,
+          stdoutTruncated: stdoutBytes > MAX_OUTPUT,
+          stderrTruncated: stderrBytes > MAX_OUTPUT,
+        },
         stoppedBy,
         spawnError,
         startedAt,
@@ -310,6 +327,7 @@ export async function udpEcho(host, port, nonce, { signal, run = exec }) {
       requestedBytes: UDP_SAMPLE_COUNT * UDP_PACKET_BYTES * 2,
       transferredBytes: null,
       targetHost: host,
+      resolvedAddress: value?.resolvedAddress ?? (net.isIP(host) ? host : null),
       details: {
         protocolVersion: 1,
         samples,
@@ -735,11 +753,14 @@ export function parseTraceroute({ stdout, stderr }) {
   return { target, samples };
 }
 
-export async function traceroute(host, { signal, run = exec }) {
+export async function traceroute(
+  host,
+  { signal, run = exec, timeoutMs = TRACE.deadlineMs },
+) {
   const timestamp = new Date().toISOString();
   const outcome = await run('traceroute', tracerouteArgs(host), {
     signal,
-    timeoutMs: TRACE.deadlineMs,
+    timeoutMs,
   });
   const parsed = parseTraceroute(outcome);
   const samples = parsed.samples.map((s, sequence) => ({
@@ -789,7 +810,7 @@ export async function traceroute(host, { signal, run = exec }) {
         probesPerHop: TRACE.perHop,
         probeBytes: TRACE.packetBytes - 28,
         timeoutPerProbeMs: 1000,
-        deadlineMs: TRACE.deadlineMs,
+        deadlineMs: timeoutMs,
         reached: reachedHop !== null,
         reachedHop,
         complete: reason === 'complete',
@@ -932,6 +953,7 @@ export async function paperHttp(job, { signal, run = exec }) {
     const outcome = await run(
       'curl',
       [
+        '-q', // Must be first: ignore the reference computer's .curlrc.
         '--ipv4',
         '--http1.1',
         '--noproxy',
@@ -994,7 +1016,9 @@ export async function paperHttp(job, { signal, run = exec }) {
     if (job.type === 'dns_resolver' && bodyComplete)
       try {
         response = JSON.parse(data.toString('utf8'));
-      } catch {}
+      } catch {
+        // Keep the raw command output and report the resolver response as unavailable.
+      }
     const resolverStatus =
       typeof response?.status === 'string' ? response.status : null;
     const resolver = net.isIP(response?.resolver ?? '')
@@ -1059,30 +1083,106 @@ export async function paperHttp(job, { signal, run = exec }) {
     await rm(directory, { recursive: true, force: true });
   }
 }
-export async function paperTrace(job, { signal, run = exec }) {
+/** Bound the wait even though the OS resolver itself cannot be cancelled. */
+export async function resolveIPv4(
+  host,
+  { signal, timeoutMs = 20000, lookup = dns.lookup } = {},
+) {
+  const failure = (type, message) =>
+    Object.assign(new Error(message), { type });
+  if (signal?.aborted)
+    throw failure('cancelled', 'Hostname resolution cancelled');
+  let timer, cancel;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        if (signal?.aborted)
+          throw failure('cancelled', 'Hostname resolution cancelled');
+        return lookup(host, { family: 4 });
+      }),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(failure('timeout', 'Hostname resolution deadline exceeded')),
+          Math.max(0, timeoutMs),
+        );
+        cancel = () =>
+          reject(failure('cancelled', 'Hostname resolution cancelled'));
+        signal?.addEventListener('abort', cancel, { once: true });
+        if (signal?.aborted) cancel();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (cancel) signal?.removeEventListener('abort', cancel);
+  }
+}
+
+export async function paperTrace(
+  job,
+  { signal, run = exec, lookup = dns.lookup, now = () => performance.now() },
+) {
   const spec = PAPER_REGISTRY.traces.find(t => t.id === job.targetId);
-  const started = performance.now();
+  const started = now();
+  const timeoutMs = job.timeoutMs ?? TRACE.deadlineMs;
+  const runs = [];
   let address = spec.host,
     resolutionMs = null;
   try {
+    if (signal?.aborted)
+      throw Object.assign(new Error('Traceroute cancelled'), {
+        type: 'cancelled',
+      });
     if (spec.mode === 'hostname') {
-      address = (await dns.lookup(spec.host, { family: 4 })).address;
-      resolutionMs = performance.now() - started;
+      const timestamp = new Date().toISOString();
+      try {
+        address = (
+          await resolveIPv4(spec.host, {
+            signal,
+            lookup,
+            timeoutMs: Math.min(20000, timeoutMs),
+          })
+        ).address;
+      } finally {
+        resolutionMs = now() - started;
+        runs.push({
+          argv: ['node:dns.lookup', spec.host, 'IPv4'],
+          startedAt: timestamp,
+          durationMs: resolutionMs,
+          stdout: address === spec.host ? '' : address,
+          stderr: '',
+          code: address === spec.host ? 1 : 0,
+        });
+      }
     }
-    const result = await traceroute(address, { signal, run });
+    const remainingMs = timeoutMs - (now() - started);
+    if (remainingMs <= 0)
+      throw Object.assign(
+        new Error('Traceroute overall deadline exceeded during resolution'),
+        { type: 'timeout' },
+      );
+    const result = await traceroute(address, {
+      signal,
+      run,
+      timeoutMs: remainingMs,
+    });
     return {
       ...result,
+      runs: [...runs, ...result.runs],
       fields: {
         ...result.fields,
+        durationMs: now() - started,
         targetId: spec.id,
         targetMode: spec.mode,
         targetHost: spec.host,
         resolvedAddress: address,
         resolutionMs,
+        overallDeadlineMs: timeoutMs,
         roundId: job.roundId,
       },
     };
-  } catch {
+  } catch (error) {
+    if (runs.length) runs[runs.length - 1].stderr = String(error.message);
     return {
       fields: {
         type: 'traceroute',
@@ -1093,11 +1193,13 @@ export async function paperTrace(job, { signal, run = exec }) {
         success: false,
         value: null,
         unit: 'hops',
-        durationMs: performance.now() - started,
-        errorType: 'network',
-        errorMessage: 'Reference hostname resolution failed',
+        durationMs: now() - started,
+        resolutionMs,
+        overallDeadlineMs: timeoutMs,
+        errorType: error.type ?? 'network',
+        errorMessage: String(error.message),
       },
-      runs: [],
+      runs,
     };
   }
 }

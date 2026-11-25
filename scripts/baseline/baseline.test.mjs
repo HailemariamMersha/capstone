@@ -3,13 +3,15 @@ import { COLLECTOR_POLICY } from '../../src/trips/scheduler.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { pairedTimes, QUALIFICATION_MS, runSchedule } from './schedule.mjs';
 import * as tools from './tools.mjs';
 import { clockTime, createOutput, duration, envValues, isTunnel, parseRoute } from './run.mjs';
 import { protocolSummary, wilson } from './summary.mjs';
-import { compare, loadSessions, markdown, readInputs } from './compare.mjs';
+import { compare, endpointOf, loadSessions, markdown, readInputs, saveComparison } from './compare.mjs';
+import { fingerprint, verifyEvidence } from './evidence.mjs';
 
 const fixture = name =>
   readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', name), 'utf8');
@@ -210,7 +212,7 @@ test('a sleeping computer is recorded as a gap and its timing is rejected', asyn
   assert.ok(r.events.some(e => e.kind === 'collector_gap'));
 });
 
-test('paired mode stays clear of the phone heavy tests', () => {
+test('paired light offsets and historical transfer offsets remain deterministic', () => {
   for (const lag of [0, 5000, 45000, 200000, 400000, 3500000, 7000000]) {
     const p = pairedTimes(T0, T0 + lag);
     assert.ok(p.qualifiedAt >= T0 + lag);
@@ -481,6 +483,7 @@ test('terminal DNS discovery uses random host without identifiers and preserves 
   const result = await tools.paperHttp(job, {
     run: async (command, args) => {
       argv = args;
+      assert.equal(args[0], '-q', 'ignore local curl configuration before all other arguments');
       assert.equal(command, 'curl');
       await writeFile(
         args[args.indexOf('-o') + 1],
@@ -542,4 +545,455 @@ test('terminal CDN rejects changed content and retains partial failure bytes', a
   assert.equal(result.fields.value, null);
   assert.equal(result.fields.paper.bodyBytes, 7);
   assert.equal(result.fields.paper.bodyComplete, false);
+});
+
+test('paired paper runs send no heavy tests, traces or resolver discovery', async () => {
+  const paired = pairedTimes(T0, T0);
+  const r = await simulate({
+    durationMs: 3600000,
+    policy: PAPER_TRIP_POLICY,
+    paired,
+    controls: false,
+  });
+  assert.equal(r.trip.validationMode, 'paired_light_only');
+  assert.ok(r.saved.length > 150);
+  assert.ok(
+    r.saved.every(m =>
+      ['icmp_burst', 'tcp_connect', 'udp_echo'].includes(m.type),
+    ),
+  );
+  assert.ok(
+    r.events.some(
+      e =>
+        e.kind === 'validation_scope' &&
+        e.details.excluded.includes('cdn_fetch'),
+    ),
+  );
+  await assert.rejects(
+    simulate({
+      durationMs: 3600000,
+      policy: PAPER_TRIP_POLICY,
+      paired,
+      mlab: true,
+    }),
+    /light probes only/,
+  );
+});
+
+test('comparison excludes different and mixed destinations instead of calculating an apparent error', () => {
+  const phone = session('p', 0, 100, { phone: true });
+  const baseline = session('b', 30000, 10, { target: '192.0.2.2' });
+  const r = compare([phone], [baseline], []).paired.icmp_burst;
+  assert.equal(r.pairs, 0);
+  assert.equal(r.medianDifferenceMs, null);
+  assert.equal(r.meanDifferenceMs, null);
+  assert.deepEqual(r.excludedCounts, { phone: 30, baseline: 30 });
+  assert.ok(r.excluded.every(e => e.reason === 'different_destination'));
+  phone.measurements[0].details.samples.push({
+    sequence: 1,
+    rttMs: 10,
+    packet: { resolvedAddress: '192.0.2.3' },
+  });
+  assert.equal(
+    endpointOf(phone.measurements[0]).reason,
+    'mixed_target_addresses',
+  );
+});
+
+test('TCP compares verified socket remote IP and port, not hostnames or a different port', () => {
+  const phone = session('p', 0, 10, { phone: true });
+  const baseline = session('b', 30000, 10);
+  for (const s of [phone, baseline])
+    for (const m of s.measurements) {
+      m.type = 'tcp_connect';
+      m.details.samples = [{ sequence: 0, rttMs: 10 }];
+      m.details.targetPort = 443;
+      m.raw = {
+        callbacks: [{ value: { remoteAddress: '192.0.2.1', remotePort: 443 } }],
+      };
+    }
+  let r = compare([phone], [baseline], []).paired.tcp_connect;
+  assert.equal(r.pairs, 30);
+  assert.equal(r.medianDifferenceMs, 0);
+  assert.ok(r.records.every(p => p.port === 443 && p.differenceMs === 0));
+  for (const m of baseline.measurements) {
+    m.details.targetPort = 80;
+    m.raw.callbacks[0].value.remotePort = 80;
+  }
+  r = compare([phone], [baseline], []).paired.tcp_connect;
+  assert.equal(r.pairs, 0);
+  assert.ok(r.excluded.every(e => e.reason === 'different_destination'));
+  delete phone.measurements[0].raw;
+  assert.equal(endpointOf(phone.measurements[0]).reason, 'unknown_target');
+});
+
+test('comparison excludes other-device heavy overlap and known invalid context', () => {
+  const phone = session('p', 0, 30, { phone: true });
+  const baseline = session('b', 30000, 25);
+  phone.measurements.push({
+    type: 'cdn_fetch',
+    timestamp: new Date(T0 + 25000).toISOString(),
+    durationMs: 20000,
+    success: true,
+  });
+  baseline.measurements[0].durationMs = 1000;
+  const r = compare([phone], [baseline], []);
+  assert.equal(r.paired.icmp_burst.pairs, 29);
+  assert.ok(
+    r.paired.icmp_burst.excluded.some(
+      e => e.role === 'baseline' && e.reason === 'other_device_heavy_overlap',
+    ),
+  );
+  for (const environment of [
+    { vpnAllowed: true },
+    { wifi: false },
+    { clock: { ok: false } },
+  ]) {
+    const invalid = compare([phone], [baseline], [], environment).paired
+      .icmp_burst;
+    assert.equal(invalid.pairs, 0);
+    assert.equal(invalid.meanDifferenceMs, null);
+  }
+  const movedPhone = session('moved', 0, 30, { phone: true });
+  const stationary = session('stationary', 30000, 25);
+  movedPhone.measurements[0].networkSnapshot = { publicIp: '203.0.113.1', asn: 64512 };
+  for (const m of stationary.measurements) m.networkSnapshot = { publicIp: '198.51.100.7', asn: 5384 };
+  const moved = compare([movedPhone], [stationary], []).paired.icmp_burst;
+  assert.equal(moved.pairs, 29);
+  assert.ok(moved.excluded.some(e => e.measurementId === 'moved-0' && e.reason === 'different_network'));
+});
+
+test('duplicate sessions are counted once but conflicting evidence is rejected', () => {
+  const s = session('p', 0, 30, { phone: true });
+  assert.equal(loadSessions([s, structuredClone(s)], 'phone').length, 1);
+  const changed = structuredClone(s);
+  changed.measurements[0].value = 999;
+  assert.throws(
+    () => loadSessions([s, changed], 'phone'),
+    /Conflicting exports/,
+  );
+});
+
+test('resolver aborts and times out promptly without starting traceroute', async () => {
+  const signal = new AbortController();
+  signal.abort();
+  let lookups = 0,
+    probes = 0;
+  const job = {
+    type: 'traceroute',
+    targetId: 'google_domain',
+    roundId: 'test',
+    timeoutMs: 10,
+  };
+  const run = async () => {
+    probes++;
+    throw new Error('must not run');
+  };
+  const lookup = async () => {
+    lookups++;
+    return new Promise(() => {});
+  };
+  const cancelled = await tools.paperTrace(job, {
+    signal: signal.signal,
+    run,
+    lookup,
+  });
+  assert.equal(cancelled.fields.errorType, 'cancelled');
+  assert.equal(lookups, 0);
+  const timed = await tools.paperTrace(job, {
+    signal: new AbortController().signal,
+    run,
+    lookup,
+  });
+  assert.equal(timed.fields.errorType, 'timeout');
+  assert.equal(timed.runs[0].argv[0], 'node:dns.lookup');
+  assert.equal(probes, 0);
+  const during = new AbortController();
+  const pending = tools.resolveIPv4('example.invalid', {
+    signal: during.signal,
+    lookup,
+    timeoutMs: 20000,
+  });
+  during.abort();
+  await assert.rejects(pending, e => e.type === 'cancelled');
+});
+
+test('DNS resolution consumes the same 45-second traceroute budget', async () => {
+  let elapsed = 0,
+    received;
+  const result = await tools.paperTrace(
+    { targetId: 'google_domain', roundId: 'test', timeoutMs: 45000 },
+    {
+      signal: new AbortController().signal,
+      now: () => elapsed,
+      lookup: async () => {
+        elapsed += 19000;
+        return { address: '192.0.2.1', family: 4 };
+      },
+      run: async (_command, _args, options) => {
+        received = options.timeoutMs;
+        elapsed += 26000;
+        return {
+          stdout: fixture('trace-linux.txt'),
+          stderr: '',
+          durationMs: 26000,
+          code: 0,
+          argv: ['traceroute'],
+        };
+      },
+    },
+  );
+  assert.equal(received, 26000);
+  assert.equal(result.fields.durationMs, 45000);
+  assert.equal(result.fields.resolutionMs, 19000);
+  assert.equal(result.runs.length, 2);
+});
+
+test('CDN totals are kept per provider rather than pooled in generic summaries', () => {
+  const rows = ['google', 'cloudflare'].map((targetId, i) => ({
+    type: 'cdn_fetch',
+    targetId,
+    success: true,
+    unit: 'ms',
+    value: 100 + i * 100,
+  }));
+  assert.equal(protocolSummary('cdn_fetch', rows).medianValue, null);
+});
+
+test('saved run has checkpoints, protocol CSVs, raw links, private files and a verifiable manifest', async () => {
+  const { mkdtemp, readFile, writeFile, stat, rm } = await import(
+    'node:fs/promises'
+  );
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'baseline-bundle-test-'),
+  );
+  try {
+    const output = await createOutput(directory, {
+      runId: 'synthetic-test',
+      config: { collectionMode: 'linux_baseline' },
+      environment: { wifi: true },
+    });
+    await output.openSegment(0);
+    await output.setContext({ asn: 64512, publicIp: '192.0.2.1' });
+    const at = new Date().toISOString(),
+      id = output.newId();
+    const raw = await output.saveRaw(id, 'icmp_burst', [
+      { argv: ['ping', '192.0.2.2'], stdout: 'synthetic', code: 0 },
+    ]);
+    const m = {
+      id,
+      sessionId: output.sessionId,
+      type: 'icmp_burst',
+      method: 'baseline_ping_burst',
+      timestamp: at,
+      targetHost: '192.0.2.2',
+      success: true,
+      value: 0,
+      unit: 'ms',
+      durationMs: 0,
+      errorType: null,
+      networkSnapshot: output.snapshot,
+      details: {
+        complete: true,
+        samples: [{ sequence: 0, timestamp: at, rttMs: 0, errorType: null }],
+      },
+      raw: {
+        library: 'ping',
+        version: 'fixture',
+        source: 'terminal_tool_output',
+        request: { outputFile: raw, timestampNs: '18446744073709551615' },
+        callbacks: [],
+      },
+    };
+    await Promise.all([
+      output.event('a', {}),
+      output.event('b', {}),
+      output.save(m, false),
+    ]);
+    const active = JSON.parse(
+      await readFile(path.join(directory, 'active-segment.json'), 'utf8'),
+    );
+    assert.equal(active.measurements.length, 1);
+    assert.equal(active.events.length, 2);
+    await assert.rejects(
+      createOutput(directory, {
+        runId: 'overwrite',
+        config: {},
+        environment: {},
+      }),
+      /not empty/,
+    );
+    await output.closeSegment('periodic_upload');
+    await output.openSegment(1);
+    const secondId = output.newId();
+    const secondRaw = await output.saveRaw(secondId, 'icmp_burst', [{ argv: ['ping', '192.0.2.2'], stdout: '', code: null, stoppedBy: 'cancelled' }]);
+    await output.save({ ...m, id: secondId, sessionId: output.sessionId, success: false, value: null, errorType: 'cancelled',
+      raw: { ...m.raw, request: { outputFile: secondRaw } },
+      details: { complete: false, samples: [{ sequence: 0, timestamp: at, rttMs: null, errorType: 'cancelled' }] } }, false);
+    const summary = await output.finish({
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+      reason: 'operator_stop',
+    });
+    assert.equal(summary.status, 'stopped');
+    assert.equal(summary.measurements, 2);
+    assert.equal(summary.failures, 0);
+    assert.equal(summary.interrupted, 1);
+    const aggregated = JSON.parse(
+      await readFile(path.join(directory, 'baseline.json'), 'utf8'),
+    );
+    assert.equal(
+      aggregated.sessions[0].measurements[0].raw.request.timestampNs,
+      '18446744073709551615',
+    );
+    assert.equal(
+      loadSessions(await readInputs([directory]), 'baseline').length,
+      2,
+    );
+    const { parseCsv } = await import('../measurements/analyze.cjs');
+    const csvRows = parseCsv(
+      await readFile(path.join(directory, 'analysis/icmp.csv'), 'utf8'),
+    ).rows;
+    assert.equal(csvRows.length, 2);
+    assert.equal(csvRows[0].rttMs, '0');
+    assert.equal(csvRows[1].rttMs, '');
+    assert.match(csvRows[1].recordPath, /^\/sessions\/1\/measurements\/0\//);
+    assert.equal(
+      (await stat(path.join(directory, 'analysis/icmp.csv'))).mode & 0o077,
+      0,
+    );
+    assert.equal((await verifyEvidence(directory)).ok, true);
+    const original = await fingerprint(path.join(directory, 'report.md'));
+    assert.ok(original.bytes > 0 && original.sha256.length === 64);
+    await writeFile(path.join(directory, 'report.md'), 'changed');
+    assert.ok(
+      (await verifyEvidence(directory)).issues.some(
+        e => e.path === 'report.md' && e.reason === 'content_changed',
+      ),
+    );
+    await rm(path.join(directory, raw));
+    assert.ok(
+      (await verifyEvidence(directory)).issues.some(
+        e => e.path === raw && e.reason === 'missing_file',
+      ),
+    );
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test('unexpected errors retain measurements and mark the run incomplete', async () => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'baseline-error-test-'),
+  );
+  try {
+    const output = await createOutput(directory, {
+      runId: 'error-test',
+      config: {},
+      environment: {},
+    });
+    await output.openSegment(0);
+    await output.event('still_useful_evidence', { reason: 'fixture' });
+    const result = await output.finish(
+      { startedAt: Date.now(), endedAt: Date.now() },
+      { error: new Error('synthetic failure') },
+    );
+    assert.equal(result.status, 'error');
+    const run = JSON.parse(
+      await readFile(path.join(directory, 'run.json'), 'utf8'),
+    );
+    assert.equal(run.error, 'synthetic failure');
+    const segment = JSON.parse(
+      await readFile(path.join(directory, 'segment-000.json'), 'utf8'),
+    );
+    assert.equal(segment.session.state, 'interrupted');
+    assert.equal(segment.events[0].kind, 'still_useful_evidence');
+    assert.equal((await verifyEvidence(directory)).ok, true);
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test('comparison saves individual pairs, exclusion reasons and exact inputs without overwriting', async () => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const dir = await mkdtemp(
+    path.join(os.tmpdir(), 'baseline-comparison-test-'),
+  );
+  try {
+    const phone = [session('p', 0, 30, { phone: true })],
+      baseline = [session('b', 30000, 25)];
+    const result = compare(phone, baseline, []);
+    await saveComparison(dir, result, {
+      phoneSessions: phone,
+      baselineSessions: baseline,
+      sources: {},
+    });
+    assert.equal((await verifyEvidence(dir)).ok, true);
+    const { parseCsv } = await import('../measurements/analyze.cjs');
+    const pairs = parseCsv(
+      await readFile(path.join(dir, 'paired.csv'), 'utf8'),
+    ).rows;
+    assert.equal(pairs.length, 30);
+    assert.equal(pairs[0].differenceMs, '5');
+    assert.equal(pairs[0].phoneMeasurementId, 'p-0');
+    const inputs = JSON.parse(
+      await readFile(path.join(dir, 'inputs.json'), 'utf8'),
+    );
+    assert.deepEqual(inputs.phoneSessions, phone);
+    await assert.rejects(saveComparison(dir, result, {}), /not empty/);
+  } finally {
+    await rm(dir, { recursive: true });
+  }
+});
+
+test('process output truncation is bounded and explicitly marked in raw evidence', async () => {
+  const result = await tools.exec(process.execPath, ['-e', "process.stdout.write('x'.repeat(8*1024*1024+65536));process.stderr.write('example')"], { timeoutMs: 5000 });
+  assert.equal(result.code, 0);
+  assert.equal(Buffer.byteLength(result.stdout), 8 * 1024 * 1024);
+  assert.equal(result.outputCapture.stdoutTruncated, true);
+  assert.equal(result.outputCapture.stdoutBytes, 8 * 1024 * 1024 + 65536);
+  assert.equal(result.outputCapture.stderrTruncated, false);
+  assert.equal(result.stderr, 'example');
+});
+
+test('comparison CLI accepts whole trips, verifies evidence and refuses modified baseline files', async () => {
+  const { mkdtemp, mkdir, readFile, writeFile, rm } = await import('node:fs/promises');
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'baseline-cli-test-'));
+  const baseDir = path.join(directory, 'baseline');
+  try {
+    await mkdir(baseDir);
+    const output = await createOutput(baseDir, { runId: 'synthetic-cli-test', config: { collectionMode: 'linux_baseline' }, environment: { wifi: true, clock: { ok: true } } });
+    await output.openSegment(0);
+    await output.setContext({ publicIp: '192.0.2.1', asn: 64512 });
+    const id = output.newId();
+    const at = new Date().toISOString();
+    const raw = await output.saveRaw(id, 'icmp_burst', [{ argv: ['ping'], stdout: 'synthetic fixture only', code: 0 }]);
+    await output.save({ id, sessionId: output.sessionId, type: 'icmp_burst', method: 'baseline_ping_burst',
+      timestamp: at, success: true, value: 25, unit: 'ms', durationMs: 0, targetHost: '192.0.2.2',
+      networkSnapshot: output.snapshot, details: { complete: true, samples: [{ sequence: 0, timestamp: at, rttMs: 25, resolvedAddress: '192.0.2.2' }] },
+      raw: { library: 'ping', version: 'fixture', source: 'terminal_tool_output', request: { outputFile: raw }, callbacks: [] } }, false);
+    await output.finish({ startedAt: Date.now(), endedAt: Date.now(), reason: 'duration_reached' });
+    const baseline = JSON.parse(await readFile(path.join(baseDir, 'baseline.json'), 'utf8'));
+    const phoneSession = structuredClone(baseline.sessions[0]);
+    phoneSession.session.config.collectionMode = 'flight_auto';
+    phoneSession.session.id = 'synthetic-phone';
+    phoneSession.measurements[0].id = 'synthetic-phone-probe';
+    phoneSession.measurements[0].value = 30;
+    const phoneFile = path.join(directory, 'phone-trip.json');
+    await writeFile(phoneFile, JSON.stringify({ trip: { id: 'synthetic-trip', collectionMode: 'ground_test' }, segments: [phoneSession] }));
+    const args = ['--experimental-strip-types', '--no-warnings', path.join(path.dirname(fileURLToPath(import.meta.url)), 'compare.mjs'), '--phone', phoneFile, '--baseline', baseDir, '--out'];
+    const out = path.join(directory, 'comparison');
+    const success = await tools.exec(process.execPath, [...args, out], { timeoutMs: 5000 });
+    assert.equal(success.code, 0, success.stderr);
+    const inputs = JSON.parse(await readFile(path.join(out, 'inputs.json'), 'utf8'));
+    assert.equal(inputs.baselineIntegrity, 'verified');
+    assert.equal(inputs.sources.phone[0].sha256, (await fingerprint(phoneFile)).sha256);
+    const report = JSON.parse(await readFile(path.join(out, 'comparison.json'), 'utf8'));
+    assert.equal(report.paired.icmp_burst.medianDifferenceMs, 5);
+    await writeFile(path.join(baseDir, 'summary.json'), '{}');
+    const refused = await tools.exec(process.execPath, [...args, path.join(directory, 'refused')], { timeoutMs: 5000 });
+    assert.notEqual(refused.code, 0);
+    assert.match(refused.stderr, /integrity verification failed/i);
+  } finally { await rm(directory, { recursive: true }); }
 });
