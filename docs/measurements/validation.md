@@ -6,17 +6,19 @@ This page covers what the script does, how to run it, which tools it uses and wh
 
 **Paper-suite update, 25 November 2026:** the default harness now imports the shared paper registry and runs five trace targets, five identical-object CDN fetches and resolver discovery. Controlled pairs remain only in explicit historical test policies. See [the exact schedule and HTTP semantics](paper-suite.md). Paired physical accuracy validation remains pending.
 
+**Validation update, 25 November 2026:** simultaneous phone/computer runs now use **light probes only on the computer**. Full paper-suite reference runs are separate. Comparison differences require the same verified destination IP, protocol and TCP/UDP port. Exclusions are saved individually. Every finished run automatically saves readable CSVs, sanity checks, a report and an integrity manifest; an open segment is checkpointed during collection.
+
 **Historical status, 23 November 2026:** two 20-minute baselines have been collected over real Wi-Fi to the lab server: see [First results](#first-results-23-november-2026). **No run beside a phone has been done yet**, so there are no same-time differences and no accuracy figures. See [What has been tested](#what-has-been-tested).
 
 ## What the script does
 
-It copies the app's collection schedule and replaces the phone's measurement libraries with terminal tools. Only the measurement traffic itself is sent: results stay on the computer, except that M-Lab publishes its own if you request that test.
+Standalone mode follows the app's probe schedule and replaces the phone's measurement libraries with terminal tools. Paired mode runs ICMP, UDP and TCP on the computer; it deliberately omits its paper jobs, extra controls and M-Lab so a second heavy benchmark does not compete with the phone. Only measurement and context traffic is sent: results stay on the computer, except that M-Lab publishes its own if you request that test in standalone mode.
 
 Times with a plus sign count from when probing begins.
 
 | When | What happens |
 | --- | --- |
-| First 60 s | Waiting. Phones take about 60 s to qualify: both automatic trips in the 21 November exports sent their first probe 60 s after Start |
+| First 60 s, standalone only | Assumed qualification delay based on two historical 21 November trips. This does not exercise the detector or predict every phone's qualification time |
 | Every 60 s | ICMP burst from +1 s, UDP burst from +10 s, TCP connection from +20 s |
 | +1, +3, +5, +7, +9 min of each round | Five traceroute targets, rotated |
 | +30 s of each round | NextDNS resolver discovery |
@@ -26,7 +28,7 @@ Times with a plus sign count from when probing begins.
 | Every 60 s | Public address and provider (ASN) lookup |
 | Every 15 min from launch | Upload gap: the segment closes and probing stops for 22 s |
 
-As in the app, probes run one at a time, late slots are skipped rather than replayed, and heavy tests are kept 60 s apart. The 22 s gap is the median of 53 upload pauses in saved phone exports, which ranged from 0.4 to 31 s.
+The table describes standalone mode. As in the app, probes run one at a time, late slots are skipped rather than replayed, and heavy tests are kept 60 s apart. The 22 s gap is the median of 53 historical upload pauses, not an actual upload. Use `--upload-pause 25s` for a reference run with the current 25 s live-upload allowance; actual phone pauses can be shorter or slip within the boundary grace. The simulator does not claim identical execution times.
 
 Probe intervals, tolerances, transfer sizes and timeouts, data allowances and sample counts are imported from the app's source (`src/trips/` and `src/measurements/`), so changes there carry over. The rest is copied: **repeat any change to the loop in `src/trips/runtime.ts` in `scripts/baseline/schedule.mjs`, and any change to ICMP, UDP or traceroute settings in `tools.mjs` or `udp_burst.py`.**
 
@@ -41,7 +43,9 @@ A tool had to be widely used, send the same kind of traffic as the app, run with
 | ICMP echo | `icmpenguin` | `ping` (iputils on Linux) | The standard reference for echo time. Sends the same 64-byte payload and TTL | `fping` and a single `ping -c 10` send on their own timer. The app waits for each reply, then pauses 250 ms, so the script runs one `ping -c 1` per echo |
 | Traceroute | `icmpenguin` | `traceroute` | Matches the configured IPv4 UDP method: destination ports starting at 33434, 20 hops, three probes per hop, 1 s wait, 60-byte IP packets (32-byte probe plus 28-byte IP/UDP headers) | `mtr` is built around repeated rounds, while the app makes one pass |
 | TCP connection | `react-native-tcp-socket` | `curl` | Reports name lookup and connection times separately. Already on most systems | `hping3` needs root. `tcping` tools are less common and vary between versions |
-| Controlled download and upload | RNFS, React Native `fetch` | `curl` | Uses the same server, sizes and limits, and times DNS, connect, TLS, first byte and total | `wget` has no phase timings. `iperf3` needs its own server and measures something else |
+| CDN object timing | OkHttp through a thin Android adapter | `curl` | Fetches the same 89,501-byte object from the five registered providers, checks its SHA-256, and records DNS/TCP/TLS/first-byte/body/total phases | A generic speed test does not measure the same object or callback scopes |
+| Resolver discovery | OkHttp through the same adapter | `curl` | Uses an independent random hostname under `test.nextdns.io`; preserves unavailable resolver results | A plain resolver query cannot reproduce the service's egress-resolver observation |
+| Historical controlled download and upload | RNFS, React Native `fetch` | `curl` | Retained in old policies and fixtures only | Not scheduled in new default runs |
 | M-Lab NDT7 | `ndt7-client-android` (patched) | `ndt7-client` | M-Lab's official command-line client, same protocol | Other speed tests use different servers and methods |
 | UDP echo | `react-native-udp` | `udp_burst.py` | **Not a standard tool.** See below | `nping`, `socat` and `iperf3` do not produce the app's numbered, paced packets and match the replies |
 | Packet capture, optional | None | `tcpdump` | Independent record of when packets left and arrived | – |
@@ -66,11 +70,16 @@ traceroute -4 -N 1 -n -m 20 -q 3 -w 1 -p 33434 google.com 60
 curl -q -4 -sS --noproxy '*' --http1.1 -I -o /dev/null \
   --connect-timeout 10 --max-time 10 -w '%{json}' https://google.com
 
-# Download, 5,000,000 bytes within 90 s (upload: 1,000,000 bytes within 30 s)
-curl -q -4 -sS --noproxy '*' --http1.1 --connect-timeout 10 --max-time 90 \
-  --speed-limit 1 --speed-time 30 -H 'Connection: close' -H 'Cache-Control: no-cache' \
-  -H 'Accept-Encoding: identity' -D headers -o body -w '%{json}' \
-  "$PROBE_URL/api/v1/probe/download/5000000?request=$ID"
+# One CDN example; the harness repeats this for the five registered URLs.
+curl -q --ipv4 --http1.1 --noproxy '*' --silent --show-error \
+  --max-time 90 --max-filesize 524288 -H 'Accept-Encoding: identity' \
+  -D headers -o body -w '%{json}' \
+  https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js
+
+# Resolver discovery: the harness generates a fresh 32-hex-character nonce.
+curl -q --ipv4 --http1.1 --noproxy '*' --silent --show-error \
+  --max-time 20 --max-filesize 16384 -H 'Accept-Encoding: identity' \
+  -D headers -o body -w '%{json}' "https://$NONCE.test.nextdns.io/"
 
 # UDP, 20 packets of 128 bytes, 250 ms apart, up to 3 s for replies
 python3 scripts/baseline/udp_burst.py --host $UDP_HOST --port 9876 --nonce $ID
@@ -80,6 +89,8 @@ ndt7-client -format=json
 ```
 
 On macOS, `ping` adds its 1 s send interval to the wait, so a lost echo took 3 s instead of the app's 2 s. `-i 0.1` brings it to 2.1 s.
+
+`-q` is the first curl argument, so local `.curlrc` settings cannot add redirects, retries or other request changes. Hostname traceroutes first resolve and pin IPv4, with a 20 s resolution limit inside the same 45 s overall attempt deadline. Process termination can add up to two seconds of kill grace; the actual elapsed duration is retained. Cancellation interrupts the wait for resolution; the OS resolver itself may finish later. Raw evidence records the lookup and traceroute separately. Standalone preflight checks routing to all five trace targets, all five CDN hosts, the resolver-discovery host, Google and the probe server. Paired preflight checks only its enabled Google/lab targets and does not require traceroute. These are observations at preflight, not a guarantee that routes remain unchanged.
 </details>
 
 ## Running it
@@ -96,9 +107,10 @@ You need Node 22.13 or later and Python 3. No npm install is required.
 
 ```sh
 npm run baseline:run -- --check           # checks only
-npm run baseline:run -- --duration 20m    # alone
+npm run baseline:run -- --duration 20m --upload-pause 25s  # full suite, phone stopped
 npm run baseline:run -- --help            # all options
 npm run baseline:test                     # automated tests
+npm run baseline:lint                     # Node ESM lint checks (npm dependencies required)
 ```
 
 Ctrl+C stops and saves.
@@ -108,10 +120,15 @@ Ctrl+C stops and saves.
 Start the trip on the phone and note the time it begins collecting. Within two minutes, run:
 
 ```sh
-npm run baseline:run -- --duration 1h --phone-qualified-at 14:03:20
+npm run baseline:run -- --duration 1h --upload-pause 25s \
+  --phone-qualified-at 2026-11-25T14:03:20+04:00
 ```
 
-The baseline shifts its light probes by 30 s, M-Lab to +3:45 and transfers to +7:30, so the two devices do not compete for the link. This is a deliberate difference from the app's timing; only a run on its own copies it exactly.
+Replace the example with the phone's actual qualification timestamp. An ISO timestamp with an offset or `Z` avoids timezone ambiguity; `HH:MM:SS` uses the computer's local date/time.
+
+This mode shifts **ICMP/UDP/TCP by 30 s** and omits the computer's traceroutes, resolver discovery, CDN fetches, extra controls and M-Lab. It rejects `--accept-mlab` rather than silently ignoring it. A fixed shift cannot safely interleave two CDN requests that can each last 90 s. Run the full suite on the computer with the phone stopped as a separate experiment. Its heavy-test observations remain useful per-target references, but non-simultaneous medians do not establish app accuracy.
+
+The phone can still run its own heavy tests. The comparison excludes an observation whose execution interval overlaps the other device's CDN, controlled transfer or M-Lab test. This reduces a known source of interference; it does not promise an unloaded link or detect unrelated traffic. For packet-level timing, capture the phone at a controlled Wi-Fi gateway.
 
 ### Options that need care
 
@@ -127,9 +144,32 @@ Files go to `build/baseline/<run>/`, which Git ignores. The runner uses owner-on
 | --- | --- |
 | `segment-NNN.json` | Results in the phone's export format, marked `linux_baseline`. Works with `npm run measurements:analyze` |
 | `control.json` | Extra router and lab-server probes that the app does not run |
-| `summary.json` | Totals per measurement, with the dashboard's field names. Remove `config` and `environment` before publishing |
-| `raw/` | Unmodified output from every tool |
-| `journal.jsonl` | Every result as it happened, in case of a crash |
+| `run.json` | Recording/final status, configuration, tool versions, initial route/clock context, Git revision, dirty-source indication, source-file SHA-256 fingerprints, warnings and helper/capture status |
+| `baseline.json` | All closed session exports in one file; accepted directly by `baseline:compare` |
+| `summary.json` | Counts and per-protocol summaries, with failures separated from interruptions; paper phases remain grouped by target |
+| `report.md` | Start here: UTC collection interval, run mode, protocol counts, target-specific paper results, sanity totals and links |
+| `raw/<measurement-id>.json` | Command arguments, stdout, stderr, duration and exit/cancellation state. `measurement.raw.request.outputFile` links to it. The existing process-output guard is recorded through byte counts and truncation flags when triggered |
+| `journal.jsonl` | Append-only measurements, events, network context and segment open/close records |
+| `active-segment.json` | Atomic checkpoint updated while a segment is open; removed after its closed export is written |
+| `trailing-events.json` | Events between segments or after final close, when present |
+| `analysis/icmp.csv`, `udp.csv`, `tcp.csv`, `traceroute.csv` | One retained probe/connection/hop sample per row, across all segments |
+| `analysis/cdn.csv`, `dns.csv`, `http.csv`, `http-latency-samples.csv` | Focused paper/HTTP views. Files for unscheduled methods contain headers only |
+| `analysis/sanity-checks.json` | All segment audits, with separate error/warning/unavailable totals and original JSON pointers |
+| `analysis/column-dictionary.md` | Generated definitions, datatypes, units, formulas and blank-value meanings for the CSVs |
+| `analysis/records.csv` | One parent measurement per row, linking its session/measurement ID, aggregate JSON pointer, closed segment filename, raw command filename, library/version, scheduling timestamps and outcome |
+| `manifest.json` | Relative file paths, lengths and SHA-256 fingerprints after finalisation; includes `probes.pcap` if requested |
+
+Raw JSON is authoritative. CSVs reuse the existing measurement dictionary and preserve parent/sample identifiers; repeated parent values must not be summed. In combined run CSVs, `recordPath` points into `baseline.json` (for example `/sessions/1/measurements/3/details/samples/0`); the audit for each segment retains pointers relative to that segment's own JSON file. `records.csv` is an index, not a second set of measurements: all its fields are strings except unavailable blanks; timestamps are ISO UTC, IDs match original records, paths are relative to the run directory and `outcome` uses the existing success/failure/interrupted/unavailable classification. Zero remains zero; unavailable values remain blank. Nanosecond timestamps remain decimal strings in the original JSON.
+
+The runner and comparison refuse nonempty output directories. `run.json` distinguishes `recording`, `complete`, `stopped` and `error`; Ctrl+C stops and finalises retained evidence. A process kill can leave `recording` plus the last active checkpoint and journal. Do not call that a completed run. A missing manifest means finalisation did not finish (historical runs also lack one). Analyse an active checkpoint into a separate folder if needed:
+
+```sh
+npm run measurements:analyze -- --input build/baseline/RUN/active-segment.json \
+  --out build/baseline/RUN-recovery
+npm run baseline:verify -- --input build/baseline/RUN
+```
+
+Verification detects changed, missing and unexpected files. Hashes detect accidental changes; they are not a cryptographic signature proving who collected the data. Keep the original run intact and put new comparisons/plots in sibling folders. `tcpdump` is stopped before hashing its capture. A local capture observes the reference computer, not the phone. No automatic result upload occurs.
 
 Never send these to the participant ingestion API. On the dashboard, baselines should be a separate source.
 
@@ -177,19 +217,21 @@ npm run baseline:compare -- --phone export.json \
 
 `--phone` accepts files or folders and can be repeated. The report contains:
 
-1. **Whether the runs can be compared:** time overlap, public address, provider, Google addresses, VPN, Wi-Fi and clock. Public addresses are compared but not printed.
+1. **Whether the runs can be compared:** time overlap, public address, provider, Google addresses, VPN, Wi-Fi and clock. Public addresses are compared but not printed in the Markdown report; private saved input JSON still contains them.
 2. **Totals:** success, loss with a 95% interval, median and 95th percentile.
-3. **Same-minute differences:** each phone result is matched once with the nearest baseline result within 45 s. The report gives the median of phone minus baseline, the middle half, and limits of agreement (mean ± 1.96 standard deviations).
+3. **Same-minute differences:** each eligible phone result is matched once with the nearest baseline result within 45 s **with the same verified destination IP, protocol and TCP/UDP port**. The report gives the median of phone minus baseline, the middle half, and limits of agreement (mean ± 1.96 standard deviations). Unknown destinations, bursts spanning multiple IPs, unavailable values, failed/interrupted attempts, invalid timing, known network/VPN/clock mismatches and other-device heavy overlaps are excluded. No eligible pairs means null statistics, not zero error.
 4. **UDP path and packet loss tables**, transfer phases and scheduling delays.
 
 Positive differences mean the phone's value was larger. Results interrupted by a clock gap are excluded from timing.
+
+The comparison folder contains `comparison.md`, `comparison.json`, `paired.csv` (one accepted pair with both IDs, timestamps and difference in ms), `excluded.csv` (one excluded source measurement with its reason), `inputs.json` (the parsed sessions actually used, source paths/hashes, controls, environment and baseline status/integrity) and its own `manifest.json`. A baseline with a final manifest is verified before comparison; changed/missing files stop the command. Historical or unfinished folders without manifests remain usable with an explicit warning. Raw terminal command files remain in the identified baseline run directory. Retain both folders. The same session exported twice is counted once; contradictory copies are rejected rather than silently picking one. Unknown clock/network context remains an explicit limitation even when destination-matched descriptive pairs can be formed.
 
 The report sets no pass or fail limits. **Decide the acceptable difference for each measurement before reading the results.**
 
 ### Limits
 
 - The computer has a different Wi-Fi radio, system and position. Agreement is a cross-check, not proof of the phone's accuracy. Disagreement does not by itself show an app fault.
-- In paired runs the devices share one link, about 30 s apart. Short changes in the network appear as differences.
+- In paired runs the light probes are about 30 s apart. Short changes in the network appear as differences, and slow probes can still overlap. Full-suite computer tests run separately; do not present those medians as simultaneous agreement.
 - Loss intervals assume independent probes. Real losses cluster, so the true uncertainty is wider.
 - Nothing here tests flight detection or in-flight conditions.
 - For packet-level accuracy, capture the phone's own traffic at a gateway.
@@ -253,7 +295,9 @@ The phone figures come from the saved exports of the two trips in the [21 Novemb
 
 | Check | Result |
 | --- | --- |
-| Automated tests | 24 of 24 pass (including private-output permission checks) |
+| Automated baseline tests, 25 November | 44 of 44 pass, including endpoint/exclusion rules, deadlines, paired scope, checkpoint recovery, private outputs, integrity checks and the comparison CLI |
+| Export and paper-suite regression tests, 25 November | 28 of 28 pass across three suites |
+| Node ESM lint, 25 November | `npm run baseline:lint` passes |
 | Schedule against the 11 h 17 min 56 s overnight phone trip | Exact match: 675 ICMP, UDP and TCP, 46 traceroutes, 46 segments, with that trip's two 90 s download timeouts included |
 | 17-minute run with local copies of the servers | Completed, with one transfer pair and one 22.0 s gap |
 | Export format | `measurements:analyze` found no errors in the segments of the local run or either live run |

@@ -91,7 +91,7 @@ Offline analysis of an existing complete session JSON (original exports remain u
 npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis
 ```
 
-For independent terminal checks, see [the baseline validation guide](docs/measurements/validation.md). `npm run baseline:test` runs offline fixtures; live baseline runs stay in ignored private output and are kept separate from participant records. Paired phone accuracy validation remains pending.
+For independent terminal checks, see [the baseline validation guide](docs/measurements/validation.md). `npm run baseline:test` runs offline fixtures. Simultaneous phone/computer checks use light probes; full paper-suite reference runs are separate. Runs save private raw evidence, per-protocol CSVs, sanity checks, a readable report and SHA-256 manifest under `build/baseline/`. Verify a finished bundle with `npm run baseline:verify -- --input <run-directory>`. Paired phone accuracy validation remains pending; terminal evidence stays separate from participant records.
 
 Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md) and [combined CSV guide](docs/skymeasure/combined-csv.md). Blank values mean unavailable or inapplicable, not zero. Parent values repeated across sample rows must not be summed repeatedly. Regenerate shared documentation with `npm run measurements:docs` and `npm run skymeasure:docs`.
 
