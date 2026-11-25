@@ -584,3 +584,30 @@ test('paper views retain zero, nullable discovery, partial bytes and source iden
   expect(errors(bad).map(e => e.code)).toContain('paper_body_limit');
   expect(errors(bad).map(e => e.code)).toContain('cdn_content_match');
 });
+
+test('trip epoch milliseconds and session ISO timestamps use their declared domains', () => {
+  const data = {
+    ...session(),
+    trip: { startedAt: 0, endedAt: 1795607176197, firstQualifiedAt: 0 },
+  };
+  const original = JSON.stringify(data);
+  expect(errors(analyze(data))).toEqual([]);
+  expect(JSON.stringify(data)).toBe(original);
+  for (const value of ['2026-11-25T00:00:00Z', -1, 1.5, 8640000000000001]) {
+    const audit = analyze({
+      ...data,
+      trip: { startedAt: value, endedAt: null },
+    });
+    expect(
+      errors(audit).some(
+        e => e.code === 'timestamp' && e.recordPath === '/trip/startedAt',
+      ),
+    ).toBe(true);
+  }
+  const bad = analyze({ ...data, session: { ...data.session, startedAt: 0 } });
+  expect(
+    errors(bad).some(
+      e => e.code === 'timestamp' && e.recordPath === '/session/startedAt',
+    ),
+  ).toBe(true);
+});

@@ -34,6 +34,8 @@ The same dictionary is [available in the repository](columns.md). Edit its [mach
 
 ## Understand rows before comparing columns
 
+Trip `startedAt`, `endedAt` and `firstQualifiedAt` use Unix epoch milliseconds. Session/measurement timestamps use ISO-8601 UTC strings. Native monotonic nanosecond offsets belong to another clock domain; do not parse or compare them as calendar dates. The analyzer checks each format without rewriting the original values.
+
 - A `measurements.csv` row is **one saved attempt**. An ICMP burst contains ten probes; a traceroute contains probes across many hops; a loaded test contains baseline transactions, transfer details, and during-transfer transactions.
 - A `samples.csv` row is **one recorded sample**. The `sampleGroup` identifies ordinary probes, baseline transactions, traceroute observations, or reference callbacks. HTTP samples and SDK callbacks are not individual network packets.
 - `events.csv` rows describe lifecycle/scheduling events. A completed session with late probes is different from an exactly periodic experiment.

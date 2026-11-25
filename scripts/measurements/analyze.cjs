@@ -193,6 +193,9 @@ function analyze(data) {
     for (const [k, v] of Object.entries(value)) {
       const p = `${at}/${k}`;
       if (present(v)) {
+        const tripEpoch =
+          at === '/trip' &&
+          ['startedAt', 'endedAt', 'firstQualifiedAt'].includes(k);
         // raw callbacks retain provider-specific sentinels, so apply typed checks to normalized records only.
         if (numeric.has(k))
           check('numeric_type', validNumber(v), p, 'Expected a finite number.');
@@ -221,15 +224,22 @@ function analyze(data) {
             'startedAt',
             'endedAt',
             'publicIpObservedAt',
-          ].includes(k)
+          ].includes(k) ||
+          tripEpoch
         )
           check(
             'timestamp',
-            typeof v === 'string' &&
-              /^\d{4}-\d\d-\d\dT/.test(v) &&
-              Number.isFinite(Date.parse(v)),
+            tripEpoch
+              ? Number.isSafeInteger(v) &&
+                  v >= 0 &&
+                  Number.isFinite(new Date(v).getTime())
+              : typeof v === 'string' &&
+                  /^\d{4}-\d\d-\d\dT/.test(v) &&
+                  Number.isFinite(Date.parse(v)),
             p,
-            'Expected an ISO wall-clock timestamp.',
+            tripEpoch
+              ? 'Expected Unix epoch milliseconds in the trip clock domain.'
+              : 'Expected an ISO wall-clock timestamp.',
           );
         if (
           [

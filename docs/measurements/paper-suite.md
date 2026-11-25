@@ -35,7 +35,7 @@ The HTTP adapter is custom glue around OkHttp's DNS/socket/EventListener APIs. I
 
 ## Timing and blanks
 
-Native timestamps use Android's monotonic elapsed-realtime nanoseconds. Event offsets remain decimal strings in raw callbacks, avoiding JavaScript integer rounding. Callback wall times are UTC placement evidence and must not be subtracted from monotonic offsets. No values are hardware transmission or kernel packet timestamps.
+Trip start/end/qualification times are Unix epoch milliseconds; session/measurement wall times are ISO-8601 UTC strings. Native timestamps use Android's monotonic elapsed-realtime nanoseconds. Event offsets remain decimal strings in raw callbacks, avoiding JavaScript integer rounding. Callback wall times are UTC placement evidence and must not be subtracted from monotonic offsets. No values are hardware transmission or kernel packet timestamps.
 
 | Field | Definition |
 | --- | --- |
