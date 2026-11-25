@@ -32,7 +32,7 @@ class CollectorEvidenceTest {
                 while (sessions.moveToNext()) {
                     fun field(name: String): String? = sessions.getColumnIndex(name).let { if (it < 0 || sessions.isNull(it)) null else sessions.getString(it) }
                     val config = JSONObject(field("config_json")!!)
-                    if (config.optString("collectorVersion") != "skymeasure-libraries-2") continue
+                    if (config.optString("collectorVersion") !in setOf("skymeasure-libraries-2", "skymeasure-libraries-3")) continue
                     if (requestedTrip != null && config.optString("tripId") != requestedTrip) continue
                     val id = field("id")!!
                     val session = JSONObject().put("id", id).put("state", field("state"))
