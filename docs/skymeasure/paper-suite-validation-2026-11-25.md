@@ -4,7 +4,7 @@ Scope: pilot 1.3.0 / paper-core-v1, an unrooted Android ground-test implementati
 
 ## Automated evidence
 
-- 379 JavaScript tests across 46 suites pass, including historical collector fixtures, two paper rounds across rotation, literal/hostname targets, partial cancellation, reservation accounting, nullable resolver discovery, dictionary coverage and exports. Full type checks pass; ESLint has no errors (16 pre-existing warnings).
+- 380 JavaScript tests across 46 suites pass, including historical collector fixtures, two paper rounds across rotation, literal/hostname targets, partial cancellation, reservation accounting, nullable resolver discovery, dictionary coverage and exports. Full type checks pass; ESLint has no errors (16 pre-existing warnings).
 - 72 backend tests pass; one optional PostgreSQL-specific test is skipped in the local SQLite run. New tests exercise versioned consent, ownership, monotonic counters, duplicate ingestion, target/provider filters, separated CDN medians, null resolver fields, large nanosecond strings and combined CSV/raw JSON preservation.
 - Eight native JVM tests pass using a local trusted TLS server: correct object/phase observations, mismatch, redirect without following, bounded body, normal unconfigured response, absent resolver IP, cancellation with following request, exact nanosecond strings and callback drop counts.
 - The terminal harness passes 31 tests, including 14-hour and 24-hour paper schedules plus frozen historical policies. These simulations establish software scheduling properties, not Android endurance or flight accuracy.
@@ -17,7 +17,7 @@ A terminal preflight fetched each of the five configured CDN URLs with HTTP 200,
 
 The connected phone is a Samsung Galaxy A34 (Android 13). The previous pilot was idle before the upgrade; the update uses install-in-place and does not delete local evidence or replace its anonymous identity. New third-party disclosure must be accepted by the participant before a live run.
 
-A complete two-round ground run, exact local/server reconciliation on the final APK, same-Wi-Fi Linux comparison, impaired-link testing, Android 15+ behavior and real-flight detection accuracy remain separate checks. Do not claim live results or reliability from the unit fixtures. Ground-ASN tests stay labelled ground tests and excluded from flight totals by default.
+The completed ground run below covers two full target rounds, automatic M-Lab, screen-off collection and server reconciliation. An exact local payload/version export comparison remains pending the phone reconnection. Same-Wi-Fi Linux comparison, unplugged endurance, impaired-link testing, Android 15+ behavior and real-flight detection accuracy remain separate checks. Do not claim live results or reliability from the unit fixtures. Ground-ASN tests stay labelled ground tests and excluded from flight totals by default.
 
 ## Deployment and compatibility
 
@@ -33,4 +33,33 @@ The clean build from `b2301f1d41c5e161b987586825396b62cc6eb16c` produced ARM64 p
 
 External HTTPS probe sizes, authorization rejection, disabled legacy ingestion and dashboard CORS passed before the UDP check. The terminal UDP check received 18/20 replies; a separately paced application-format round received 19/20 (5% observed non-response). Payloads matched. This is limited ground-path evidence of UDP reachability with observed non-response, not a server/library reliability verdict. UDP service configuration was unchanged. Retain these observations rather than reporting a fully passing zero-loss smoke test.
 
-The upgraded phone is displaying the new disclosure. A live new-suite run waits for participant acceptance; no test or M-Lab publication has been silently started.
+The participant accepted the updated disclosure and explicitly authorized one 35-minute ground validation, including one automatic M-Lab pair. The run below completed through the normal Start/Stop flow; no additional M-Lab run was started.
+
+## Consented physical ground run
+
+**Conditions.** Samsung Galaxy A34, Android 13, the verified 1.3.0 APK above, charging throughout. Start used explicitly synthetic flight/payment form fixtures and the ordinary ASN detector. AS5384 qualified as **TEST Etisalat**, with `groundTest=true`; this was not a detected or verified flight. The trip lasted 35 minutes 2.834 seconds. The screen was off for approximately 30 minutes before the ordinary Stop button closed the trip.
+
+**Delivery.** Three segments reconciled **318/318, 327/327 and 142/142 expected record versions**, totaling **787/787**. These comprise three session records, 131 measurement records, 417 events and 236 context records. No expected server versions are missing. The stopped phone's acknowledged queue increased from 20,493 to 21,280 records, exactly 787; no pending queue errors remained. Its trip revision and uploaded revision both reached 317. The corrected stopped-trip exporter is needed for a separate record-by-record local comparison; USB disconnected before that final export. No history or identity was cleared.
+
+| Method | Observed result | Interpretation |
+| --- | --- | --- |
+| ICMP | 35 bursts; 34 successful complete bursts and one Stop interruption. 269 replies among 342 recorded probes; pooled recorded RTT median 39.458 ms. | 73 recorded timeouts. The final burst contains only two observations; never use 350 as a sent count or treat its interruption as a network failure. |
+| UDP | 34 complete bursts; 558/680 matching replies; pooled RTT median 284.551 ms. | 122 recorded timeouts (17.94% non-response). This does not distinguish path loss, filtering, device scheduling or library behavior. |
+| TCP | 34/34 connections succeeded; median callback connection duration 48.361 ms. | Not isolated SYN RTT or kernel RTT. |
+| Traceroute | 9/12 library-reported destination reaches; all three non-reaching traces were for facebook.com. | Each Facebook trace retained 60 observations over hops 1–20. No destination reply was reported within the configured hop limit; the parent timeout label is not a 45-second watchdog expiration. |
+| CDN | 11/11 complete, HTTP 200, correct 89,501-byte body and expected SHA-256. | Two complete five-provider rounds plus one third-round Microsoft fetch. All six named timing fields were present, with 168 exact decimal-nanosecond callbacks across CDN/DNS requests. |
+| Resolver discovery | 3/3 succeeded; all reported normal `unconfigured` status, configured DNS and an observed recursive resolver IP. | Discovery is not a DNS RTT measurement. No resolver location is inferred. |
+| M-Lab download | Completed, 27.884 Mbps; 40,894,464 client payload bytes. | Client-counter/time provenance; one benchmark, not a calibrated capacity guarantee. |
+| M-Lab upload | Completed, 72.022 Mbps; server TCPInfo reported 90,029,532 bytes / 10.00026 s; client reported 101,605,376 bytes. | The upload rate uses receiver statistics, not client-submission bytes. |
+
+M-Lab client counters total **142,499,840 bytes (135.90 MiB)**. CDN content charged **984,511 bytes**, exactly eleven objects. Application-accounted diagnostics/context used 385,792 bytes and live uploads 479,649 bytes; these are estimates/reservations, not wire/carrier-billed totals. Post-trip synchronization and unobservable overhead are additional.
+
+**Scheduling and background evidence.** All three segment health records reported zero collector gaps and zero skipped probe slots. Maximum received heartbeat spacing was 33.760 seconds. All 45 sampled health observations found the foreground service active; 40 were screen-off observations. No native/React Native error was captured. Sampled PSS ranged from about 128 to 158 MiB. This is a charging, single-device functional check, not unplugged endurance, OEM-wide reliability, force-stop/reboot validation or real-flight accuracy.
+
+**Live upload limitation.** Both periodic opportunities consumed about 25.16 seconds. The 512 KiB decoded batch ceiling split each full segment into three record requests despite the 200-record maximum. The last request was cancelled at the opportunity deadline and retried later: segment zero completed at the second window, and segment one completed after Stop. All evidence was retained; the final segment reconciled **14.955 seconds after trip closure**. The bounded pause works, but this run does not establish that every segment can finish uploading within its own live window. Request preparation and round trips remain optimization targets; do not extend measurement gaps or refund uncertain transmitted bytes without evidence.
+
+**Offline checks.** All three session exports passed the current analyzer with zero errors after fixing the analyzer's mistaken ISO-only interpretation of trip epoch timestamps. Warnings explicitly qualify 350 traceroute library error labels; an interrupted-burst loss calculation and two M-Lab focused projections remain unavailable. Raw JSON was preserved. The combined CSV has **1,699 rows**: 1,685 sample/callback rows and 14 standalone CDN/DNS parents, representing exactly 131 distinct measurements. The sample rows include 342 ICMP probes, 680 UDP probes, 34 connection observations, 483 hop observations and 146 M-Lab callbacks; callbacks must not be counted as packets. Content hashes, literal destinations, unique target/round pairs, budget settlement, monotonic callback offsets, and absence of coordinates/payment/credential fields passed the dedicated trip audit.
+
+**Reference limitation.** The Mac preflight found a VPN tunnel for all reference destinations and could not establish a single comparable Wi-Fi path or clock synchronization. Its data was excluded from accuracy comparisons; no VPN setting was changed. The live browser reached the researcher Google sign-in page, but an authenticated researcher UI session was unavailable. Server receipts, raw records and locally generated combined CSV were verified; a real researcher still needs to open the protected dashboard. Original datasets and diagnostic journals stay in ignored private storage; only aggregate observations are committed.
+
+The remaining measurement-validation priorities are a same-Wi-Fi Linux/packet-capture reference for ICMP/UDP non-response and traceroute terminal labels, then delayed/lossy-link testing of upload opportunities. These findings do not justify claiming the app is scientifically calibrated yet.
