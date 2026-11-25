@@ -63,6 +63,7 @@ export function TripTimeline({
     timeline?.series.filter(s =>
       ['icmp_burst', 'icmp_rtt', 'udp_echo'].includes(s.type),
     ) ?? [];
+  const cdns = timeline?.series.filter(s => s.type === 'cdn_fetch') ?? [];
   const rates =
     timeline?.series.filter(s =>
       ['download', 'upload', 'ndt7_download', 'ndt7_upload'].includes(s.type),
@@ -128,6 +129,12 @@ export function TripTimeline({
                             {number(p.value)} {unit} ·{' '}
                             {p.target ?? 'Target not recorded'}
                           </p>
+                          {p.phases &&
+                            Object.entries(p.phases).map(([key, value]) => (
+                              <p key={key}>
+                                {key}: {number(value)} ms
+                              </p>
+                            ))}
                           {p.pointCount && (
                             <p>
                               {p.pointCount} points in this display bin;{' '}
@@ -156,8 +163,10 @@ export function TripTimeline({
                   ))}
                   {series.map(s => (
                     <Scatter
-                      key={s.type}
-                      name={label(s.type)}
+                      key={`${s.type}:${s.targetId ?? ''}`}
+                      name={`${label(s.type)}${
+                        s.targetId ? ` · ${s.targetId}` : ''
+                      }`}
                       data={s.points.filter(
                         p =>
                           p.value != null &&
@@ -218,6 +227,7 @@ export function TripTimeline({
         <>
           {lane('Latency', rtt, 'ms')}
           {lane('Throughput', rates, 'Mbps')}
+          {lane('CDN object completion time', cdns, 'ms')}
         </>
       )}
       <section className="panel p-5">

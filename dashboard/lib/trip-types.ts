@@ -78,12 +78,20 @@ export type Point = {
   timingValid: boolean;
   durationMs: number | null;
   bytes: number | null;
+  phases?: Record<string, number | null>;
+  targetId?: string | null;
   pointCount?: number;
   failures?: number;
 };
 export type Timeline = {
   computedAt: number;
-  series: { type: string; bucketMs: number; points: Point[] }[];
+  series: {
+    type: string;
+    targetId?: string | null;
+    cdnProvider?: string | null;
+    bucketMs: number;
+    points: Point[];
+  }[];
   clock: string;
 };
 export const label = (kind: string) =>
@@ -93,6 +101,8 @@ export const label = (kind: string) =>
     udp_echo: 'UDP echo',
     tcp_connect: 'TCP connection',
     traceroute: 'Traceroute',
+    cdn_fetch: 'CDN object fetch',
+    dns_resolver: 'DNS resolver discovery',
     download: 'Controlled download',
     upload: 'Controlled upload',
     ndt7_download: 'M-Lab download',

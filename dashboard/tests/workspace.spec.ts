@@ -464,8 +464,10 @@ test('guide shows real app requests and calculations without loading trip eviden
       'socket.connect({ host, port, connectTimeout: timeoutMs }',
     ],
     ['HTTP latency', 'await response.text()'],
-    ['Controlled download', 'fs.downloadFile({'],
-    ['Controlled upload', '/api/v1/probe/upload?request='],
+    ['CDN object fetch', 'PaperProbeModule.run'],
+    ['DNS resolver discovery', 'adapter.run'],
+    ['Historical controlled download', 'fs.downloadFile({'],
+    ['Historical controlled upload', '/api/v1/probe/upload?request='],
     [
       'M-Lab NDT7 speed test',
       'test.startTest(NDTTest.TestType.DOWNLOAD_AND_UPLOAD)',
@@ -857,4 +859,88 @@ test('sample interpretation retains zero, failures, and qualified traceroute lab
       expect(d.blank).toBeTruthy();
     }
   }
+});
+
+test('paper suite exposes target filters, phase medians and nullable resolver history', async ({
+  page,
+}) => {
+  await signedIn(page, {
+    detailChanges: {
+      summary: {
+        receivedSegments: 4,
+        receivedRecords: 435,
+        expectedRecords: 435,
+        measurements: 2,
+        failures: 0,
+        protocols: [
+          protocol,
+          {
+            ...protocol,
+            type: 'cdn_fetch',
+            attempts: 1,
+            successful: 1,
+            sampleCount: 0,
+            replies: 0,
+            medianMs: null,
+          },
+        ],
+        paperTargets: [
+          {
+            type: 'cdn_fetch',
+            targetId: 'google',
+            target: 'https://example.invalid/jquery.js',
+            provider: 'google',
+            attempts: 1,
+            successful: 1,
+            reached: 0,
+            medianPhasesMs: { dnsLookupMs: 0, tcpConnectMs: 12, totalMs: 80 },
+          },
+        ],
+        resolvers: [
+          {
+            measurementId: 'dns',
+            timestamp: '2026-11-25T12:00:00Z',
+            configuredDnsServers: ['192.0.2.53'],
+            observedResolverIp: null,
+            resolverStatus: 'ok',
+          },
+        ],
+      },
+    },
+  });
+  await page.goto(`/trips/${id}`);
+  await expect(
+    page.getByText('Target comparisons and CDN phases'),
+  ).toBeVisible();
+  await page
+    .getByText('DNS resolver history (1 received observations)')
+    .click();
+  await expect(page.getByText('192.0.2.53', { exact: true })).toBeVisible();
+  await page
+    .getByText('Inspect individual probes, segments and raw evidence', {
+      exact: false,
+    })
+    .click();
+  const requested = page.waitForRequest(
+    r =>
+      r.url().includes('/evidence?') &&
+      r.url().includes('targetId=fixed_ip_control'),
+  );
+  await page
+    .getByLabel('Evidence target', { exact: true })
+    .selectOption('fixed_ip_control');
+  await requested;
+  await page
+    .getByLabel('Evidence test', { exact: true })
+    .selectOption('cdn_fetch');
+  await expect(
+    page.getByRole('columnheader', { name: 'dnsLookupMs', exact: false }),
+  ).toBeVisible();
+  const provider = page.waitForRequest(
+    r =>
+      r.url().includes('/evidence?') &&
+      r.url().includes('cdnProvider=cloudflare'),
+  );
+  await page.getByLabel('Evidence CDN provider').selectOption('cloudflare');
+  await provider;
 });

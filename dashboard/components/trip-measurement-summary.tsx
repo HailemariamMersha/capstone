@@ -6,6 +6,26 @@ export type TripSummary = {
   failures: number;
   interruptions?: number;
   protocols: ProtocolSummary[];
+  paperTargets?: {
+    type: string;
+    targetId: string;
+    target?: string;
+    provider?: string;
+    attempts: number;
+    successful: number;
+    reached: number;
+    medianPhasesMs: Record<string, number>;
+  }[];
+  resolvers?: {
+    timestamp?: string;
+    measurementId?: string;
+    success?: boolean;
+    configuredDnsServers?: string[];
+    observedResolverIp?: string | null;
+    resolverStatus?: string | null;
+    resolverUnavailableReason?: string | null;
+    privateDnsActive?: boolean | null;
+  }[];
 };
 type ProtocolSummary = {
   timingExcluded?: number;
@@ -99,8 +119,18 @@ export function TripMeasurementSummary({
     ['UDP', 'udp_echo'],
     ['TCP', 'tcp_connect'],
     ['Traceroute', 'traceroute'],
-    ['Controlled download', 'download'],
-    ['Controlled upload', 'upload'],
+    ...(byType.has('download')
+      ? [['Historical controlled download', 'download'] as [string, string]]
+      : []),
+    ...(byType.has('upload')
+      ? [['Historical controlled upload', 'upload'] as [string, string]]
+      : []),
+    ...(byType.has('cdn_fetch')
+      ? [['CDN object fetch', 'cdn_fetch'] as [string, string]]
+      : []),
+    ...(byType.has('dns_resolver')
+      ? [['DNS resolver discovery', 'dns_resolver'] as [string, string]]
+      : []),
     ['M-Lab download', 'ndt7_download'],
     ['M-Lab upload', 'ndt7_upload'],
   ];
@@ -180,6 +210,7 @@ export function TripMeasurementSummary({
           </tbody>
         </table>
       </div>
+      <PaperResults summary={summary} />
       <p className="muted text-xs">
         Elapsed time includes gaps and upload pauses. Totals cover received
         evidence only; a complete upload does not mean continuous collection.
@@ -198,5 +229,114 @@ export function TripMeasurementSummary({
         </p>
       </details>
     </section>
+  );
+}
+
+export function PaperResults({ summary }: { summary: TripSummary }) {
+  return (
+    <>
+      {!!summary.paperTargets?.length && (
+        <details className="panel p-4 text-sm" open>
+          <summary className="font-semibold">
+            Target comparisons and CDN phases
+          </summary>
+          <p className="muted my-2">
+            Successful, timing-valid parent medians only. Header arrival is
+            cumulative; do not add it to DNS/TCP/TLS. CDN completion is not
+            capacity. Edge codes do not verify a city.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left text-xs">
+              <thead>
+                <tr>
+                  {[
+                    'Target / CDN',
+                    'Completed / attempts',
+                    'DNS ms',
+                    'TCP ms',
+                    'TLS ms',
+                    'Headers after ms',
+                    'Body ms',
+                    'Total ms',
+                  ].map(t => (
+                    <th className="p-2" key={t}>
+                      {t}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {summary.paperTargets.map(t => (
+                  <tr key={`${t.type}:${t.targetId}`} className="border-t">
+                    <th className="p-2" title={t.target}>
+                      {t.provider ?? t.target ?? t.targetId}
+                    </th>
+                    <td className="p-2">
+                      {t.successful}/{t.attempts}
+                      {t.type === 'traceroute'
+                        ? `; ${t.reached} library-reached`
+                        : ''}
+                    </td>
+                    {[
+                      'dnsLookupMs',
+                      'tcpConnectMs',
+                      'tlsHandshakeMs',
+                      'responseHeadersAfterMs',
+                      'bodyReadMs',
+                      'totalMs',
+                    ].map(k => (
+                      <td className="p-2" key={k}>
+                        {t.medianPhasesMs[k]?.toLocaleString(undefined, {
+                          maximumFractionDigits: 1,
+                        }) ?? '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      {!!summary.resolvers?.length && (
+        <details className="panel p-4 text-sm">
+          <summary>
+            DNS resolver history ({summary.resolvers.length} received
+            observations)
+          </summary>
+          <p className="muted my-2">
+            Configured DNS can be a local forwarder. The observed recursive
+            resolver is only shown when NextDNS reports a literal IP;
+            unconfigured is a normal response. This is not a DNS latency test.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr>
+                  <th>Observed UTC</th>
+                  <th>Configured DNS</th>
+                  <th>Observed resolver</th>
+                  <th>Status / reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.resolvers.map((r, i) => (
+                  <tr key={r.measurementId ?? i} className="border-t">
+                    <td className="p-2">{r.timestamp}</td>
+                    <td>{r.configuredDnsServers?.join(', ') ?? '—'}</td>
+                    <td>{r.observedResolverIp ?? '—'}</td>
+                    <td>
+                      {r.resolverStatus ??
+                        r.resolverUnavailableReason ??
+                        'Unavailable'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </>
   );
 }

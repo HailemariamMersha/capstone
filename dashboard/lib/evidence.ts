@@ -6,6 +6,8 @@ export const measurementLabels: Record<string, string> = {
   tcp_connect: 'TCP connection',
   udp_echo: 'UDP echo',
   traceroute: 'Traceroute',
+  cdn_fetch: 'CDN object fetch',
+  dns_resolver: 'DNS resolver discovery',
   http_rtt: 'HTTP latency',
   download: 'HTTP download',
   upload: 'HTTP upload',
@@ -104,6 +106,9 @@ export function filterMeasurements(
         [
           m.id,
           m.targetHost,
+          m.targetId,
+          m.paper?.provider,
+          m.resolvedAddress,
           m.probeServer,
           m.method,
           m.type,

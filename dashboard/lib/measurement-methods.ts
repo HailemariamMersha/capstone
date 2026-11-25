@@ -15,6 +15,59 @@ export interface MeasurementMethod {
 }
 export const measurementMethods: MeasurementMethod[] = [
   {
+    name: 'CDN object fetch',
+    library:
+      'OkHttp 4.12.0 EventListener through the selected-Wi-Fi Android adapter',
+    schedule:
+      'Five providers at +4, +6, +8, +10, +12 minutes of each 15-minute round; order rotates. Skip expired slots instead of catching up.',
+    how: 'Fetch identical jQuery 3.6.0 (89,501 bytes) from Google, Cloudflare, Microsoft, jsDelivr and jQuery. Fresh HTTP/1.1 connection; Android resolver and TLS caches are not flushed. No request no-cache or cache-busting query; the CDN edge may serve cached content.',
+    request:
+      'GET the versioned HTTPS URL; Accept-Encoding: identity. No cookies, application cache, proxy, redirects or retries. 90-second total deadline; 512 KiB body ceiling. No body content is retained.',
+    appCall: `PaperProbeModule.run(id, "cdn_fetch", providerId, nonce, wifiHandle)
+OkHttpClient.Builder().socketFactory(selectedNetwork.socketFactory)
+  .protocols(listOf(Protocol.HTTP_1_1)).cache(null)
+  .followRedirects(false).retryOnConnectionFailure(false)`,
+    timing:
+      'System.nanoTime differences in EventListener: DNS, TCP (excluding TLS), TLS, headers arrival offset, body read, total. Exact elapsed-nanosecond strings remain in raw callbacks.',
+    calculation:
+      'Success requires HTTP 200, EOF, 89,501 bytes and the registry SHA-256. value = totalMs only on success. responseHeadersAfterMs is cumulative and must not be summed with preceding phase durations.',
+    evidence:
+      'paper fields, targetId, resolvedAddress, roundId, phase callbacks, bounded cache/edge headers and SHA-256. Partial attempts keep observed bytes; uncertain attempts charge the request ceiling.',
+    limits:
+      'Object completion time is not capacity or a full browser page load. No kernel TCP state, packet trace, DNS cache status or verified CDN city. Edge codes are hints, not geolocation.',
+    terminal: `curl --ipv4 --http1.1 --noproxy '*' --max-time 90 -H 'Accept-Encoding: identity' -D headers.txt -o object.js -w '%{json}' 'https://code.jquery.com/jquery-3.6.0.min.js'`,
+    sources: [
+      'src/measurements/paperSuite.ts',
+      'src/measurements/paperProbes.ts',
+      'android/app/src/main/java/com/labpracticeapp/diagnostics/PaperHttpClient.kt',
+    ],
+  },
+  {
+    name: 'DNS resolver discovery',
+    library:
+      'Android LinkProperties + OkHttp 4.12.0 + NextDNS diagnostic endpoint',
+    schedule:
+      'At +30 seconds of each qualification-anchored fifteen-minute round.',
+    how: 'Request a fresh random 32-hex-label under test.nextdns.io on the selected Wi-Fi. The nonce contains no participant or trip identifier. Store only bounded allowlisted diagnostic fields.',
+    request:
+      'HTTPS GET https://<random32hex>.test.nextdns.io/; 20-second total deadline, 16 KiB body ceiling. Configured DNS is read from the selected network separately.',
+    appCall: `adapter.run(id, "dns_resolver", "nextdns", randomNonce, wifiHandle)`,
+    timing:
+      'The HTTP request has an overall native duration; it is not recursive DNS query RTT.',
+    calculation:
+      'value remains null. observedResolverIp is a validated literal IP reported in resolver, if present. status=unconfigured is a successful diagnostic response. Missing resolver remains null with a reason.',
+    evidence:
+      'paper.configuredDnsServers, observedResolverIp, resolverStatus, resolverUnavailableReason and privateDnsActive; sanitized raw diagnostic response. No profile, clientName or coordinates.',
+    limits:
+      'Configured DNS can be a local forwarder; encrypted DNS and endpoint behavior can obscure recursive resolver IP. No inferred resolver location, DNSSEC result, authoritative timing or kernel packet evidence.',
+    terminal: `curl --ipv4 --http1.1 --noproxy '*' --max-time 20 'https://<random32hex>.test.nextdns.io/'`,
+    sources: [
+      'src/measurements/paperSuite.ts',
+      'src/measurements/paperProbes.ts',
+      'android/app/src/main/java/com/labpracticeapp/diagnostics/PaperProbeModule.kt',
+    ],
+  },
+  {
     name: 'ICMP echo',
     library: 'icmpenguin 1.0.0-rc.3 through the Android adapter',
     schedule:
@@ -106,10 +159,11 @@ replies.set(sequence, performance.now() - info.at);`,
   {
     name: 'Traceroute',
     library: 'icmpenguin 1.0.0-rc.3 through the Android adapter',
-    schedule: 'Every fifteen minutes; current automatic-trip hop limit is 20.',
+    schedule:
+      'Five staggered targets per qualification-anchored fifteen-minute round; target order rotates each round. Twenty-hop limit.',
     how: 'The library sends UDP probes with increasing TTL/hop limits, starting at destination port 33434 and increasing ports. The adapter returns each library result. TypeScript determines the reached hop from its qualified terminal-result rules.',
     request:
-      'Current target: google.com. Up to three probes per hop, sequential concurrency 1, 32-byte library probe size, 1,000 ms per-probe timeout and a 45-second adapter deadline. Partial hops remain saved.',
+      'Targets: 142.250.190.238 (literal control), google.com, facebook.com, 1.1.1.1 and 8.8.8.8. Hostnames resolve once on the selected Wi-Fi and the IPv4 is pinned for that trace. Up to three probes per hop, sequential concurrency 1, 32-byte library probe size, 1,000 ms per-probe timeout and a 45-second adapter deadline. Partial hops remain saved.',
     appCall: `// TypeScript:
 adapter.trace(attempt.id, host, maxHops, TRACE_PROBES_PER_HOP);
 // Kotlin, inside withTimeout(45_000L):
@@ -169,7 +223,7 @@ const durationMs = dependencies.now() - started;
     ],
   },
   {
-    name: 'Controlled download',
+    name: 'Historical controlled download',
     library:
       '@dr.pogodin/react-native-fs 2.40.3 in automatic trips; fetch remains a smaller-payload tooling path',
     schedule:
@@ -208,7 +262,7 @@ const Mbps = response.bytesWritten * 8 / (durationMs * 1000);`,
     ],
   },
   {
-    name: 'Controlled upload',
+    name: 'Historical controlled upload',
     library: 'React Native fetch and TypeScript timing',
     schedule:
       'Paired with controlled download under the same trip transfer schedule.',

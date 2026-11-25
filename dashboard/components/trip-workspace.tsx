@@ -26,6 +26,7 @@ import {
 import { Button } from './ui/button';
 import { TripTimeline } from './trip-timeline';
 import { TripEvidence } from './trip-evidence';
+import { PaperResults } from './trip-measurement-summary';
 import { PaymentReconciliation } from './payment-reconciliation';
 import { RouteMap } from './trip-route-map';
 import { MeasurementGuide } from './measurement-guide';
@@ -639,6 +640,7 @@ function NetworkSummary({ trip }: { trip: TripDetail }) {
           ))}
         </tbody>
       </table>
+      <PaperResults summary={trip.summary} />
       {!trip.summary.protocols.length && (
         <p className="p-6 muted">No measurement rounds in received segments.</p>
       )}

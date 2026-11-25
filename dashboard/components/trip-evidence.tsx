@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { PAPER_REGISTRY } from '../../src/measurements/paperSuite';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { api, download } from '@/lib/client';
@@ -51,7 +52,7 @@ function column(
         ? row.details?.summary?.replies
         : key === 'port'
         ? row.details?.targetPort ?? row.raw?.request?.port
-        : row[key],
+        : row[key] ?? row.paper?.[key],
     header: title,
     meta: {
       description: `${description} Units: ${definition.units}. ${definition.calculation} Missing: ${definition.blank}`,
@@ -79,11 +80,15 @@ export function TripEvidence({
 }) {
   const [layer, setLayer] = useState('measurements'),
     [protocol, setProtocol] = useState(''),
+    [targetId, setTargetId] = useState(''),
+    [cdnProvider, setCdnProvider] = useState(''),
     [outcome, setOutcome] = useState(''),
     [offset, setOffset] = useState(0),
     [error, setError] = useState('');
   const [raw, setRaw] = useState<Row | null>(null);
-  const path = `/research/trips/${tripId}/evidence?layer=${layer}&protocol=${protocol}&outcome=${outcome}&offset=${offset}&limit=50`;
+  const path = `/research/trips/${tripId}/evidence?layer=${layer}&protocol=${protocol}&outcome=${outcome}&targetId=${encodeURIComponent(
+    targetId,
+  )}&cdnProvider=${encodeURIComponent(cdnProvider)}&offset=${offset}&limit=50`;
   const query = useQuery<{ items: Row[]; total: number }>({
     queryKey: [path],
     queryFn: ({ signal }) => api(path, { signal }),
@@ -187,6 +192,35 @@ export function TripEvidence({
             'Payload bytes',
             'Observed application transfer bytes; excludes transport overhead.',
           ),
+          ...[
+            'targetId',
+            'resolvedAddress',
+            'roundId',
+            'provider',
+            'dnsLookupMs',
+            'tcpConnectMs',
+            'tlsHandshakeMs',
+            'responseHeadersAfterMs',
+            'bodyReadMs',
+            'totalMs',
+            'bodyBytes',
+            'bodyComplete',
+            'contentMatches',
+            'sha256',
+            'headers',
+            'edgeCodes',
+            'configuredDnsServers',
+            'observedResolverIp',
+            'resolverStatus',
+            'resolverUnavailableReason',
+            'privateDnsActive',
+          ].map(key =>
+            column(
+              key,
+              key,
+              'See the shared measurement dictionary for scope and calculation.',
+            ),
+          ),
           column('errorType', 'Error', 'Recorded failure classification.'),
           column('method', 'Method', 'How this measurement was obtained.'),
           column('probeServer', 'Probe endpoint', 'Controlled service URL.'),
@@ -223,6 +257,27 @@ export function TripEvidence({
       ? ['timestamp', 'kind', 'details', 'sessionId']
       : layer === 'samples' && protocol === 'traceroute'
       ? ['timestamp', 'hop', 'sequence', 'address', 'rttMs', 'outcome']
+      : layer === 'measurements' && protocol === 'cdn_fetch'
+      ? [
+          'timestamp',
+          'provider',
+          'totalMs',
+          'dnsLookupMs',
+          'tcpConnectMs',
+          'tlsHandshakeMs',
+          'bodyBytes',
+          'contentMatches',
+          'success',
+        ]
+      : layer === 'measurements' && protocol === 'dns_resolver'
+      ? [
+          'timestamp',
+          'configuredDnsServers',
+          'observedResolverIp',
+          'resolverStatus',
+          'resolverUnavailableReason',
+          'success',
+        ]
       : layer === 'measurements' && transfer
       ? [
           'timestamp',
@@ -293,6 +348,8 @@ export function TripEvidence({
               'udp_echo',
               'tcp_connect',
               'traceroute',
+              'cdn_fetch',
+              'dns_resolver',
               'download',
               'upload',
               'ndt7_download',
@@ -300,6 +357,44 @@ export function TripEvidence({
             ].map(p => (
               <option value={p} key={p}>
                 {label(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Target
+          <select
+            aria-label="Evidence target"
+            className="block"
+            value={targetId}
+            onChange={change(setTargetId)}
+          >
+            <option value="">All targets</option>
+            {PAPER_REGISTRY.traces.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.host} ({t.mode})
+              </option>
+            ))}
+            {PAPER_REGISTRY.cdns.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.id} CDN
+              </option>
+            ))}
+            <option value="nextdns">NextDNS discovery</option>
+          </select>
+        </label>
+        <label>
+          CDN provider
+          <select
+            aria-label="Evidence CDN provider"
+            className="block"
+            value={cdnProvider}
+            onChange={change(setCdnProvider)}
+          >
+            <option value="">All CDN providers</option>
+            {PAPER_REGISTRY.cdns.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.id}
               </option>
             ))}
           </select>

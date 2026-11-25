@@ -147,7 +147,8 @@ export function variableDefinition(group: string, key: string): Definition {
     };
   const definition = {
     ...fields[aliases[key] ?? key],
-    source: sourceOverrides[group][key],
+    source:
+      sourceOverrides[group]?.[key] ?? fields[aliases[key] ?? key]?.source,
   };
   if (key === 'outcome')
     return {
