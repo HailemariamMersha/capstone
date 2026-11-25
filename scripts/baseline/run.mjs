@@ -11,7 +11,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { COLLECTOR_POLICY } from '../../src/trips/scheduler.ts';
-import { HOURLY_TRANSFER_POLICY, PILOT_TRIP_POLICY, PROVIDERS } from '../../src/trips/model.ts';
+import { PAPER_TRIP_POLICY, PILOT_TRIP_POLICY, PROVIDERS } from '../../src/trips/model.ts';
+import { PAPER_REGISTRY } from '../../src/measurements/paperSuite.ts';
 import * as tools from './tools.mjs';
 import { CONTROLS, DEFAULT_UPLOAD_PAUSE_MS, pairedTimes, realClock, runSchedule } from './schedule.mjs';
 import { SUMMARY_SCHEMA, summarize } from './summary.mjs';
@@ -25,7 +26,7 @@ const HELP = `Usage: npm run baseline:run -- [options]
   --check                    run the preflight checks only
   --phone-qualified-at TIME  paired mode: HH:MM:SS or ISO time the phone began collecting
   --accept-mlab              include one NDT7 pair. Publishes your public IP and results
-                             to M-Lab and can use about 300 MiB.
+                             to M-Lab and can use gigabytes (no byte cap).
   --upload-pause 22s         length of the simulated upload gap
   --no-control               skip the extra router and lab-server probes
   --pcap                     also capture probe packets with tcpdump (needs root)
@@ -308,7 +309,7 @@ export async function createOutput(directory, { runId, config, environment }) {
 }
 
 export function createRunner(settings, output, versions) {
-  return async (type, { timeoutMs, signal }) => {
+  return async (type, { timeoutMs, signal, paperJob }) => {
     const id = output.newId();
     const sessionId = output.sessionId;
     const networkSnapshot = output.snapshot;
@@ -316,7 +317,9 @@ export function createRunner(settings, output, versions) {
       icmp_burst: () => tools.icmpBurst(GOOGLE, { signal }),
       udp_echo: () => tools.udpEcho(settings.udpHost, settings.udpPort, id, { signal }),
       tcp_connect: () => tools.tcpConnect(`https://${GOOGLE}`, { signal, timeoutMs }),
-      traceroute: () => tools.traceroute(GOOGLE, { signal }),
+      traceroute: () => paperJob ? tools.paperTrace(paperJob,{signal}) : tools.traceroute(GOOGLE, { signal }),
+      cdn_fetch: () => tools.paperHttp(paperJob,{signal}),
+      dns_resolver: () => tools.paperHttp(paperJob,{signal}),
       download: () => tools.transfer('download', settings.probeUrl, PILOT_TRIP_POLICY.downloadBytes, id, { signal, timeoutMs }),
       upload: () => tools.transfer('upload', settings.probeUrl, PILOT_TRIP_POLICY.uploadBytes, id, { signal, timeoutMs }),
       ndt7_download: () => tools.ndt7(versions.ndt7, { signal, timeoutMs }),
@@ -329,6 +332,8 @@ export function createRunner(settings, output, versions) {
       udp_echo: 'baseline_udp_echo_python',
       tcp_connect: 'baseline_curl_tcp_connect',
       traceroute: 'baseline_udp_traceroute',
+      cdn_fetch:'baseline_curl_cdn_phases',
+      dns_resolver:'baseline_curl_resolver_discovery',
       download: 'baseline_curl_download',
       upload: 'baseline_curl_upload',
       ndt7_download: 'baseline_ndt7_client',
@@ -433,8 +438,9 @@ async function main() {
     collectionMode: 'linux_baseline',
     collectorVersion: VERSION,
     collectorPolicy: COLLECTOR_POLICY,
-    flightPolicy: PILOT_TRIP_POLICY,
-    transferSchedule: HOURLY_TRANSFER_POLICY,
+    flightPolicy: PAPER_TRIP_POLICY,
+    measurementSuiteVersion:PAPER_REGISTRY.version,
+    paperRegistry:PAPER_REGISTRY,
     tripId: `baseline-${runId}`,
     groundTest: true,
     durationMs,
@@ -484,7 +490,7 @@ async function main() {
     });
   console.log(`Running for ${values.duration}${paired ? ', paired with the phone' : ''}. Output: ${directory}`);
   const describe = m =>
-    m.success ? `${m.value.toFixed(m.unit === 'hops' ? 0 : 1)} ${m.unit}` : `failed (${m.errorType})`;
+    m.success ? (m.value == null ? 'completed; no scalar value' : `${m.value.toFixed(m.unit === 'hops' ? 0 : 1)} ${m.unit}`) : `failed (${m.errorType})`;
   try {
     const trip = await runSchedule(
       {

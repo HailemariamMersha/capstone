@@ -1,5 +1,7 @@
 # Collector scheduling and evidence — policy collector-scheduler-2026-11-23
 
+> Current pilot 1.3.0 adds the [paper-suite schedule](../measurements/paper-suite.md) on top of this lifecycle. New trips replace the scalar trace deadline and controlled transfer pairs with target-aware DNS/trace/CDN slots, persist round order across segments and reserve/settle CDN content bytes. HTTP/CDN and M-Lab are heavy jobs; long paper jobs are admitted only when their deadline fits before the boundary. The transfer paragraphs below describe historical policies.
+
 > Pilot 1.2.6 adds bounded boundary grace and upload-service handoff. Older runs retain their saved scheduler and transfer policies. Qualification is separately documented by the [ASN-only policy](../measurements/flight-collection.md); historical GPS-based admission does not apply to new automatic trips.
 
 The collector changes how existing tests are scheduled and explained. It adds

@@ -18,10 +18,21 @@ import {
 import {
   HOURLY_TRANSFER_POLICY,
   PILOT_TRIP_POLICY,
+  PAPER_TRIP_POLICY,
+  isPaperPolicy,
+  reserveContent,
+  settleContent,
   reserve,
   reservePair,
   transferInterval,
 } from '../../src/trips/model.ts';
+import {
+  PAPER_CDN_LIMIT,
+  PAPER_DNS_LIMIT,
+  newPaperSchedule,
+  readyPaperJobs,
+  paperJobs,
+} from '../../src/measurements/paperSuite.ts';
 import { requestedPayload } from '../../src/measurements/diagnosticConfig.ts';
 
 export const CONTROL_TICK_MS = 30000;
@@ -91,7 +102,8 @@ export async function runSchedule(deps, options) {
   const { clock, sink } = deps;
   const { durationMs, signal: external } = options;
   // Historical reference fixtures explicitly supply their collected policy.
-  const policy = options.policy ?? PILOT_TRIP_POLICY;
+  const policy = options.policy ?? PAPER_TRIP_POLICY;
+  const paper = isPaperPolicy(policy.version);
   const collector = options.collectorPolicy ?? COLLECTOR_POLICY;
   const uploadPauseMs = options.uploadPauseMs ?? DEFAULT_UPLOAD_PAUSE_MS;
   const random = options.random ?? Math.random;
@@ -107,7 +119,13 @@ export async function runSchedule(deps, options) {
     reason: null,
     flight: {},
     policy,
-    transferSchedule: HOURLY_TRANSFER_POLICY,
+    ...(paper
+      ? {
+          measurementSuiteVersion: 'paper-core-v1',
+          paperSchedule: newPaperSchedule(qualifiedAt),
+        }
+      : { transferSchedule: HOURLY_TRANSFER_POLICY }),
+    contentReservations: {},
     used: { transfers: 0, diagnostics: 0, uploads: 0 },
     transferPairs: 0,
     nextTransferAt: null,
@@ -280,8 +298,9 @@ export async function runSchedule(deps, options) {
       }
       if (now >= qualifiedAt && trip.phase === 'watching') {
         trip.phase = 'collecting';
-        trip.nextTransferAt =
-          options.paired?.transferAt ?? qualifiedAt + 300000;
+        trip.nextTransferAt = paper
+          ? null
+          : options.paired?.transferAt ?? qualifiedAt + 300000;
         await sink.event('baseline_collecting', {
           observedAt: iso(now),
           qualifiedAt: iso(qualifiedAt),
@@ -330,7 +349,7 @@ export async function runSchedule(deps, options) {
     }
   }
 
-  async function probe(type, scheduledAt) {
+  async function probe(type, scheduledAt, paperJob) {
     if (clock.now() >= trip.nextUploadAt) beginRotation();
     if (ended() || rotating) {
       increment(health.skips, `control_preempted:${type}`);
@@ -342,22 +361,31 @@ export async function runSchedule(deps, options) {
       return null;
     }
     const isTransfer = type === 'download' || type === 'upload';
-    const timeoutMs = isTransfer
-      ? type === 'download' && policy.downloadTimeoutMs != null
-        ? policy.downloadTimeoutMs
-        : transferTimeout(
-            type === 'download'
-              ? trip.policy.downloadBytes
-              : trip.policy.uploadBytes,
-          )
-      : PROBE_TIMEOUT_MS;
-    const limitMs =
-      type === 'traceroute'
-        ? TRACEROUTE_LIMIT_MS
-        : ['icmp_burst', 'control_icmp', 'control_gateway'].includes(type)
-        ? ICMP_BURST_LIMIT_MS
-        : timeoutMs + 2000;
-    const results = await execute([type], scheduledAt, timeoutMs, limitMs);
+    const timeoutMs =
+      paperJob?.timeoutMs ??
+      (isTransfer
+        ? type === 'download' && policy.downloadTimeoutMs != null
+          ? policy.downloadTimeoutMs
+          : transferTimeout(
+              type === 'download'
+                ? trip.policy.downloadBytes
+                : trip.policy.uploadBytes,
+            )
+        : PROBE_TIMEOUT_MS);
+    const limitMs = paperJob
+      ? paperJob.timeoutMs + (type === 'traceroute' ? 0 : 2000)
+      : type === 'traceroute'
+      ? TRACEROUTE_LIMIT_MS
+      : ['icmp_burst', 'control_icmp', 'control_gateway'].includes(type)
+      ? ICMP_BURST_LIMIT_MS
+      : timeoutMs + 2000;
+    const results = await execute(
+      [type],
+      scheduledAt,
+      timeoutMs,
+      limitMs,
+      paperJob,
+    );
     const result = results[0];
     if (
       isTransfer &&
@@ -379,7 +407,7 @@ export async function runSchedule(deps, options) {
   }
 
   /** M-Lab is one run with two results; everything else is one run with one. */
-  async function execute(types, scheduledAt, timeoutMs, limitMs) {
+  async function execute(types, scheduledAt, timeoutMs, limitMs, paperJob) {
     const isControl = types[0].startsWith('control_');
     const started = clock.now();
     const startedMono = clock.mono();
@@ -403,6 +431,7 @@ export async function runSchedule(deps, options) {
       outcome = await deps.run(types[0], {
         scheduledAt,
         timeoutMs,
+        paperJob,
         signal: abort.signal,
       });
     } finally {
@@ -464,6 +493,11 @@ export async function runSchedule(deps, options) {
       trip.controlDue[type] ??= now + spec.offsetMs;
     const nextApp = Math.min(
       ...Object.values(trip.due),
+      ...(paper
+        ? paperJobs(qualifiedAt, trip.paperSchedule.roundIndex)
+            .filter(j => !trip.paperSchedule.completed.includes(j.key))
+            .map(j => j.scheduledAt)
+        : []),
       trip.nextTransferAt ?? Infinity,
       trip.mlab && !trip.mlab.reserved ? trip.mlab.dueAt ?? Infinity : Infinity,
       trip.nextUploadAt,
@@ -526,6 +560,22 @@ export async function runSchedule(deps, options) {
         for (const [type, spec] of Object.entries(CONTROLS))
           trip.controlDue[type] = now + spec.offsetMs;
       }
+      if (paper) delete trip.due.traceroute;
+      const paperReady = paper
+        ? readyPaperJobs(trip.paperSchedule, now)
+        : { ready: [], skipped: [] };
+      for (const { job, count } of paperReady.skipped) {
+        increment(health.expected, job.type, count);
+        increment(health.skips, `busy_deadline:${job.key}`, count);
+        await sink.event('probe_skipped', {
+          type: job.type,
+          targetId: job.targetId,
+          roundId: job.roundId,
+          reason: 'paper_slot_expired',
+          count,
+        });
+      }
+      const lightTime = Math.min(...Object.values(trip.due));
       if (trip.mlab && trip.mlab.dueAt == null)
         trip.mlab.dueAt =
           options.paired?.mlabDueAt ??
@@ -535,7 +585,10 @@ export async function runSchedule(deps, options) {
         trip.mlab &&
         !trip.mlab.reserved &&
         trip.mlab.dueAt <= now &&
-        heavyReady
+        heavyReady &&
+        (!paper ||
+          Math.min(lightTime, paperReady.ready[0]?.scheduledAt ?? Infinity) >=
+            trip.mlab.dueAt)
       ) {
         trip.mlab.reserved = true;
         const results = await execute(
@@ -548,6 +601,49 @@ export async function runSchedule(deps, options) {
           ? 'complete'
           : 'incomplete';
         lastHeavyEnd = clock.now();
+        continue;
+      }
+      const paperCandidate = paperReady.ready.find(
+        j =>
+          now + j.timeoutMs + 2000 <= trip.nextUploadAt &&
+          (j.type !== 'cdn_fetch' || heavyReady),
+      );
+      if (paperCandidate && paperCandidate.scheduledAt <= lightTime) {
+        const job = paperCandidate,
+          key = `${job.roundId}:${job.key}`;
+        trip.paperSchedule.completed.push(job.key);
+        increment(health.expected, job.type);
+        const allowed =
+          job.type === 'cdn_fetch'
+            ? reserveContent(trip, key, PAPER_CDN_LIMIT)
+            : reserve(
+                trip,
+                'diagnostics',
+                job.type === 'dns_resolver'
+                  ? PAPER_DNS_LIMIT
+                  : requestedPayload('traceroute', DIAGNOSTIC_CONFIG),
+              );
+        if (!allowed) {
+          await sink.event('probe_skipped', {
+            type: job.type,
+            targetId: job.targetId,
+            reason: 'allowance',
+          });
+          continue;
+        }
+        let result;
+        try {
+          result = await probe(job.type, job.scheduledAt, job);
+        } finally {
+          if (job.type === 'cdn_fetch') {
+            settleContent(
+              trip,
+              key,
+              result?.paper?.bodyBytes ?? PAPER_CDN_LIMIT,
+            );
+            lastHeavyEnd = clock.now();
+          }
+        }
         continue;
       }
       const candidate = Object.keys(INTERVALS)
@@ -583,7 +679,7 @@ export async function runSchedule(deps, options) {
         }
         continue;
       }
-      const directions = ['download', 'upload'].filter(
+      const directions = (paper ? [] : ['download', 'upload']).filter(
         type => trip.transferFailures[type] < 2,
       );
       if (

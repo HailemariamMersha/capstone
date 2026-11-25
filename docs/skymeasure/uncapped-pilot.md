@@ -1,4 +1,6 @@
-# Account-free phone pilot — updated 23 November 2026
+# Account-free phone pilot — updated 25 November 2026
+
+**Current: pilot 1.3.0**, policy `flight-paper-core-2026-11-25`, consent `skymeasure-paper-core-2026-11-25`. The [paper suite](../measurements/paper-suite.md) replaces controlled pairs with CDN comparisons and DNS discovery while retaining account-free enrollment, NetID separation, existing minute probes and one M-Lab pair. The sections below describe the 1.2.6 delivery baseline where explicitly versioned; its historical transfer schedule is not used for new trips.
 
 Pilot 1.2.6 uses trip policy `flight-pilot-delivery-2026-11-23` and consent `skymeasure-flight-payment-2026-11-20`. The prior 1.2.3 hourly policy remains valid for saved trips. This is a private evaluation build, not public recruitment or validated flight detection.
 

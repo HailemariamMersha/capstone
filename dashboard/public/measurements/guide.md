@@ -1,8 +1,10 @@
 # Understanding our measurements
 
-Start with the six focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **72 current columns do not mean 72 independent network measurements** (historical format 3 had 84).
+Start with the eight focused CSVs, then use the raw data to investigate a specific observation. The existing wide CSVs mix metadata, summaries, different probe types and nested records; **columns do not equal independent network measurements** (format 4 previously had 72 measurement columns; paper-suite projections add method-specific fields).
 
 Current format-4 CSVs omit custom-only socket/kernel fields. Historical JSON and audit reports remain available for earlier comparisons. The result of the original audit is that our current libraries can collect basic network performance and some useful per-probe evidence. The custom engine adds original error-queue fields, socket timing and handset TCP kernel telemetry. Neither implementation captures all network packets or explains congestion during a transfer. See the [requirements and evidence comparison](comparison.md).
+
+The [current paper suite](paper-suite.md) adds DNS discovery and identical-object CDN comparisons and removes controlled pairs from new trips. Historical HTTP views remain.
 
 ## Generate the readable views on your Mac
 
@@ -22,6 +24,8 @@ The input is **Export JSON** from the phone, or the `session.json` in its CSV bu
 | `udp.csv` | One echo probe | `sequence`, `outcome`, `rttMs`, `payloadBytes` |
 | `http.csv` | One HTTP measurement; loaded tests include the embedded transfer summary | `httpLatencyMs`, `throughputMbps`, `transferDurationMs`, baseline/loaded medians |
 | `http-latency-samples.csv` | One HTTP transaction before or during a load | `sampleGroup`, `sequence`, `httpLatencyMs` |
+| `cdn.csv` | One CDN object attempt, including failures | `provider`, `totalMs`, phase timings, `contentMatches`, `bodyBytes` |
+| `dns.csv` | One resolver discovery attempt | `configuredDnsServers`, `observedResolverIp`, status; HTTP duration is not DNS RTT |
 | `report.md` | Human-readable audit | Findings, availability counts and interpretation limits |
 | `sanity-checks.json` | Machine-readable audit | Each finding's severity, code and source JSON pointer |
 | `column-dictionary.md` | Complete data dictionary | Meaning, datatype, units, source, formula and blank semantics |

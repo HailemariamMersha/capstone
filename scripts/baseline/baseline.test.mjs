@@ -1,4 +1,4 @@
-import { PILOT_TRIP_POLICY } from '../../src/trips/model.ts';
+import { PILOT_TRIP_POLICY, PAPER_TRIP_POLICY } from '../../src/trips/model.ts';
 import { COLLECTOR_POLICY } from '../../src/trips/scheduler.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -58,7 +58,7 @@ function virtualClock() {
 // Typical durations from saved phone exports.
 const TYPICAL = {
   icmp_burst: 3542, udp_echo: 7839, tcp_connect: 41, traceroute: 3457,
-  download: 41633, upload: 4478, ndt7_download: 21000, control_gateway: 2600, control_icmp: 5400, control_tcp: 600,
+  cdn_fetch: 800, dns_resolver:200, download: 41633, upload: 4478, ndt7_download: 21000, control_gateway: 2600, control_icmp: 5400, control_tcp: 600,
 };
 async function simulate(options, hooks = {}) {
   const clock = virtualClock();
@@ -86,7 +86,7 @@ async function simulate(options, hooks = {}) {
           save: async (m, control) => void (control ? log.controls : log.saved).push(m),
         },
       },
-      { random: () => 0.5, ...options },
+      { policy:PILOT_TRIP_POLICY, random: () => 0.5, ...options },
     ),
   );
   return { ...log, trip };
@@ -443,4 +443,12 @@ test('router discovery on both platforms, and a silent router is not probed', as
   const r = await simulate({ durationMs: 1800000, controls: ['control_icmp', 'control_tcp'] });
   assert.equal(count(r.controls, 'control_gateway'), 0);
   assert.ok(count(r.controls, 'control_icmp') > 20);
+});
+
+for (const hours of [14,24]) test(`paper suite ${hours}h has no controlled transfers or catch-up duplication`, async () => {
+  const r=await simulate({durationMs:hours*3600000,policy:PAPER_TRIP_POLICY});
+  assert.equal(r.overlap,false);
+  assert.equal(r.saved.some(m=>['download','upload'].includes(m.type)),false);
+  assert.ok(r.saved.filter(m=>m.type==='cdn_fetch').length > 100);
+  assert.equal(r.trip.transferPairs,0);
 });

@@ -4,7 +4,9 @@ The baseline script runs SkyMeasure's measurements from a computer on the phone'
 
 This page covers what the script does, how to run it, which tools it uses and why, and how its results are compared with the app's. For rollout and deployment checks, see the separate [SkyMeasure validation](../skymeasure/validation.md).
 
-**Status, 23 November 2026:** two 20-minute baselines have been collected over real Wi-Fi to the lab server: see [First results](#first-results-23-november-2026). **No run beside a phone has been done yet**, so there are no same-time differences and no accuracy figures. See [What has been tested](#what-has-been-tested).
+**Paper-suite update, 25 November 2026:** the default harness now imports the shared paper registry and runs five trace targets, five identical-object CDN fetches and resolver discovery. Controlled pairs remain only in explicit historical test policies. See [the exact schedule and HTTP semantics](paper-suite.md). Paired physical accuracy validation remains pending.
+
+**Historical status, 23 November 2026:** two 20-minute baselines have been collected over real Wi-Fi to the lab server: see [First results](#first-results-23-november-2026). **No run beside a phone has been done yet**, so there are no same-time differences and no accuracy figures. See [What has been tested](#what-has-been-tested).
 
 ## What the script does
 
@@ -16,9 +18,11 @@ Times with a plus sign count from when probing begins.
 | --- | --- |
 | First 60 s | Waiting. Phones take about 60 s to qualify: both automatic trips in the 21 November exports sent their first probe 60 s after Start |
 | Every 60 s | ICMP burst from +1 s, UDP burst from +10 s, TCP connection from +20 s |
-| +60 s, then every 15 min | Traceroute |
+| +1, +3, +5, +7, +9 min of each round | Five traceroute targets, rotated |
+| +30 s of each round | NextDNS resolver discovery |
+| +4, +6, +8, +10, +12 min of each round | Five CDN object fetches, rotated |
 | +1 to +3 min, once | M-Lab NDT7 download and upload, only if requested |
-| +5 min, then hourly | Controlled download, then upload. At most ten pairs; two failures in a row stop that direction |
+| Controlled pairs | Disabled in new paper-suite runs; retained in historical fixtures |
 | Every 60 s | Public address and provider (ASN) lookup |
 | Every 15 min from launch | Upload gap: the segment closes and probing stops for 22 s |
 
