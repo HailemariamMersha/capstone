@@ -9,6 +9,29 @@ import { Button } from './ui/button';
 import { label, when, number } from '@/lib/trip-types';
 import { variableDefinition } from '@/lib/variable-reference';
 type Row = Record<string, any>;
+const paperLabels: Record<string, string> = {
+  targetId: 'Target ID',
+  resolvedAddress: 'Resolved IPv4',
+  roundId: 'Round ID',
+  provider: 'CDN provider',
+  dnsLookupMs: 'DNS lookup (ms)',
+  tcpConnectMs: 'TCP connect (ms)',
+  tlsHandshakeMs: 'TLS handshake (ms)',
+  responseHeadersAfterMs: 'Headers arrival (ms)',
+  bodyReadMs: 'Body read (ms)',
+  totalMs: 'Total time (ms)',
+  bodyBytes: 'Body bytes',
+  bodyComplete: 'Body complete',
+  contentMatches: 'Expected content',
+  sha256: 'SHA-256',
+  headers: 'Cache / edge headers',
+  edgeCodes: 'Unverified edge codes',
+  configuredDnsServers: 'Configured DNS',
+  observedResolverIp: 'Observed recursive resolver',
+  resolverStatus: 'Resolver status',
+  resolverUnavailableReason: 'Resolver unavailable reason',
+  privateDnsActive: 'Private DNS active',
+};
 const empty = (v: unknown) =>
   v == null ? (
     <span title="Not recorded or not applicable" aria-label="Not recorded">
@@ -217,7 +240,7 @@ export function TripEvidence({
           ].map(key =>
             column(
               key,
-              key,
+              paperLabels[key] ?? key,
               'See the shared measurement dictionary for scope and calculation.',
             ),
           ),
@@ -340,7 +363,12 @@ export function TripEvidence({
             aria-label="Evidence test"
             className="block"
             value={protocol}
-            onChange={change(setProtocol)}
+            onChange={e => {
+              setProtocol(e.target.value);
+              setTargetId('');
+              setCdnProvider('');
+              setOffset(0);
+            }}
           >
             <option value="">All tests</option>
             {[

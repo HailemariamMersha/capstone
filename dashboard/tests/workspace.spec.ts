@@ -908,9 +908,66 @@ test('paper suite exposes target filters, phase medians and nullable resolver hi
       },
     },
   });
+  await page.route('**/research/trips/*/timeline*', route =>
+    route.fulfill({
+      json: {
+        clock: 'recorded_wall_clock_utc',
+        series: [
+          {
+            type: 'cdn_fetch',
+            targetId: 'google',
+            cdnProvider: 'google',
+            bucketMs: 1,
+            points: [
+              {
+                id: 'cdn1',
+                at: start + 240000,
+                type: 'cdn_fetch',
+                value: 80,
+                success: true,
+                target: 'https://example.invalid/jquery.js',
+                timingValid: true,
+                phases: {
+                  dnsLookupMs: 0,
+                  tcpConnectMs: 12,
+                  tlsHandshakeMs: 20,
+                  responseHeadersAfterMs: 75,
+                  bodyReadMs: 4,
+                  totalMs: 80,
+                },
+              },
+            ],
+          },
+          {
+            type: 'cdn_fetch',
+            targetId: 'jquery',
+            cdnProvider: 'jquery',
+            bucketMs: 1,
+            points: [
+              {
+                id: 'cdn2',
+                at: start + 360000,
+                type: 'cdn_fetch',
+                value: 120,
+                success: true,
+                target: 'https://example.invalid/jquery.js',
+                timingValid: true,
+                phases: { totalMs: 120 },
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
   await page.goto(`/trips/${id}`);
   await expect(
     page.getByText('Target comparisons and CDN phases'),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Each point is one complete, hash-validated object fetch.', {
+      exact: false,
+    }),
   ).toBeVisible();
   await page
     .getByText('DNS resolver history (1 received observations)')
@@ -933,8 +990,11 @@ test('paper suite exposes target filters, phase medians and nullable resolver hi
   await page
     .getByLabel('Evidence test', { exact: true })
     .selectOption('cdn_fetch');
+  await expect(page.getByLabel('Evidence target', { exact: true })).toHaveValue(
+    '',
+  );
   await expect(
-    page.getByRole('columnheader', { name: 'dnsLookupMs', exact: false }),
+    page.getByRole('columnheader', { name: 'DNS lookup (ms)', exact: false }),
   ).toBeVisible();
   const provider = page.waitForRequest(
     r =>
@@ -943,4 +1003,8 @@ test('paper suite exposes target filters, phase medians and nullable resolver hi
   );
   await page.getByLabel('Evidence CDN provider').selectOption('cloudflare');
   await provider;
+  await page.screenshot({
+    path: 'test-results/paper-suite.png',
+    fullPage: true,
+  });
 });

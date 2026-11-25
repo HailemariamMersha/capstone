@@ -20,6 +20,13 @@ import {
   when,
   number,
 } from '@/lib/trip-types';
+const cdnColors: Record<string, string> = {
+  google: '#007f79',
+  cloudflare: '#d47a17',
+  microsoft: '#3862a1',
+  jsdelivr: '#9365ad',
+  jquery: '#d0454e',
+};
 const colors: Record<string, string> = {
   icmp_burst: '#007f79',
   icmp_rtt: '#007f79',
@@ -173,7 +180,12 @@ export function TripTimeline({
                           p.at >= domain[0] &&
                           p.at <= domain[1],
                       )}
-                      fill={colors[s.type]}
+                      fill={
+                        s.type === 'cdn_fetch'
+                          ? cdnColors[s.cdnProvider ?? s.targetId ?? ''] ??
+                            '#007f79'
+                          : colors[s.type]
+                      }
                       shape={s.type.startsWith('ndt7') ? 'star' : 'circle'}
                       isAnimationActive={false}
                     />
@@ -182,7 +194,9 @@ export function TripTimeline({
               </ResponsiveContainer>
             </div>
             <p className="text-xs muted">
-              {unit === 'ms'
+              {series.some(s => s.type === 'cdn_fetch')
+                ? 'Each point is one complete, hash-validated object fetch. Providers stay separate; completion time is not capacity. Hover for phase timings; header arrival is cumulative.'
+                : unit === 'ms'
                 ? 'Each point is a recorded burst median. ICMP and UDP may use different destinations.'
                 : 'Controlled fixed-size transfers and M-Lab benchmarks use different methods and endpoints.'}{' '}
               Points are not connected across missing observations.

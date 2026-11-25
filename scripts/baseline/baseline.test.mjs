@@ -452,3 +452,94 @@ for (const hours of [14,24]) test(`paper suite ${hours}h has no controlled trans
   assert.ok(r.saved.filter(m=>m.type==='cdn_fetch').length > 100);
   assert.equal(r.trip.transferPairs,0);
 });
+
+test('curl phase differences preserve zero and distinguish cumulative header time', () => {
+  assert.deepEqual(
+    tools.paperCurlPhases({
+      phasesMs: { dns: 0, connect: 10, tls: 30, firstByte: 70, total: 90 },
+    }),
+    {
+      dnsLookupMs: 0,
+      tcpConnectMs: 10,
+      tlsHandshakeMs: 20,
+      responseHeadersAfterMs: 70,
+      bodyReadMs: 20,
+      totalMs: 90,
+    },
+  );
+  assert.equal(tools.paperCurlPhases(null).dnsLookupMs, null);
+});
+test('terminal DNS discovery uses random host without identifiers and preserves absent resolver', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const job = {
+    type: 'dns_resolver',
+    targetId: 'nextdns',
+    roundId: 'private-must-not-be-in-url',
+    timeoutMs: 20000,
+  };
+  let argv;
+  const result = await tools.paperHttp(job, {
+    run: async (command, args) => {
+      argv = args;
+      assert.equal(command, 'curl');
+      await writeFile(
+        args[args.indexOf('-o') + 1],
+        JSON.stringify({
+          status: 'ok',
+          profile: 'secret',
+          clientName: 'secret',
+        }),
+      );
+      await writeFile(
+        args[args.indexOf('-D') + 1],
+        'HTTP/1.1 200 OK\r\nSet-Cookie: private=secret\r\nX-Cache: HIT\r\n\r\n',
+      );
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          http_code: 200,
+          time_namelookup: 0,
+          time_connect: 0.01,
+          time_appconnect: 0.03,
+          time_starttransfer: 0.07,
+          time_total: 0.09,
+        }),
+        durationMs: 90,
+      };
+    },
+  });
+  assert.match(argv.at(-1), /^https:\/\/[a-f0-9]{32}\.test\.nextdns\.io\/$/);
+  assert.equal(argv.includes('--location'), false);
+  assert.equal(argv.includes('--retry'), false);
+  assert.equal(result.fields.success, true);
+  assert.equal(result.fields.value, null);
+  assert.equal(result.fields.paper.observedResolverIp, null);
+  assert.equal(result.fields.paper.headers['x-cache'], 'HIT');
+  assert.equal(JSON.stringify(result.fields).includes('secret'), false);
+});
+test('terminal CDN rejects changed content and retains partial failure bytes', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const result = await tools.paperHttp(
+    { type: 'cdn_fetch', targetId: 'google', roundId: '0:0', timeoutMs: 90000 },
+    {
+      run: async (_command, args) => {
+        assert.equal(args.includes('--http1.1'), true);
+        assert.equal(args.includes('Accept-Encoding: identity'), true);
+        assert.equal(
+          args.some(s => s.includes('no-cache')),
+          false,
+        );
+        await writeFile(args[args.indexOf('-o') + 1], 'partial');
+        return {
+          code: 28,
+          stdout: JSON.stringify({ http_code: 200, time_total: 90 }),
+          durationMs: 90000,
+        };
+      },
+    },
+  );
+  assert.equal(result.fields.success, false);
+  assert.equal(result.fields.value, null);
+  assert.equal(result.fields.paper.bodyBytes, 7);
+  assert.equal(result.fields.paper.bodyComplete, false);
+});
