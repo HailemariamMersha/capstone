@@ -14,6 +14,10 @@ export function requestedPayload(
   config: MeasurementConfig,
 ): number {
   switch (type) {
+    case 'cdn_fetch':
+      return 512 * 1024;
+    case 'dns_resolver':
+      return 16 * 1024;
     case 'speedchecker_latency':
       return 0;
     case 'speedchecker_download':

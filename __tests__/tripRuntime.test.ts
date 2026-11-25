@@ -1,3 +1,10 @@
+// These frozen lifecycle fixtures exercise the pre-paper policies, which remain readable.
+jest.mock('../src/trips/policy', () => ({
+  newTripPolicy: (pilot: boolean) => {
+    const model = jest.requireActual('../src/trips/model');
+    return pilot ? model.PILOT_TRIP_POLICY : model.TRIP_POLICY;
+  },
+}));
 jest.mock('../src/reference/tripMlab', () => ({
   requireMlabConsent: jest.fn(async () => {}),
   runTripMlab: jest.fn(async () => [

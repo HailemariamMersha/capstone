@@ -10,6 +10,7 @@ class DiagnosticsPackage : ReactPackage {
     override fun createNativeModules(context: ReactApplicationContext): List<NativeModule> =
         buildList {
             add(FlightNetworkModule(context))
+            add(PaperProbeModule(context))
             add(Ndt7Module(context))
             add(TracerouteModule(context))
             add(LibraryIcmpModule(context))

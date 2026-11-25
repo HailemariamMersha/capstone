@@ -26,8 +26,8 @@ const mockSession = {
 const mockProfile = {
   participantId: 'p',
   role: 'participant',
-  consentVersion: 'skymeasure-flight-payment-2026-11-20',
-  requiredConsentVersion: 'skymeasure-flight-payment-2026-11-20',
+  consentVersion: 'skymeasure-paper-core-2026-11-25',
+  requiredConsentVersion: 'skymeasure-paper-core-2026-11-25',
   mobileUploads: false,
 };
 jest.mock('../src/auth/client', () => ({

@@ -14,6 +14,8 @@ export type ProbeType =
   | DiagnosticType
   | 'ndt7_download'
   | 'ndt7_upload'
+  | 'cdn_fetch'
+  | 'dns_resolver'
   | 'speedchecker_latency'
   | 'speedchecker_download'
   | 'speedchecker_upload';
@@ -33,6 +35,37 @@ export interface ProbeConfig {
   uploadBytes: number;
 }
 export interface Measurement {
+  targetId?: string;
+  targetMode?: 'literal' | 'hostname';
+  resolvedAddress?: string | null;
+  roundId?: string;
+  resolutionMs?: number | null;
+  paper?: {
+    suiteVersion: string;
+    provider?: string;
+    url?: string;
+    bodyBytes: number | null;
+    chargedBytes?: number;
+    byteLimit: number;
+    bodyComplete: boolean;
+    contentMatches: boolean | null;
+    sha256?: string | null;
+    dnsLookupMs: number | null;
+    tcpConnectMs: number | null;
+    tlsHandshakeMs: number | null;
+    responseHeadersAfterMs: number | null;
+    bodyReadMs: number | null;
+    totalMs: number;
+    remoteAddress: string | null;
+    httpVersion: string | null;
+    headers: Record<string, string>;
+    edgeCodes: string[];
+    configuredDnsServers?: string[];
+    observedResolverIp?: string | null;
+    resolverStatus?: string | null;
+    resolverUnavailableReason?: string | null;
+    privateDnsActive?: boolean | null;
+  };
   /** App interruption cause, separate from a network timeout/failure. */
   interruptionReason?: string;
   scheduledAt?: string;

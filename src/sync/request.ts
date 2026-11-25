@@ -1,6 +1,11 @@
 import { api } from '../auth/client';
 import type { MeasurementStore } from '../storage/types';
-import { PILOT_POLICY_VERSION, reserve, type Trip } from '../trips/model';
+import {
+  PILOT_POLICY_VERSION,
+  isPaperPolicy,
+  reserve,
+  type Trip,
+} from '../trips/model';
 import {
   jsonBody,
   syncVersion,
@@ -33,7 +38,10 @@ export function createUploadRequest(
         : jsonBody(body, version >= 2);
     const reservation = encoded.bytes + 65536;
     const { trip, live, persist } = options;
-    const settleActual = trip?.policy.version === PILOT_POLICY_VERSION;
+    const settleActual =
+      trip != null &&
+      (trip.policy.version === PILOT_POLICY_VERSION ||
+        isPaperPolicy(trip.policy.version));
     const reservationId = `${Date.now()}:${++sequence}`;
     if (live && trip) {
       const held = Object.values(trip.uploadReservations ?? {}).reduce(

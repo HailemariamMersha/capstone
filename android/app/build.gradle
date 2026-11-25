@@ -104,8 +104,8 @@ android {
         manifestPlaceholders["skymeasureAuthScheme"] = flightPilotBuild ? "com.labpracticeapp.flightpilot" : "com.labpracticeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "1.2.6"
+        versionCode 15
+        versionName "1.3.0"
     }
     testBuildType "release"
     if (speedCheckerEnabled) {
@@ -139,6 +139,10 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     implementation project(":ndt7")
     implementation("com.google.code.gson:gson:2.10.1")
     // The version of react-native is set by the React Native Gradle Plugin
@@ -157,6 +161,17 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+def paperAssets = layout.buildDirectory.dir("generated/paperAssets")
+android.sourceSets.main.assets.srcDir(paperAssets)
+def generatePaperAssets = tasks.register("generatePaperAssets", Exec) {
+    inputs.file(rootProject.file("../src/measurements/paperSuite.ts"))
+    inputs.file(rootProject.file("../scripts/build-paper-assets.cjs"))
+    outputs.file(paperAssets.map { it.file("paper-suite.json") })
+    commandLine("node", rootProject.file("../scripts/build-paper-assets.cjs").absolutePath,
+        paperAssets.get().file("paper-suite.json").asFile.absolutePath)
+}
+tasks.named("preBuild").configure { dependsOn(generatePaperAssets) }
 
 // React Native's default bundle inputs omit JSON. Track our public runtime
 // configuration explicitly so a configured pilot cannot reuse a placeholder bundle.

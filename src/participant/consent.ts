@@ -1,1 +1,1 @@
-export const RESEARCH_CONSENT = 'skymeasure-flight-payment-2026-11-20';
+export const RESEARCH_CONSENT = 'skymeasure-paper-core-2026-11-25';

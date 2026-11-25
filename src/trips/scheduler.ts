@@ -51,6 +51,10 @@ export function transferTimeout(bytes: number) {
   );
 }
 export type SegmentHealth = {
+  byTarget?: Record<
+    string,
+    { expected: number; started: number; completed: number; skipped: number }
+  >;
   expected: Record<string, number>;
   started: Record<string, number>;
   completed: Record<string, number>;

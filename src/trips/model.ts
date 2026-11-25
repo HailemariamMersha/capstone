@@ -1,3 +1,7 @@
+import {
+  PAPER_POLICY_VERSION,
+  type PaperSchedule,
+} from '../measurements/paperSuite.ts';
 /** Versioned research policy. None of these types accepts coordinates. */
 export const TRIP_POLICY = {
   version: 'flight-mlab-2026-11-02',
@@ -27,6 +31,14 @@ export const PILOT_TRIP_POLICY = {
   downloadBytes: 500000,
   downloadTimeoutMs: 45000,
 } as const;
+export const PAPER_TRIP_POLICY = {
+  ...PILOT_TRIP_POLICY,
+  version: PAPER_POLICY_VERSION,
+} as const;
+export const isPaperPolicy = (version: string) =>
+  version === PAPER_POLICY_VERSION;
+export const uncappedMlab = (version: string) =>
+  isHourlyPilot(version) || isPaperPolicy(version);
 export const DETECTOR_POLICY = {
   version: 'asn-only-v1',
   confirmationMs: 30000,
@@ -100,6 +112,11 @@ export interface Evidence {
   gpsDetails: GpsEvidence | null;
 }
 export interface Trip {
+  measurementSuiteVersion?: 'paper-core-v1';
+  paperSchedule?: PaperSchedule;
+  pilotTestAsnsEnabled?: boolean;
+  /** Local-only uncertain CDN body reservations; never in the trip manifest. */
+  contentReservations?: Record<string, number>;
   /** Local-only live request reservations. Never included in tripManifest(). */
   uploadReservations?: Record<string, number>;
   /** Retired evidence stays exportable locally and never enters automatic sync. */
@@ -284,7 +301,7 @@ export function transition(trip: Trip, evidence: Evidence): Trip {
     if (now - t.candidateAt >= DETECTOR_POLICY.confirmationMs) {
       t.qualifiedKey = evidence.networkKey;
       t.firstQualifiedAt ??= now;
-      t.nextTransferAt ??= now + 300000;
+      if (!isPaperPolicy(t.policy.version)) t.nextTransferAt ??= now + 300000;
     }
   } else {
     t.candidateAt = null;
@@ -336,6 +353,7 @@ export function reservePair(
   directions: ('download' | 'upload')[] = ['download', 'upload'],
 ): boolean {
   if (
+    isPaperPolicy(trip.policy.version) ||
     trip.nextTransferAt == null ||
     now < trip.nextTransferAt ||
     trip.transferPairs >= 10
@@ -362,6 +380,37 @@ export function reservePair(
     return false;
   trip.transferPairs++;
   return true;
+}
+export function reserveContent(
+  trip: Trip,
+  key: string,
+  bytes: number,
+): boolean {
+  const reserved = Object.values(trip.contentReservations ?? {}).reduce(
+    (a, b) => a + b,
+    0,
+  );
+  if (
+    !Number.isSafeInteger(bytes) ||
+    bytes < 0 ||
+    trip.used.transfers + reserved + bytes > trip.policy.transferBytes
+  )
+    return false;
+  (trip.contentReservations ??= {})[key] = bytes;
+  return true;
+}
+export function settleContent(
+  trip: Trip,
+  key: string,
+  observed: number | null,
+) {
+  const limit = trip.contentReservations?.[key];
+  if (limit === undefined) return;
+  trip.used.transfers +=
+    observed == null
+      ? limit
+      : Math.min(limit, Math.max(0, Math.ceil(observed)));
+  delete trip.contentReservations![key];
 }
 
 /** Historical trips retain their original duration-based spacing. */

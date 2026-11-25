@@ -52,7 +52,7 @@ test('previous consent and missing consent cannot arm automatic publication', as
   (secureStorage.getItem as jest.Mock).mockResolvedValue(null);
   await expect(requireMlabConsent('a')).rejects.toThrow('updated');
   (secureStorage.getItem as jest.Mock).mockResolvedValue(
-    JSON.stringify({ consentVersion: 'skymeasure-flight-payment-2026-11-20' }),
+    JSON.stringify({ consentVersion: 'skymeasure-paper-core-2026-11-25' }),
   );
   await requireMlabConsent('a');
   expect(secureStorage.getItem).toHaveBeenLastCalledWith('profile.a');

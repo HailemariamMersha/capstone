@@ -1,6 +1,8 @@
 import type { ProbeConfig } from '../measurements/types';
 
 export interface MeasurementConfig extends ProbeConfig {
+  measurementSuiteVersion?: 'paper-core-v1';
+  paperRegistry?: typeof import('../measurements/paperSuite').PAPER_REGISTRY;
   collectorPolicy?: typeof import('../trips/scheduler').COLLECTOR_POLICY;
   detectorPolicy?: typeof import('../trips/model').DETECTOR_POLICY;
   transferSchedule?: 'hourly-v1';

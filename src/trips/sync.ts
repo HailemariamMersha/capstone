@@ -25,6 +25,9 @@ export function tripManifest(t: Trip) {
     policyVersion: t.policy.version,
     shadow: t.shadow,
     ...(t.transferSchedule ? { transferSchedule: t.transferSchedule } : {}),
+    ...(t.measurementSuiteVersion
+      ? { measurementSuiteVersion: t.measurementSuiteVersion }
+      : {}),
     ...(t.groundTest != null ? { groundTest: t.groundTest } : {}),
     ...(t.mlabUsage ? { mlabUsage: t.mlabUsage } : {}),
     ...(t.detectorPolicy

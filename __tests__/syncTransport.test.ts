@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { gunzipSync } from 'fflate';
 import { fingerprint, jsonBody } from '../src/sync/transport';
 import { createUploadRequest } from '../src/sync/request';
-import { PILOT_TRIP_POLICY } from '../src/trips/model';
+import { PILOT_TRIP_POLICY, PAPER_TRIP_POLICY } from '../src/trips/model';
 import { api } from '../src/auth/client';
 jest.mock('../src/auth/client', () => ({ api: jest.fn() }));
 const meta = {
@@ -13,9 +13,13 @@ const meta = {
   serverTiming: 'auth;dur=1',
   retryAfterMs: null,
 };
-function fixture() {
+function fixture(
+  policy:
+    | typeof PILOT_TRIP_POLICY
+    | typeof PAPER_TRIP_POLICY = PILOT_TRIP_POLICY,
+) {
   const trip: any = {
-    policy: PILOT_TRIP_POLICY,
+    policy,
     used: { transfers: 0, diagnostics: 0, uploads: 0 },
   };
   const journal: unknown[] = [];
@@ -58,36 +62,39 @@ test('gzip is lossless for zeros, null, Unicode and large decimal timestamp stri
   );
   expect(fingerprint({ a: [1, 2] })).not.toBe(fingerprint({ a: [2, 1] }));
 });
-test('known responses settle actual body bytes while spent counters remain monotonic', async () => {
-  const f = fixture();
-  const body = { text: 'abc'.repeat(1000) };
-  const expected = jsonBody(body, true).bytes + 43;
-  (api as jest.Mock).mockImplementation(
-    async (_path, _options, _owner, observe) => {
-      expect(_options.headers).toMatchObject({
-        'Content-Encoding': 'gzip',
-        'X-SkyMeasure-Content-Encoding': 'gzip',
-      });
-      expect(Object.values(f.trip.uploadReservations)[0]).toBeGreaterThan(
-        65536,
-      );
-      expect(f.trip.used.uploads).toBe(0);
-      observe.dispatched();
-      observe.response(meta);
-      return { acknowledged: [] };
-    },
-  );
-  await f.request('/sessions/s/records', body, 'owner');
-  expect(f.trip.used.uploads).toBe(expected);
-  expect(f.trip.uploadReservations).toEqual({});
-  expect(f.journal).toEqual([
-    expect.objectContaining({
-      encoding: 'gzip',
-      responseBytes: 43,
-      requestId: 'request',
-    }),
-  ]);
-});
+test.each([PILOT_TRIP_POLICY, PAPER_TRIP_POLICY])(
+  'known responses settle actual body bytes under $version while counters remain monotonic',
+  async policy => {
+    const f = fixture(policy);
+    const body = { text: 'abc'.repeat(1000) };
+    const expected = jsonBody(body, true).bytes + 43;
+    (api as jest.Mock).mockImplementation(
+      async (_path, _options, _owner, observe) => {
+        expect(_options.headers).toMatchObject({
+          'Content-Encoding': 'gzip',
+          'X-SkyMeasure-Content-Encoding': 'gzip',
+        });
+        expect(Object.values(f.trip.uploadReservations)[0]).toBeGreaterThan(
+          65536,
+        );
+        expect(f.trip.used.uploads).toBe(0);
+        observe.dispatched();
+        observe.response(meta);
+        return { acknowledged: [] };
+      },
+    );
+    await f.request('/sessions/s/records', body, 'owner');
+    expect(f.trip.used.uploads).toBe(expected);
+    expect(f.trip.uploadReservations).toEqual({});
+    expect(f.journal).toEqual([
+      expect.objectContaining({
+        encoding: 'gzip',
+        responseBytes: 43,
+        requestId: 'request',
+      }),
+    ]);
+  },
+);
 test('uncertain dispatched failure is fully charged; proven pre-dispatch failure is not', async () => {
   const f = fixture();
   const body = { records: [] };

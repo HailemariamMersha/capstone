@@ -28,14 +28,26 @@ import { foregroundService } from '../background/serviceCoordinator';
 import { runProbe } from '../measurements/runProbe';
 import { runDiagnostic } from '../measurements/diagnostics';
 import { requestedPayload } from '../measurements/diagnosticConfig';
+import { runPaperProbe, paperCharge } from '../measurements/paperProbes';
+import {
+  PAPER_REGISTRY,
+  PAPER_SUITE_VERSION,
+  PAPER_CDN_LIMIT,
+  PAPER_DNS_LIMIT,
+  newPaperSchedule,
+  readyPaperJobs,
+  type PaperJob,
+} from '../measurements/paperSuite';
+import { newTripPolicy } from './policy';
 import { participantDefaults } from '../participant/defaults';
 import type { MeasurementConfig, ServiceStatus } from '../sessions/types';
 import type { Measurement, ProbeType } from '../measurements/types';
 import type { NetworkSnapshot } from '../network/types';
 import {
   TRIP_POLICY,
-  PILOT_TRIP_POLICY,
   isHourlyPilot,
+  isPaperPolicy,
+  uncappedMlab,
   PILOT_TEST_PROVIDERS,
   DETECTOR_POLICY,
   type Trip,
@@ -44,6 +56,8 @@ import {
   evaluate,
   transition,
   reserve,
+  reserveContent,
+  settleContent,
   reservePair,
   transferInterval,
   HOURLY_TRANSFER_POLICY,
@@ -168,14 +182,22 @@ async function record(kind: string, details: Record<string, unknown>) {
 }
 const config = (t = trip!): MeasurementConfig => ({
   ...participantDefaults,
-  collectorVersion: 'skymeasure-libraries-2',
+  collectorVersion: isPaperPolicy(t.policy.version)
+    ? 'skymeasure-libraries-3'
+    : 'skymeasure-libraries-2',
   collectorPolicy: COLLECTOR_POLICY,
   detectorPolicy: t.detectorPolicy ?? DETECTOR_POLICY,
   streamDownloads: true,
-  httpEnabled: true,
-  referenceByteThreshold: isHourlyPilot(t.policy.version) ? null : 90 * 1048576,
+  httpEnabled: !isPaperPolicy(t.policy.version),
+  ...(isPaperPolicy(t.policy.version)
+    ? {
+        measurementSuiteVersion: PAPER_SUITE_VERSION,
+        paperRegistry: PAPER_REGISTRY,
+      }
+    : {}),
+  referenceByteThreshold: uncappedMlab(t.policy.version) ? null : 90 * 1048576,
   maxDurationMs: TRIP_POLICY.maximumMs,
-  maxPayloadBytes: isHourlyPilot(t.policy.version)
+  maxPayloadBytes: uncappedMlab(t.policy.version)
     ? null
     : t.policy.transferBytes +
       t.policy.diagnosticBytes +
@@ -192,20 +214,22 @@ const config = (t = trip!): MeasurementConfig => ({
   mlabPolicy: t.mlab
     ? {
         consentVersion: t.mlab.consentVersion,
-        reservationBytes: isHourlyPilot(t.policy.version)
+        reservationBytes: uncappedMlab(t.policy.version)
           ? null
           : MLAB_RESERVATION,
-        byteThresholdPerDirection: isHourlyPilot(t.policy.version)
+        byteThresholdPerDirection: uncappedMlab(t.policy.version)
           ? null
           : 90 * 1048576,
         maximumPairsPerTrip: 1,
         maximumPairsPerDay: 4,
       }
     : undefined,
-  pilotTestAsnsEnabled: isHourlyPilot(t.policy.version),
-  pilotTestProviderAsns: isHourlyPilot(t.policy.version)
-    ? Object.keys(PILOT_TEST_PROVIDERS).map(Number)
-    : [],
+  pilotTestAsnsEnabled:
+    t.pilotTestAsnsEnabled ?? isHourlyPilot(t.policy.version),
+  pilotTestProviderAsns:
+    t.pilotTestAsnsEnabled ?? isHourlyPilot(t.policy.version)
+      ? Object.keys(PILOT_TEST_PROVIDERS).map(Number)
+      : [],
   groundTest: t.groundTest ?? false,
   collectionMode: t.shadow ? 'detector_shadow' : 'flight_auto',
 });
@@ -270,6 +294,12 @@ export async function recoverTrips(owner: string, startup = false) {
   await store.initialize(true);
   const sessions = await store.accountSessions(owner);
   for (const saved of await store.accountTrips(owner)) {
+    if (Object.keys(saved.contentReservations ?? {}).length) {
+      for (const key of Object.keys(saved.contentReservations!))
+        settleContent(saved, key, null);
+      saved.revision++;
+      await store.saveTrip(saved);
+    }
     for (const session of sessions.filter(
       s => s.config.tripId === saved.id && s.state === 'active',
     )) {
@@ -349,6 +379,9 @@ export async function startTrip(
     ).crypto.getRandomValues(bytes);
     const id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
     const now = Date.now();
+    const selectedPolicy = newTripPolicy(
+      native.pilotBuild === true && publicConfig.pilotTestAsnsEnabled,
+    );
     trip = {
       id,
       ownerId: owner,
@@ -359,10 +392,9 @@ export async function startTrip(
       phase: 'watching',
       reason: null,
       flight: details,
-      policy:
-        native.pilotBuild === true && publicConfig.pilotTestAsnsEnabled
-          ? PILOT_TRIP_POLICY
-          : TRIP_POLICY,
+      policy: selectedPolicy,
+      pilotTestAsnsEnabled:
+        native.pilotBuild === true && publicConfig.pilotTestAsnsEnabled,
       groundTest: false,
       detectorPolicy: DETECTOR_POLICY,
       segmentCount: 0,
@@ -381,7 +413,9 @@ export async function startTrip(
       due: {},
       shadow,
       collectorPolicy: COLLECTOR_POLICY.version,
-      transferSchedule: HOURLY_TRANSFER_POLICY,
+      ...(isPaperPolicy(selectedPolicy.version)
+        ? { measurementSuiteVersion: PAPER_SUITE_VERSION }
+        : { transferSchedule: HOURLY_TRANSFER_POLICY }),
       pendingControlEvents: [],
       transferFailures: { download: 0, upload: 0 },
       mlab:
@@ -856,7 +890,11 @@ async function loop(signal: AbortSignal) {
     }
   }
 
-  async function probe(type: ProbeType, scheduledAt: number) {
+  async function probe(
+    type: ProbeType,
+    scheduledAt: number,
+    paperJob?: PaperJob,
+  ): Promise<Measurement | undefined> {
     if (Date.now() >= trip!.nextUploadAt) beginRotation();
     if (
       ended() ||
@@ -922,7 +960,9 @@ async function loop(signal: AbortSignal) {
     );
     const timer = setTimeout(
       () => abortProbe('probe_deadline'),
-      type === 'traceroute'
+      paperJob
+        ? paperJob.timeoutMs + (paperJob.type === 'traceroute' ? 0 : 2000)
+        : type === 'traceroute'
         ? 50000
         : type === 'icmp_burst'
         ? 35000
@@ -937,6 +977,14 @@ async function loop(signal: AbortSignal) {
             durationMs: 0,
             errorType: 'interrupted' as const,
           }
+        : paperJob
+        ? await runPaperProbe(
+            attempt,
+            cfg,
+            paperJob,
+            route.handle,
+            probeAbort.signal,
+          )
         : type === 'download' || type === 'upload' || type === 'http_rtt'
         ? await runProbe(type, cfg, id, probeAbort.signal, undefined, attempt)
         : await runDiagnostic(attempt, cfg, probeAbort.signal);
@@ -977,6 +1025,8 @@ async function loop(signal: AbortSignal) {
           errorMessage:
             'Clock or callback gap crossed this attempt; original samples and reported value are retained with scheduling evidence.',
         };
+      if (paperJob?.type === 'cdn_fetch' && result.paper)
+        result.paper.chargedBytes = paperCharge(result, PAPER_CDN_LIMIT);
       await store.finishAttempt({
         ...result,
         id: attempt.id,
@@ -1039,6 +1089,7 @@ async function loop(signal: AbortSignal) {
           });
       }
       publish();
+      return result;
     } finally {
       clearTimeout(timer);
       probeAbort = null;
@@ -1149,19 +1200,74 @@ async function loop(signal: AbortSignal) {
         await wait(1000, workerWake.signal);
         continue;
       }
+      const paper = isPaperPolicy(trip!.policy.version);
       if (!Object.keys(trip!.due).length) trip!.due = resetProbes(now);
-      if (trip!.shadow) trip!.nextTransferAt ??= now + 300000;
+      if (paper) delete trip!.due.traceroute;
+      if (trip!.shadow && !paper) trip!.nextTransferAt ??= now + 300000;
+      if (paper && !trip!.paperSchedule) {
+        trip!.paperSchedule = newPaperSchedule(trip!.firstQualifiedAt ?? now);
+        await persist();
+      }
+      const heavyAt = Math.max(
+        lastHeavyEnd,
+        trip!.paperSchedule?.lastHeavyEnd ?? -Infinity,
+      );
+      const heavyReady = now - heavyAt >= COLLECTOR_POLICY.heavySpacingMs;
+      const lightCandidate = (Object.keys(INTERVALS) as ScheduledProbe[])
+        .sort((a, b) => (trip!.due[a] ?? Infinity) - (trip!.due[b] ?? Infinity))
+        .find(
+          type =>
+            (trip!.due[type] ?? Infinity) <= now + COLLECTOR_POLICY.toleranceMs,
+        );
+      const paperReady = paper
+        ? readyPaperJobs(trip!.paperSchedule!, now)
+        : { ready: [], skipped: [] };
+      const targetHealth = (job: PaperJob) =>
+        ((health().byTarget ??= {})[job.key] ??= {
+          expected: 0,
+          started: 0,
+          completed: 0,
+          skipped: 0,
+        });
+      for (const { job, count: missed } of paperReady.skipped) {
+        increment(health().expected, job.type, missed);
+        increment(health().skips, `busy_deadline:${job.key}`, missed);
+        targetHealth(job).expected += missed;
+        targetHealth(job).skipped += missed;
+        await record('probe_skipped', {
+          type: job.type,
+          targetId: job.targetId,
+          roundId: job.roundId,
+          scheduledAt: iso(job.scheduledAt),
+          count: missed,
+          reason:
+            job.type !== 'traceroute' && !wifi?.validated
+              ? 'wifi_internet_unvalidated'
+              : 'paper_slot_expired',
+        });
+      }
+      if (paperReady.skipped.length) await persist();
+      const paperCandidate = paperReady.ready.find(
+        job =>
+          trip!.nextUploadAt - now >= job.timeoutMs + 2000 &&
+          (job.type === 'traceroute' || wifi!.validated) &&
+          (job.type !== 'cdn_fetch' || heavyReady),
+      );
+      const firstDue = Math.min(
+        lightCandidate ? trip!.due[lightCandidate]! : Infinity,
+        paperCandidate?.scheduledAt ?? Infinity,
+      );
       if (trip!.mlab && trip!.mlab.dueAt == null) {
         trip!.mlab.dueAt = now + 60000 + Math.floor(Math.random() * 120000);
         await persist();
       }
-      const heavyReady = now - lastHeavyEnd >= COLLECTOR_POLICY.heavySpacingMs;
       if (
         trip!.mlab &&
         !trip!.mlab.reserved &&
         (trip!.mlab.dueAt ?? Infinity) <= now &&
         wifi.validated &&
-        heavyReady
+        heavyReady &&
+        (!paper || (trip!.mlab.dueAt ?? Infinity) <= firstDue)
       ) {
         const route = await native!.bindWifi().catch(() => null);
         if (!route?.bound || route.handle !== wifi.handle) {
@@ -1170,7 +1276,7 @@ async function loop(signal: AbortSignal) {
           continue;
         }
         trip!.mlab.reserved = true;
-        const uncapped = isHourlyPilot(trip!.policy.version);
+        const uncapped = uncappedMlab(trip!.policy.version);
         const allowed =
           uncapped || reserve(trip!, 'transfers', MLAB_RESERVATION);
         trip!.mlab.status = allowed ? 'running' : 'allowance_unavailable';
@@ -1216,17 +1322,72 @@ async function loop(signal: AbortSignal) {
             probeAbort = null;
             activity = 'idle';
             lastHeavyEnd = Date.now();
+            if (trip!.paperSchedule)
+              trip!.paperSchedule.lastHeavyEnd = lastHeavyEnd;
           }
           await persist();
           continue;
         }
       }
-      const candidate = (Object.keys(INTERVALS) as ScheduledProbe[])
-        .sort((a, b) => (trip!.due[a] ?? Infinity) - (trip!.due[b] ?? Infinity))
-        .find(
-          type =>
-            (trip!.due[type] ?? Infinity) <= now + COLLECTOR_POLICY.toleranceMs,
-        );
+      if (
+        paperCandidate &&
+        paperCandidate.scheduledAt <=
+          (lightCandidate ? trip!.due[lightCandidate]! : Infinity)
+      ) {
+        const job = paperCandidate;
+        trip!.paperSchedule!.completed.push(job.key);
+        const key = `${job.roundId}:${job.key}`;
+        const allowed =
+          job.type === 'cdn_fetch'
+            ? reserveContent(trip!, key, PAPER_CDN_LIMIT)
+            : reserve(
+                trip!,
+                'diagnostics',
+                job.type === 'dns_resolver'
+                  ? PAPER_DNS_LIMIT
+                  : requestedPayload('traceroute', config()),
+              );
+        increment(health().expected, job.type);
+        targetHealth(job).expected++;
+        if (!allowed) {
+          targetHealth(job).skipped++;
+          increment(health().skips, `allowance:${job.key}`);
+          await record('probe_skipped', {
+            type: job.type,
+            targetId: job.targetId,
+            roundId: job.roundId,
+            reason:
+              job.type === 'cdn_fetch'
+                ? 'content_allowance'
+                : 'diagnostic_allowance',
+          });
+          await persist();
+          continue;
+        }
+        await persist();
+        let result: Measurement | undefined;
+        let returned = false;
+        try {
+          targetHealth(job).started++;
+          result = await probe(job.type, job.scheduledAt, job);
+          returned = true;
+          if (result) targetHealth(job).completed++;
+          else targetHealth(job).skipped++;
+        } finally {
+          if (job.type === 'cdn_fetch') {
+            settleContent(
+              trip!,
+              key,
+              returned && !result ? 0 : paperCharge(result, PAPER_CDN_LIMIT),
+            );
+            lastHeavyEnd = Date.now();
+            trip!.paperSchedule!.lastHeavyEnd = lastHeavyEnd;
+          }
+          await persist();
+        }
+        continue;
+      }
+      const candidate = lightCandidate;
       if (candidate) {
         const slot = takeDue(trip!.due[candidate]!, now, INTERVALS[candidate])!;
         trip!.due[candidate] = slot.next;
@@ -1252,6 +1413,10 @@ async function loop(signal: AbortSignal) {
             reason: 'diagnostic_allowance',
           });
         }
+        continue;
+      }
+      if (paper) {
+        await wait(1000, workerWake.signal);
         continue;
       }
       const directions = (['download', 'upload'] as const).filter(

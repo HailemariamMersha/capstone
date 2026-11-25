@@ -94,6 +94,28 @@ try {
     throw new Error('Packaged pilot ASN configuration missing');
   if (extracted.stdout.includes(Buffer.from('TEST New York University')))
     throw new Error('Removed NYU test ASN remains in packaged pilot registry');
+  const packagedRegistry = JSON.parse(
+    run('unzip', ['-p', builtApk, 'assets/paper-suite.json']),
+  );
+  const sourceRegistry = JSON.parse(
+    run(process.execPath, [
+      '--experimental-strip-types',
+      '--input-type=module',
+      '-e',
+      "import {PAPER_REGISTRY} from './src/measurements/paperSuite.ts'; process.stdout.write(JSON.stringify(PAPER_REGISTRY))",
+    ]),
+  );
+  if (JSON.stringify(packagedRegistry) !== JSON.stringify(sourceRegistry))
+    throw new Error(
+      'Packaged paper target registry differs from the shared source',
+    );
+  if (
+    !extracted.stdout.includes(Buffer.from('paper-core-v1')) ||
+    !extracted.stdout.includes(Buffer.from('flight-paper-core-2026-11-25'))
+  )
+    throw new Error(
+      'Paper policy or suite version missing from packaged JavaScript',
+    );
   const gradle = fs.readFileSync(
     path.join(root, 'android/app/build.gradle'),
     'utf8',
@@ -116,6 +138,9 @@ try {
     sha256: sha(bytes),
     publicConfigSha256: sha(configBytes),
     packagedPublicConfigVerified: true,
+    measurementSuiteVersion: packagedRegistry.version,
+    paperRegistrySha256: sha(JSON.stringify(packagedRegistry)),
+    packagedPaperRegistryVerified: true,
     pilotTestAsnsEnabled: true,
     signing: 'development key; private pilot only',
   };
