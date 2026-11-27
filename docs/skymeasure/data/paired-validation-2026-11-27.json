@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "collectionDate": "2026-11-27",
+  "analysisDate": "2026-11-28",
+  "collectionMode": "ground_test",
+  "timezone": "Asia/Dubai",
+  "provenance": {
+    "source": "Read-only server-side phone aggregates matched to local Mac probe summaries",
+    "privacy": "Aggregate-only publication: no participant identifiers, egress addresses, raw records or flight details",
+    "referencePlatform": "macOS",
+    "referenceMode": "paired_light_only",
+    "collectorSuite": "paper-core-v1"
+  },
+  "phone": {
+    "startedAt": "2026-11-27T19:06:34.761+04:00",
+    "endedAt": "2026-11-27T22:21:54.715+04:00",
+    "completeSegments": 14,
+    "expectedSegments": 14,
+    "receivedRecordVersions": 4209,
+    "expectedRecordVersions": 4209,
+    "missingRecordVersions": 0,
+    "unexpectedRecordVersions": 0,
+    "measurementRecords": 726,
+    "failedMeasurementRecords": 15,
+    "latestSegmentCompletionAt": "2026-11-27T22:47:28.297653+04:00",
+    "postStopUploadMinutes": 25.55971088333333,
+    "protocolOutcomes": {
+      "cdn_fetch": {
+        "attempts": 65,
+        "successful": 63,
+        "failed": 2
+      },
+      "dns_resolver": {
+        "attempts": 13,
+        "successful": 13,
+        "failed": 0
+      },
+      "icmp_burst": {
+        "attempts": 193,
+        "successful": 193,
+        "failed": 0
+      },
+      "ndt7_download": {
+        "attempts": 1,
+        "successful": 1,
+        "failed": 0
+      },
+      "ndt7_upload": {
+        "attempts": 1,
+        "successful": 1,
+        "failed": 0
+      },
+      "tcp_connect": {
+        "attempts": 194,
+        "successful": 194,
+        "failed": 0
+      },
+      "traceroute": {
+        "attempts": 65,
+        "successful": 52,
+        "failed": 13
+      },
+      "udp_echo": {
+        "attempts": 194,
+        "successful": 194,
+        "failed": 0
+      }
+    },
+    "completedMlabMbps": {
+      "ndt7_download": 132.31749571954458,
+      "ndt7_upload": 88.37708631753674
+    }
+  },
+  "mac": {
+    "startedAt": "2026-11-27T19:10:20.807+04:00",
+    "endedAt": "2026-11-27T22:10:20.810+04:00",
+    "measurementRecords": 540,
+    "roundsPerProtocol": 180,
+    "verifiedEvidenceFiles": 570,
+    "sanityErrors": 0,
+    "sanityWarnings": 0,
+    "recordedCollectorGaps": 0,
+    "initialSntpOffsetSeconds": 0.386311
+  },
+  "matching": {
+    "commonWindowSeconds": 10800.003,
+    "maxStartSeparationSeconds": 45,
+    "requirements": [
+      "One-to-one nearest eligible starts",
+      "Same verified destination IP, protocol and port",
+      "Exclude unusable timing, unsuccessful rounds and known mismatched observed egress context"
+    ],
+    "rttStatistic": "Arithmetic mean of per-burst median received-probe RTTs; each matched round has equal weight",
+    "nonresponseFormula": "100 * timeouts / recorded probes"
+  },
+  "cohorts": {
+    "broader": {
+      "matchedRounds": 59,
+      "phone": {
+        "meanBurstMedianRttMs": 286.6097927113711,
+        "medianBurstMedianRttMs": 286.73599994182587,
+        "probes": 1180,
+        "replies": 1139,
+        "timeouts": 41
+      },
+      "mac": {
+        "meanBurstMedianRttMs": 206.66076343242543,
+        "medianBurstMedianRttMs": 205.84614600193163,
+        "probes": 1180,
+        "replies": 1171,
+        "timeouts": 9
+      },
+      "meanPairedDifferenceMs": 79.94902927894564,
+      "medianPairedDifferenceMs": 82.13864649568859,
+      "medianAbsoluteStartSeparationSeconds": 5.213,
+      "maxAbsoluteStartSeparationSeconds": 36.075,
+      "overlapExclusions": [
+        "Phone CDN/M-Lab/controlled-transfer overlap"
+      ]
+    },
+    "conservative": {
+      "matchedRounds": 46,
+      "phone": {
+        "meanBurstMedianRttMs": 286.4542876261732,
+        "medianBurstMedianRttMs": 286.60898050665855,
+        "probes": 920,
+        "replies": 888,
+        "timeouts": 32
+      },
+      "mac": {
+        "meanBurstMedianRttMs": 206.06549910897465,
+        "medianBurstMedianRttMs": 205.09670824958448,
+        "probes": 920,
+        "replies": 913,
+        "timeouts": 7
+      },
+      "meanPairedDifferenceMs": 80.38878851719852,
+      "medianPairedDifferenceMs": 82.51327923453209,
+      "medianAbsoluteStartSeparationSeconds": 5.056,
+      "maxAbsoluteStartSeparationSeconds": 36.075,
+      "overlapExclusions": [
+        "Phone CDN/M-Lab/controlled-transfer overlap",
+        "Known traceroute/resolver-discovery overlap",
+        "Known upload-pause/recorded-gap overlap"
+      ]
+    }
+  },
+  "unavailableComparisons": [
+    {
+      "protocol": "icmp_burst",
+      "matchedRounds": 0,
+      "reason": "Both devices requested google.com but recorded disjoint destination IP sets"
+    },
+    {
+      "protocol": "tcp_connect",
+      "matchedRounds": 0,
+      "reason": "Both devices requested google.com but recorded disjoint destination IP sets"
+    }
+  ],
+  "limitations": [
+    "macOS reference, not Linux or same-device ground truth",
+    "Compare burst medians for ICMP/UDP and connection duration for TCP",
+    "No phone clock-offset calibration; Mac NTP checked at start",
+    "No independent packet capture",
+    "Primary filters exclude phone CDN/M-Lab overlaps; isolated subset additionally excludes trace/DNS/upload/gap overlaps",
+    "Only aggregate statistics leave the server; no phone records, payloads, identities or flight details are exported",
+    "No predeclared pass/fail tolerance; descriptive cross-device statistics",
+    "Actual conservative matched starts typically about five seconds apart; planned thirty-second stagger was not achieved",
+    "Context sampled periodically, not freshly observed per packet"
+  ]
+}
