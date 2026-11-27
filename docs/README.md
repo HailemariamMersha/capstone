@@ -17,6 +17,7 @@ Start with the [repository README](../README.md). Current implementation is on `
 | How do we configure services and accounts? | [Staging setup](skymeasure/setup.md), [rollout and ASN setup](skymeasure/flight-rollout.md) |
 | How do we build and recover researcher login? | [Sign-in and verified pilot build](skymeasure/sign-in-recovery.md) |
 | How do we compare against terminal tools? | [Independent baseline validation](measurements/validation.md) |
+| What did the three-hour phone/Mac comparison show? | [27 November ground results, graph and limitations](skymeasure/paired-validation-2026-11-27.md) |
 | Where is the frozen capstone progress report? | [Paper sources and reproduction](../paper/README.md), evidence through 16 November 2026 |
 | What was tested? | [Validation](skymeasure/validation.md), dated [experiments](experiments/) |
 | What may be shared? | [Repository security/data handling](../SECURITY.md) |

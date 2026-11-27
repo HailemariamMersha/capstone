@@ -4,11 +4,13 @@ The baseline script runs SkyMeasure's measurements from a computer on the phone'
 
 This page covers what the script does, how to run it, which tools it uses and why, and how its results are compared with the app's. For rollout and deployment checks, see the separate [SkyMeasure validation](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/validation.md).
 
-**Paper-suite update, 25 November 2026:** the default harness now imports the shared paper registry and runs five trace targets, five identical-object CDN fetches and resolver discovery. Controlled pairs remain only in explicit historical test policies. See [the exact schedule and HTTP semantics](paper-suite.md). Paired physical accuracy validation remains pending.
+**Paired ground results, 27 November 2026:** a three-hour macOS reference beside the phone produced 46 conservatively matched UDP rounds, with mean burst median RTTs of 286.5 ms on the phone and 206.1 ms on the Mac. ICMP/TCP destination IPs differed, so they have no eligible agreement pairs. See the [graph, complete results and limitations](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/paired-validation-2026-11-27.md). This is an initial cross-device comparison; same-device/packet-level accuracy validation remains pending.
+
+**Paper-suite update, 25 November 2026:** the default harness now imports the shared paper registry and runs five trace targets, five identical-object CDN fetches and resolver discovery. Controlled pairs remain only in explicit historical test policies. See [the exact schedule and HTTP semantics](paper-suite.md).
 
 **Validation update, 25 November 2026:** simultaneous phone/computer runs now use **light probes only on the computer**. Full paper-suite reference runs are separate. Comparison differences require the same verified destination IP, protocol and TCP/UDP port. Exclusions are saved individually. Every finished run automatically saves readable CSVs, sanity checks, a report and an integrity manifest; an open segment is checkpointed during collection.
 
-**Historical status, 23 November 2026:** two 20-minute baselines have been collected over real Wi-Fi to the lab server: see [First results](#first-results-23-november-2026). **No run beside a phone has been done yet**, so there are no same-time differences and no accuracy figures. See [What has been tested](#what-has-been-tested).
+**Historical status, 23 November 2026:** two 20-minute baselines had been collected over real Wi-Fi to the lab server: see [First results](#first-results-23-november-2026). At that date, no run beside a phone had been done, so those runs provide no same-time differences or accuracy figures. See [What has been tested](#what-has-been-tested) for the updated status.
 
 ## What the script does
 
@@ -283,7 +285,7 @@ The phone figures come from the saved exports of the two trips in the [21 Novemb
 4. **Non-response occurred for both ICMP and UDP.** ICMP-specific filtering alone does not explain all recorded missing replies; protocol, path and load effects remain possible.
 5. **Slow fixed-size transfers also occurred with curl.** Both downloads timed out after early response headers. This establishes that the symptom can occur outside the app; it does not identify the bottleneck or prove the app has no additional overhead.
 
-### What it does not show
+### What the 23 November runs do not show
 
 - **Phone accuracy.** Nothing was measured at the same time on both devices. Any delay added by the phone's UDP library is still unmeasured.
 - **Where beyond the router packets are lost, or why.** The router probe ran about 20 s after the Google burst each minute, not at the same instant. The router's replies reached 93 ms, so the local network adds some delay even without loss.
@@ -301,12 +303,13 @@ The phone figures come from the saved exports of the two trips in the [21 Novemb
 | Schedule against the 11 h 17 min 56 s overnight phone trip | Exact match: 675 ICMP, UDP and TCP, 46 traceroutes, 46 segments, with that trip's two 90 s download timeouts included |
 | 17-minute run with local copies of the servers | Completed, with one transfer pair and one 22.0 s gap |
 | Export format | `measurements:analyze` found no errors in the segments of the local run or either live run |
-| Comparison with real phone exports | Reports produced; each warned that the runs did not overlap and reached different Google addresses |
+| Non-overlapping phone exports, 23 November | Reports produced; each warned that the runs did not overlap and reached different Google addresses |
+| Paired phone/macOS ground comparison, 27 November | Three-hour reference; 46 conservative UDP pairs, phone mean burst median RTT +80.4 ms above Mac. No eligible ICMP/TCP pairs because destination IPs differed. [Report and graph](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/paired-validation-2026-11-27.md) |
 | VPN check | Correctly refused to start |
 | Two 20-minute live runs on macOS over Wi-Fi | Completed; every measurement type except M-Lab ran. The second included the router probe |
 | Linux | **Not tested.** Output parsing was checked only against sample text written for the tests |
-| Paired run, M-Lab and `--pcap` | **Not tested** |
+| Computer-side M-Lab and `--pcap` | **Not tested**; the phone completed its own M-Lab pair during the paired run |
 
 The schedule match shows that the timing is reproduced. It says nothing about measurement accuracy.
 
-**Next:** do a 1-hour run beside the phone, ideally from a Linux computer. It would show whether both devices see the same loss, and how much the phone's libraries add to the UDP time.
+**Next:** repeat with identical fixed IPv4 targets for ICMP/TCP, then isolate the UDP timing difference with a same-phone reference or gateway packet capture and documented power settings. A Linux reference remains useful, but a cross-device difference alone cannot quantify library overhead.

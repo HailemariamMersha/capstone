@@ -47,6 +47,21 @@ The private pilot allows normal-duration M-Lab testing without a byte cutoff or 
 
 React Native Paper/Navigation provide the UI, Keychain stores tokens, background-actions runs the visible foreground task, and background-fetch offers opportunistic closed-session retries. Custom Android code selects/binds Wi-Fi and exposes library results; it is distinct from an application-owned packet engine. The historical custom engine is preserved on `experiment/custom-packet-engine`; see the [library/native comparison](docs/library-packet-comparison.md). Exact dependency versions are pinned in package manifests and the Android NDT7 source.
 
+## Phone versus terminal comparison — 27 November 2026
+
+A three-hour **macOS light-probe reference** ran alongside a roughly three-hour-fifteen-minute Android **ground test**. This is an initial comparison between devices and methods, not packet-level ground truth or flight validation.
+
+![UDP ground comparison: 46 matched rounds. Phone mean burst median RTT 286.5 ms versus Mac 206.1 ms; recorded non-response 3.48% versus 0.76%. ICMP and TCP are unavailable for agreement because destination IPs differed.](docs/skymeasure/figures/paired-validation-2026-11-27.png)
+
+| Conservative matched UDP subset | Android app | Mac reference |
+| --- | ---: | ---: |
+| Mean of 46 burst median RTTs | 286.5 ms | 206.1 ms |
+| Recorded probes without a reply | 32/920 (3.48%) | 7/920 (0.76%) |
+
+Pairs require the same destination IP/port, starts within 45 seconds and matching recorded egress context; known overlapping tests and upload pauses are excluded. The observed **+80.4 ms mean phone excess** needs investigation and does not establish a library error. **ICMP and TCP had zero eligible pairs:** the devices resolved `google.com` to different IPs, so their timings cannot establish agreement here.
+
+The full phone trip reconciled **14/14 segments and 4,209/4,209 expected record versions**, finishing uploads **25.6 minutes after Stop**. Next: pin identical ICMP/TCP IPs, isolate UDP callback versus network timing, and check post-Stop upload recovery. See the [dated report, methods and limitations](docs/skymeasure/paired-validation-2026-11-27.md), [sanitized aggregate data](docs/skymeasure/data/paired-validation-2026-11-27.json) and [reproducible plotting command](docs/skymeasure/paired-validation-2026-11-27.md#reproduce-the-figure).
+
 ## Run and review
 
 Use Node 22.13+ (including Node SQLite support) for shared-code checks. Android builds additionally need the React Native Android toolchain; physical checks need a USB-debugging phone. Contributors can run collector, backend and dashboard tests without live research credentials; see [the contributor guide](CONTRIBUTING.md).
@@ -91,7 +106,7 @@ Offline analysis of an existing complete session JSON (original exports remain u
 npm run measurements:analyze -- --input /path/to/session.json --out /path/to/new-analysis
 ```
 
-For independent terminal checks, see [the baseline validation guide](docs/measurements/validation.md). `npm run baseline:test` runs offline fixtures. Simultaneous phone/computer checks use light probes; full paper-suite reference runs are separate. Runs save private raw evidence, per-protocol CSVs, sanity checks, a readable report and SHA-256 manifest under `build/baseline/`. Verify a finished bundle with `npm run baseline:verify -- --input <run-directory>`. Paired phone accuracy validation remains pending; terminal evidence stays separate from participant records.
+For independent terminal checks, see [the baseline validation guide](docs/measurements/validation.md). `npm run baseline:test` runs offline fixtures. Simultaneous phone/computer checks use light probes; full paper-suite reference runs are separate. Runs save private raw evidence, per-protocol CSVs, sanity checks, a readable report and SHA-256 manifest under `build/baseline/`. Verify a finished bundle with `npm run baseline:verify -- --input <run-directory>`. An initial paired comparison is documented above; same-device/packet-level accuracy validation remains pending. Terminal evidence stays separate from participant records.
 
 Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md) and [combined CSV guide](docs/skymeasure/combined-csv.md). Blank values mean unavailable or inapplicable, not zero. Parent values repeated across sample rows must not be summed repeatedly. Regenerate shared documentation with `npm run measurements:docs` and `npm run skymeasure:docs`.
 
