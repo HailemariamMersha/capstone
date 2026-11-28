@@ -4,6 +4,8 @@ The baseline script runs SkyMeasure's measurements from a computer on the phone'
 
 This page covers what the script does, how to run it, which tools it uses and why, and how its results are compared with the app's. For rollout and deployment checks, see the separate [SkyMeasure validation](../skymeasure/validation.md).
 
+For separate app/Mac JSON files containing the recorded hops, probes, callbacks and command output, see [packaging supervisor evidence](supervisor-evidence.md). Packaging works offline, includes all outcomes and reports shortfalls toward fifteen executions per target; it does not start a new experiment.
+
 **Full paired update, 28 November 2026:** runs with `--phone-qualified-at` now default to the **full app measurement suite on the shared connection**. Add `--accept-mlab` to include the consented NDT7 pair. `--paired-suite light` preserves the previous light-only mode. Full paired runs are labelled `paired_full_shared_load`; concurrent traffic is part of the observed conditions. Their comparisons retain both the overlap-excluded subset and a separately labelled shared-load subset.
 
 **Paired ground results, 27 November 2026:** a three-hour macOS reference beside the phone produced 46 conservatively matched UDP rounds, with mean burst median RTTs of 286.5 ms on the phone and 206.1 ms on the Mac. ICMP/TCP destination IPs differed, so they have no eligible agreement pairs. See the [graph, complete results and limitations](../skymeasure/paired-validation-2026-11-27.md). This is an initial cross-device comparison; same-device/packet-level accuracy validation remains pending.

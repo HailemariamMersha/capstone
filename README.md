@@ -110,6 +110,8 @@ For independent terminal checks, see [the baseline validation guide](docs/measur
 
 Start with the [measurement guide](docs/measurements/guide.md), [column dictionary](docs/measurements/columns.md) and [combined CSV guide](docs/skymeasure/combined-csv.md). Blank values mean unavailable or inapplicable, not zero. Parent values repeated across sample rows must not be summed repeatedly. Regenerate shared documentation with `npm run measurements:docs` and `npm run skymeasure:docs`.
 
+To share individual test evidence with a supervisor, use `npm run baseline:package -- --app <complete-trip.json> --mac <sealed-run-directory> --out <new-directory>`. It creates separate app/Mac JSON files with retained probes/hops, callbacks and embedded terminal output, plus a private ZIP and counts toward fifteen executions per target. See [the supervisor evidence guide](docs/measurements/supervisor-evidence.md). It packages existing records without launching additional tests.
+
 ## Repository map and validation status
 
 | Path | Contents |
