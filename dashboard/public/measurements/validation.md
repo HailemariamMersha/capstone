@@ -4,6 +4,8 @@ The baseline script runs SkyMeasure's measurements from a computer on the phone'
 
 This page covers what the script does, how to run it, which tools it uses and why, and how its results are compared with the app's. For rollout and deployment checks, see the separate [SkyMeasure validation](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/validation.md).
 
+**Full paired update, 28 November 2026:** runs with `--phone-qualified-at` now default to the **full app measurement suite on the shared connection**. Add `--accept-mlab` to include the consented NDT7 pair. `--paired-suite light` preserves the previous light-only mode. Full paired runs are labelled `paired_full_shared_load`; concurrent traffic is part of the observed conditions. Their comparisons retain both the overlap-excluded subset and a separately labelled shared-load subset.
+
 **Paired ground results, 27 November 2026:** a three-hour macOS reference beside the phone produced 46 conservatively matched UDP rounds, with mean burst median RTTs of 286.5 ms on the phone and 206.1 ms on the Mac. ICMP/TCP destination IPs differed, so they have no eligible agreement pairs. See the [graph, complete results and limitations](https://github.com/HailemariamMersha/capstone/blob/feature/skymeasure-participant-dashboard/docs/skymeasure/paired-validation-2026-11-27.md). This is an initial cross-device comparison; same-device/packet-level accuracy validation remains pending.
 
 **Paper-suite update, 25 November 2026:** the default harness now imports the shared paper registry and runs five trace targets, five identical-object CDN fetches and resolver discovery. Controlled pairs remain only in explicit historical test policies. See [the exact schedule and HTTP semantics](paper-suite.md).
@@ -14,7 +16,9 @@ This page covers what the script does, how to run it, which tools it uses and wh
 
 ## What the script does
 
-Standalone mode follows the app's probe schedule and replaces the phone's measurement libraries with terminal tools. Paired mode runs ICMP, UDP and TCP on the computer; it deliberately omits its paper jobs, extra controls and M-Lab so a second heavy benchmark does not compete with the phone. Only measurement and context traffic is sent: results stay on the computer, except that M-Lab publishes its own if you request that test in standalone mode.
+The runner follows the app's probe schedule and replaces the phone's measurement libraries with terminal tools. **Full paired mode** runs ICMP, UDP, TCP, all five traceroute targets, all five CDN targets and resolver discovery while the phone runs its suite. M-Lab is included with `--accept-mlab`. Each device still serializes its own jobs; full paired does not dispatch all protocols concurrently inside one device or promise identical start instants across devices. The two devices share the network load. Paired runs omit extra router/lab controls because those are not app measurements.
+
+Optional **light paired mode** runs ICMP, UDP and TCP only, retaining the previous thirty-second schedule shift. Standalone mode runs the full suite with optional extra controls while the phone is stopped. Results stay on the computer; M-Lab publicly publishes the measurements and public IP when its test is enabled.
 
 Times with a plus sign count from when probing begins.
 
@@ -30,7 +34,9 @@ Times with a plus sign count from when probing begins.
 | Every 60 s | Public address and provider (ASN) lookup |
 | Every 15 min from launch | Upload gap: the segment closes and probing stops for 22 s |
 
-The table describes standalone mode. As in the app, probes run one at a time, late slots are skipped rather than replayed, and heavy tests are kept 60 s apart. The 22 s gap is the median of 53 historical upload pauses, not an actual upload. Use `--upload-pause 25s` for a reference run with the current 25 s live-upload allowance; actual phone pauses can be shorter or slip within the boundary grace. The simulator does not claim identical execution times.
+The table describes the full suite. Full paired mode uses the supplied phone qualification time as its paper-suite anchor, with no artificial thirty-second shift; initial minute-probe offsets begin when the computer's worker actually starts. Its M-Lab target is two minutes after the anchor, or the next available slot if launched later. The phone independently selects its own M-Lab deadline, so exact overlap is not guaranteed. Actual execution intervals are recorded. As in the app, probes run one at a time, late slots are skipped rather than replayed, and heavy tests on the same device are kept 60 s apart.
+
+The 22 s gap is the median of 53 historical upload pauses, not an actual upload. Use `--upload-pause 25s` for a reference run with the current 25 s live-upload allowance; actual phone pauses can be shorter or slip within the boundary grace. The simulator does not claim identical execution times.
 
 Probe intervals, tolerances, transfer sizes and timeouts, data allowances and sample counts are imported from the app's source (`src/trips/` and `src/measurements/`), so changes there carry over. The rest is copied: **repeat any change to the loop in `src/trips/runtime.ts` in `scripts/baseline/schedule.mjs`, and any change to ICMP, UDP or traceroute settings in `tools.mjs` or `udp_burst.py`.**
 
@@ -123,14 +129,19 @@ Start the trip on the phone and note the time it begins collecting. Within two m
 
 ```sh
 npm run baseline:run -- --duration 1h --upload-pause 25s \
-  --phone-qualified-at 2026-11-25T14:03:20+04:00
+  --phone-qualified-at 2026-11-28T14:03:20+04:00 \
+  --paired-suite full --accept-mlab
 ```
 
 Replace the example with the phone's actual qualification timestamp. An ISO timestamp with an offset or `Z` avoids timezone ambiguity; `HH:MM:SS` uses the computer's local date/time.
 
-This mode shifts **ICMP/UDP/TCP by 30 s** and omits the computer's traceroutes, resolver discovery, CDN fetches, extra controls and M-Lab. It rejects `--accept-mlab` rather than silently ignoring it. A fixed shift cannot safely interleave two CDN requests that can each last 90 s. Run the full suite on the computer with the phone stopped as a separate experiment. Its heavy-test observations remain useful per-target references, but non-simultaneous medians do not establish app accuracy.
+To coordinate tapping Start before qualification, supply `--phone-started-at <ISO-time>` instead of `--phone-qualified-at`. The runner explicitly records an **assumed** qualification sixty seconds after that start marker; `pairing.phoneQualifiedAt` stays null and `anchorSource` records the assumption. Start-button coordination is not exact probe synchronization. Use actual attempt timestamps and the phone's eventual export to assess alignment; a supplied start cue is not a verified phone clock reading. The two timestamp options are mutually exclusive.
 
-The phone can still run its own heavy tests. The comparison excludes an observation whose execution interval overlaps the other device's CDN, controlled transfer or M-Lab test. This reduces a known source of interference; it does not promise an unloaded link or detect unrelated traffic. For packet-level timing, capture the phone at a controlled Wi-Fi gateway.
+This runs **every current app measurement type**, including one terminal M-Lab download/upload pair. Controlled transfer pairs remain absent because the current app no longer schedules them. Both devices may fetch CDN objects or run M-Lab at overlapping times, which can change completion times, RTT, non-response and available throughput. These are shared-load observations, not two independent measurements of unloaded capacity. The `--accept-mlab` option still explicitly accepts public-IP/result publication and potentially gigabytes of traffic.
+
+For the previous light-only behavior, use `--paired-suite light` and omit `--accept-mlab`. That mode shifts ICMP/UDP/TCP by thirty seconds and excludes traceroutes, CDN, resolver discovery and M-Lab. The light mode still rejects `--accept-mlab` instead of silently ignoring consent or changing scope.
+
+The comparison always preserves the original overlap-excluded ICMP/UDP/TCP subset in `paired.csv`. For `paired_full_shared_load`, it **also** saves `shared-load-paired.csv`, retaining known other-device heavy overlaps. Boolean columns `phoneOtherDeviceHeavyOverlap` and `baselineOtherDeviceHeavyOverlap` identify which observation overlapped the other device's heavy activity; the report gives the affected pair count. Destination IP/port, outcome, clock and known-network checks remain in force; neither cohort treats different Google addresses as comparable. CDN/traceroute results stay grouped by target, and NDT7 outcomes remain separately visible in the protocol summaries. Neither method detects all unrelated traffic. For packet-level timing, capture the phone at a controlled Wi-Fi gateway.
 
 ### Options that need care
 
@@ -298,6 +309,7 @@ The phone figures come from the saved exports of the two trips in the [21 Novemb
 | Check | Result |
 | --- | --- |
 | Automated baseline tests, 25 November | 44 of 44 pass, including endpoint/exclusion rules, deadlines, paired scope, checkpoint recovery, private outputs, integrity checks and the comparison CLI |
+| Full paired validation checks, 28 November | 47 of 47 pass, including all app test types, one consented M-Lab pair, coordinated-start flags, serialized jobs, labelled shared-load pairs, endpoint safeguards and CSV/manifest output; ESM lint passes |
 | Export and paper-suite regression tests, 25 November | 28 of 28 pass across three suites |
 | Node ESM lint, 25 November | `npm run baseline:lint` passes |
 | Schedule against the 11 h 17 min 56 s overnight phone trip | Exact match: 675 ICMP, UDP and TCP, 46 traceroutes, 46 segments, with that trip's two 90 s download timeouts included |

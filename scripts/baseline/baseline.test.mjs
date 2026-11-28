@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { pairedTimes, QUALIFICATION_MS, runSchedule } from './schedule.mjs';
 import * as tools from './tools.mjs';
-import { clockTime, createOutput, duration, envValues, isTunnel, parseRoute } from './run.mjs';
+import { clockTime, createOutput, duration, envValues, isTunnel, pairingSettings, parseRoute } from './run.mjs';
 import { protocolSummary, wilson } from './summary.mjs';
 import { compare, endpointOf, loadSessions, markdown, readInputs, saveComparison } from './compare.mjs';
 import { fingerprint, verifyEvidence } from './evidence.mjs';
@@ -223,6 +223,32 @@ test('paired light offsets and historical transfer offsets remain deterministic'
   const prompt = pairedTimes(T0, T0 + 5000);
   assert.equal(prompt.mlabDueAt, T0 + 225000);
   assert.equal(prompt.transferAt, T0 + 450000);
+});
+
+test('full paired CLI scope is the default, retains explicit M-Lab consent and validates flags', () => {
+  assert.deepEqual(pairingSettings({ 'phone-qualified-at': 'now' }), {
+    paired: true, pairedSuite: 'full',
+  });
+  assert.deepEqual(pairingSettings({ 'phone-qualified-at': 'now', 'accept-mlab': true }), {
+    paired: true, pairedSuite: 'full',
+  });
+  assert.deepEqual(pairingSettings({ 'phone-started-at': 'now', 'accept-mlab': true }), {
+    paired: true, pairedSuite: 'full',
+  });
+  assert.throws(() => pairingSettings({ 'phone-started-at': 'now', 'phone-qualified-at': 'now' }), /not both/);
+  assert.deepEqual(pairingSettings({}), { paired: false, pairedSuite: null });
+  assert.deepEqual(pairingSettings({ 'phone-qualified-at': 'now', 'paired-suite': 'light' }), {
+    paired: true, pairedSuite: 'light',
+  });
+  assert.throws(() => pairingSettings({ 'paired-suite': 'full' }), /requires --phone-qualified-at/);
+  assert.throws(() => pairingSettings({ 'phone-qualified-at': 'now', 'paired-suite': 'invalid' }), /full or light/);
+  assert.throws(() => pairingSettings({ 'phone-qualified-at': 'now', 'paired-suite': 'light', 'accept-mlab': true }), /Light paired/);
+  for (const lag of [0, 45000, 200000, 3600000]) {
+    const full = pairedTimes(T0, T0 + lag, 'full');
+    assert.equal(full.qualifiedAt, T0);
+    assert.equal(full.suite, 'full');
+    assert.ok(full.mlabDueAt >= T0 + lag + 2000);
+  }
 });
 
 test('ping output', () => {
@@ -580,6 +606,37 @@ test('paired paper runs send no heavy tests, traces or resolver discovery', asyn
   );
 });
 
+test('one-hour full paired suite retains all app tests, one M-Lab pair and serialized execution', async () => {
+  const r = await simulate({
+    durationMs: 3600000,
+    policy: PAPER_TRIP_POLICY,
+    paired: pairedTimes(T0, T0, 'full'),
+    controls: true,
+    mlab: true,
+  });
+  assert.equal(r.trip.validationMode, 'paired_full_shared_load');
+  assert.equal(r.overlap, false);
+  assert.equal(r.controls.length, 0);
+  for (const type of ['icmp_burst', 'udp_echo', 'tcp_connect'])
+    assert.ok(count(r.saved, type) > 40, type);
+  for (const type of ['traceroute', 'cdn_fetch', 'dns_resolver'])
+    assert.ok(count(r.saved, type) >= 3, type);
+  for (const type of ['ndt7_download', 'ndt7_upload'])
+    assert.equal(count(r.saved, type), 1, type);
+  assert.equal(count(r.saved, 'download') + count(r.saved, 'upload'), 0);
+  const scope = r.events.find(e => e.kind === 'validation_scope');
+  assert.equal(scope.details.mode, 'paired_full_shared_load');
+  assert.deepEqual(scope.details.excluded, []);
+  assert.equal(scope.details.sameDeviceExecution, 'serialized');
+  const withoutMlab = await simulate({
+    durationMs: 1200000,
+    policy: PAPER_TRIP_POLICY,
+    paired: pairedTimes(T0, T0, 'full'),
+  });
+  assert.equal(count(withoutMlab.saved, 'ndt7_download'), 0);
+  assert.ok(count(withoutMlab.saved, 'cdn_fetch') > 0);
+});
+
 test('comparison excludes different and mixed destinations instead of calculating an apparent error', () => {
   const phone = session('p', 0, 100, { phone: true });
   const baseline = session('b', 30000, 10, { target: '192.0.2.2' });
@@ -661,6 +718,44 @@ test('comparison excludes other-device heavy overlap and known invalid context',
   const moved = compare([movedPhone], [stationary], []).paired.icmp_burst;
   assert.equal(moved.pairs, 29);
   assert.ok(moved.excluded.some(e => e.measurementId === 'moved-0' && e.reason === 'different_network'));
+});
+
+test('full paired comparison preserves a labelled shared-load cohort without weakening endpoint checks', async () => {
+  const phone = session('p', 0, 30, { phone: true });
+  const baseline = session('b', 30000, 25);
+  baseline.session.config.validationMode = 'paired_full_shared_load';
+  phone.measurements.push({
+    type: 'cdn_fetch', timestamp: new Date(T0 + 25000).toISOString(),
+    durationMs: 20000, success: true,
+  });
+  baseline.measurements[0].durationMs = 1000;
+  const result = compare([phone], [baseline], []);
+  assert.equal(result.paired.icmp_burst.pairs, 29);
+  assert.equal(result.sharedLoad.paired.icmp_burst.pairs, 30);
+  assert.equal(result.sharedLoad.paired.icmp_burst.heavyOverlapPairs, 1);
+  const first = result.sharedLoad.paired.icmp_burst.records.find(row => row.phoneMeasurementId === 'p-0');
+  assert.equal(first.baselineOtherDeviceHeavyOverlap, true);
+  assert.equal(first.phoneOtherDeviceHeavyOverlap, false);
+  assert.equal(result.comparability.sharedLoad, true);
+  assert.match(markdown(result), /Shared-load pairs, including known heavy overlaps/);
+  assert.equal(compare([phone], [baseline], [], { vpnAllowed: true }).sharedLoad.paired.icmp_burst.pairs, 0);
+  const otherTarget = structuredClone(baseline);
+  for (const m of otherTarget.measurements) m.details.samples[0].resolvedAddress = '192.0.2.5';
+  assert.equal(compare([phone], [otherTarget], []).sharedLoad.paired.icmp_burst.pairs, 0);
+
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'baseline-shared-load-'));
+  try {
+    const out = path.join(dir, 'comparison');
+    await saveComparison(out, result, { sources: { phone: [], baseline: [] } });
+    const csv = await readFile(path.join(out, 'shared-load-paired.csv'), 'utf8');
+    assert.equal(csv.trim().split('\n').length, 31);
+    assert.match(csv, /baselineOtherDeviceHeavyOverlap/);
+    assert.match(csv, /true/);
+    assert.equal((await verifyEvidence(out)).ok, true);
+  } finally {
+    await rm(dir, { recursive: true });
+  }
 });
 
 test('duplicate sessions are counted once but conflicting evidence is rejected', () => {

@@ -352,6 +352,10 @@ ${summary.startedAt} to ${summary.endedAt}, in UTC. Mode: **${summary.validation
 
 These are reference-computer observations, not flight validation or proof of phone accuracy. Upload pauses are simulated; ASN admission, battery management and phone background behaviour are not exercised.
 
+${summary.validationMode === 'paired_full_shared_load'
+  ? 'Full paired suite: both devices share the connection. Concurrent M-Lab, CDN and other traffic can change timings and throughput. Jobs remain serialized on this computer. Compare actual intervals and report known heavy-test overlaps; these results are not independent capacity measurements.'
+  : ''}
+
 ## Measurements
 
 ${all.length} measurements in ${sessions.length} segments. Failure counts exclude interruptions.

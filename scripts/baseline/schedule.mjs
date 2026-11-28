@@ -63,8 +63,17 @@ export const CONTROLS = {
   control_tcp: { offsetMs: 24000, intervalMs: 60000, worstCaseMs: 11000 },
 };
 
-/** Offset light probes by 30 s. Heavy-test offsets below serve historical policies only. */
-export function pairedTimes(phoneAt, now) {
+/** Full runs share the phone anchor; light runs retain the historical 30 s shift. */
+export function pairedTimes(phoneAt, now, suite = 'light') {
+  if (!['full', 'light'].includes(suite))
+    throw new Error('Paired suite must be full or light.');
+  if (suite === 'full')
+    return {
+      suite,
+      qualifiedAt: phoneAt,
+      mlabDueAt: Math.max(phoneAt + 120000, now + 2000),
+      transferAt: phoneAt + 300000,
+    };
   const steps = Math.max(
     0,
     Math.ceil((now + 2000 - phoneAt - PAIRED_SHIFT_MS) / 60000),
@@ -78,6 +87,7 @@ export function pairedTimes(phoneAt, now) {
     return at;
   };
   return {
+    suite,
     qualifiedAt,
     mlabDueAt:
       qualifiedAt + 20000 <= phoneAt + PAIRED_MLAB_MS
@@ -101,12 +111,11 @@ export async function runSchedule(deps, options) {
   // Historical reference fixtures explicitly supply their collected policy.
   const policy = options.policy ?? PAPER_TRIP_POLICY;
   const paper = isPaperPolicy(policy.version);
-  // Without live coordination, a 30 s offset cannot isolate two 90 s CDN tests.
-  // Run the full paper suite separately, then compare its per-target observations.
-  const pairedLight = paper && !!options.paired;
+  const pairedFull = paper && options.paired?.suite === 'full';
+  const pairedLight = paper && !!options.paired && !pairedFull;
   if (pairedLight && options.mlab)
     throw new Error(
-      'Paired validation runs light probes only. Run M-Lab separately without --phone-qualified-at.',
+      'Light paired validation runs light probes only. Select --paired-suite full for M-Lab.',
     );
   const paperEnabled = paper && !pairedLight;
   const collector = options.collectorPolicy ?? COLLECTOR_POLICY;
@@ -121,7 +130,11 @@ export async function runSchedule(deps, options) {
     startedAt,
     endedAt: null,
     phase: 'watching',
-    validationMode: pairedLight ? 'paired_light_only' : 'standalone_full_suite',
+    validationMode: pairedFull
+      ? 'paired_full_shared_load'
+      : pairedLight
+      ? 'paired_light_only'
+      : 'standalone_full_suite',
     reason: null,
     flight: {},
     policy,
@@ -490,7 +503,7 @@ export async function runSchedule(deps, options) {
   }
 
   function dueControl(now) {
-    const enabled = pairedLight
+    const enabled = paper && options.paired
       ? []
       : options.controls === true
       ? Object.keys(CONTROLS)
@@ -737,6 +750,15 @@ export async function runSchedule(deps, options) {
       ],
       reason:
         'Avoid adding a second heavy test on the shared link; phone-heavy overlaps must still be excluded during comparison.',
+    });
+  if (pairedFull)
+    await sink.event('validation_scope', {
+      mode: 'paired_full_shared_load',
+      excluded: options.mlab ? [] : ['ndt7_download', 'ndt7_upload'],
+      sameDeviceExecution: 'serialized',
+      phoneQualificationAnchor: iso(qualifiedAt),
+      reason:
+        'Both devices run the app suite on the shared connection. Concurrent traffic can affect timings and throughput; actual overlaps must be reported.',
     });
   const controller = control().catch(error => {
     finish('baseline_error');

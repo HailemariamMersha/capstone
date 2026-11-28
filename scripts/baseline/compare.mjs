@@ -171,13 +171,15 @@ const endOf = m => {
 };
 const overlaps = (a, b) => startOf(a) < endOf(b) && startOf(b) < endOf(a);
 
-function pairedResult(type, phone, baseline, environment, comparability) {
+function pairedResult(type, phone, baseline, environment, comparability, includeHeavyOverlap = false) {
   const excluded = [],
     eligible = { phone: [], baseline: [] };
   const source = {
     phone: phone.filter(m => m.type === type),
     baseline: baseline.filter(m => m.type === type),
   };
+  const heavyOverlap = (m, other) =>
+    other.some(x => HEAVY_TYPES.includes(x.type) && overlaps(m, x));
   const contextReason = environment.vpnAllowed
     ? 'baseline_vpn'
     : environment.wifi === false
@@ -212,7 +214,7 @@ function pairedResult(type, phone, baseline, environment, comparability) {
         ? 'invalid_timestamp'
         : endpointOf(m).reason ??
           contextReason ??
-          (other.some(x => HEAVY_TYPES.includes(x.type) && overlaps(m, x))
+          (!includeHeavyOverlap && heavyOverlap(m, other)
             ? 'other_device_heavy_overlap'
             : null);
       if (reason) exclude(m, role, reason);
@@ -254,6 +256,9 @@ function pairedResult(type, phone, baseline, environment, comparability) {
   return {
     pairs: n,
     sameTargetPairs: n,
+    heavyOverlapPairs: pairs.filter(([p, b]) =>
+      heavyOverlap(p, baseline) || heavyOverlap(b, phone),
+    ).length,
     excludedCounts: Object.fromEntries(
       ['phone', 'baseline'].map(role => [
         role,
@@ -276,6 +281,8 @@ function pairedResult(type, phone, baseline, environment, comparability) {
       phoneValueMs: p.value,
       baselineValueMs: b.value,
       differenceMs: p.value - b.value,
+      phoneOtherDeviceHeavyOverlap: heavyOverlap(p, baseline),
+      baselineOtherDeviceHeavyOverlap: heavyOverlap(b, phone),
       baselineRawFile: b.raw?.request?.outputFile ?? null,
     })),
     medianDifferenceMs: n
@@ -361,6 +368,9 @@ export function compare(
 ) {
   const phone = phoneSessions.flatMap(s => s.measurements);
   const baseline = baselineSessions.flatMap(s => s.measurements);
+  const fullSharedLoad = baselineSessions.some(
+    s => s.session?.config?.validationMode === 'paired_full_shared_load',
+  );
   const [p, b] = [span(phone), span(baseline)];
   const overlap =
     p && b
@@ -368,6 +378,7 @@ export function compare(
       : 0;
   const comparability = {
     overlapMinutes: overlap,
+    sharedLoad: fullSharedLoad,
     // Compared, never printed: a public address identifies the network's owner.
     publicIp: match(
       values(phoneSessions, 'publicIp'),
@@ -380,6 +391,10 @@ export function compare(
     clockOk: environment.clock?.ok ?? null,
   };
   const flags = [];
+  if (fullSharedLoad)
+    flags.push(
+      'Full paired suite on a shared connection: simultaneous traffic can change RTT, loss and throughput. Shared-load results retain known heavy overlaps and are not independent capacity or packet-accuracy validation.',
+    );
   if (!overlap)
     flags.push(
       'The two runs do not overlap in time. Differences may be changes in the network.',
@@ -424,6 +439,15 @@ export function compare(
         pairedResult(t, phone, baseline, environment, comparability),
       ]),
     ),
+    sharedLoad: fullSharedLoad
+      ? {
+          mode: 'paired_full_shared_load',
+          paired: Object.fromEntries(PAIRED_TYPES.map(t => [
+            t,
+            pairedResult(t, phone, baseline, environment, comparability, true),
+          ])),
+        }
+      : null,
     scheduling: Object.fromEntries(
       types.map(t => [
         t,
@@ -484,6 +508,21 @@ export function markdown(r) {
     s.p95Ms !== null ? f(s.p95Ms, 1, ' ms') : '-',
   ];
   const control = t => r.controls.find(c => c.type === t);
+  const shared = r.sharedLoad
+    ? `## Shared-load pairs, including known heavy overlaps
+
+Both devices ran the suite on the shared connection. These are observations under shared load, not an unloaded agreement or independent capacity test. The table above retains the overlap-excluded subset.
+
+${table(
+  ['Measurement', 'Pairs', 'Pairs with known heavy overlap', 'Median phone minus baseline'],
+  Object.entries(r.sharedLoad.paired).map(([type, value]) => [
+    type, value.pairs, value.heavyOverlapPairs, f(value.medianDifferenceMs, 1, ' ms'),
+  ]),
+)}
+
+Destination, port, timing, outcome, VPN and known-network checks still apply. No known overlap does not prove the absence of background traffic. See [shared-load pairs](shared-load-paired.csv); each row identifies whether the phone or baseline overlapped the other device's heavy activity.
+`
+    : '';
   return `# Phone against baseline
 
 A different device on the same network: a plausibility check, not same-device ground truth.
@@ -546,6 +585,8 @@ Positive means the phone reported a larger value. Each pair is at most 45 s apar
 
 Unknown or mixed destinations, failed/interrupted attempts, invalid clocks, known network/VPN mismatches and observations overlapping the other device's heavy test are excluded. Unknown network/clock context remains a limitation, not proof of comparability.
 See [individual paired observations](paired.csv), [every excluded measurement and reason](excluded.csv), and [saved input sessions and provenance](inputs.json).
+
+${shared}
 
 ## Is UDP slow, or is the server far away?
 
@@ -720,30 +761,25 @@ export async function saveComparison(directory, result, inputs) {
   const excluded = Object.values(result.paired).flatMap(v => v.excluded);
   await writePrivate(directory, 'comparison.json', result);
   await writePrivate(directory, 'comparison.md', markdown(result));
+  const pairedColumns = [
+    'type', 'protocol', 'address', 'port',
+    'phoneMeasurementId', 'baselineMeasurementId',
+    'phoneSessionId', 'baselineSessionId',
+    'phoneStartedAt', 'baselineStartedAt', 'separationMs',
+    'phoneValueMs', 'baselineValueMs', 'differenceMs',
+    'phoneOtherDeviceHeavyOverlap', 'baselineOtherDeviceHeavyOverlap',
+    'baselineRawFile',
+  ];
   await writePrivate(
     directory,
     'paired.csv',
-    csv(
-      [
-        'type',
-        'protocol',
-        'address',
-        'port',
-        'phoneMeasurementId',
-        'baselineMeasurementId',
-        'phoneSessionId',
-        'baselineSessionId',
-        'phoneStartedAt',
-        'baselineStartedAt',
-        'separationMs',
-        'phoneValueMs',
-        'baselineValueMs',
-        'differenceMs',
-        'baselineRawFile',
-      ],
-      paired,
-    ),
+    csv(pairedColumns, paired),
   );
+  if (result.sharedLoad)
+    await writePrivate(directory, 'shared-load-paired.csv', csv(
+      pairedColumns,
+      Object.values(result.sharedLoad.paired).flatMap(value => value.records),
+    ));
   await writePrivate(
     directory,
     'excluded.csv',

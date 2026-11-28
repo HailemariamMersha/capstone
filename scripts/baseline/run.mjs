@@ -20,6 +20,7 @@ import * as tools from './tools.mjs';
 import {
   CONTROLS,
   DEFAULT_UPLOAD_PAUSE_MS,
+  QUALIFICATION_MS,
   pairedTimes,
   realClock,
   runSchedule,
@@ -32,12 +33,14 @@ const root = path.resolve(
   '../..',
 );
 const GOOGLE = 'google.com';
-const VERSION = 'baseline-2';
+const VERSION = 'baseline-3';
 const HELP = `Usage: npm run baseline:run -- [options]
 
   --duration 1h              how long to run (s, m or h)
   --check                    run the preflight checks only
-  --phone-qualified-at TIME  paired light probes only; HH:MM:SS or ISO qualification time
+  --phone-qualified-at TIME  run beside the phone; HH:MM:SS or ISO qualification time
+  --phone-started-at TIME    coordinate Start buttons; qualification is explicitly assumed +60 s
+  --paired-suite full|light  full suite on the shared link (default); light preserves the 30 s shift
   --accept-mlab              include one NDT7 pair. Publishes your public IP and results
                              to M-Lab and can use gigabytes (no byte cap).
   --upload-pause 22s         length of the simulated upload gap
@@ -79,6 +82,21 @@ export const isTunnel = name =>
   /^(utun|tun|tap|ppp|ipsec|wg|gpd|cscotun|tailscale|zt|nordlynx|proton)/i.test(
     name ?? '',
   );
+
+/** Explicit scope is saved in every segment; M-Lab still requires publication consent. */
+export function pairingSettings(values) {
+  if (values['phone-qualified-at'] && values['phone-started-at'])
+    throw new Error('Use either --phone-qualified-at or --phone-started-at, not both.');
+  const paired = !!(values['phone-qualified-at'] || values['phone-started-at']);
+  const pairedSuite = values['paired-suite'] ?? 'full';
+  if (!['full', 'light'].includes(pairedSuite))
+    throw new Error('--paired-suite must be full or light.');
+  if (values['paired-suite'] && !paired)
+    throw new Error('--paired-suite requires --phone-qualified-at or --phone-started-at.');
+  if (paired && pairedSuite === 'light' && values['accept-mlab'])
+    throw new Error('Light paired runs exclude M-Lab. Use --paired-suite full --accept-mlab.');
+  return { paired, pairedSuite: paired ? pairedSuite : null };
+}
 
 async function routeTo(address) {
   const darwin = process.platform === 'darwin';
@@ -142,6 +160,7 @@ async function clockState() {
 }
 
 export async function preflight(settings) {
+  const pairedLight = settings.paired && settings.pairedSuite !== 'full';
   const problems = [];
   const warnings = [];
   const versions = {
@@ -156,7 +175,7 @@ export async function preflight(settings) {
     curl: await firstLine('curl', ['--version']),
     python3: await firstLine('python3', ['--version']),
   };
-  for (const tool of settings.paired
+  for (const tool of pairedLight
     ? ['curl', 'python3', 'ping']
     : ['traceroute', 'curl', 'python3', 'ping'])
     if (!versions[tool]) problems.push(`${tool} is not installed.`);
@@ -164,7 +183,7 @@ export async function preflight(settings) {
     if (versions.ping && !/iputils/i.test(versions.ping))
       problems.push('ping must be the iputils version.');
     if (
-      !settings.paired &&
+      !pairedLight &&
       versions.traceroute &&
       !/Modern traceroute/i.test(versions.traceroute)
     )
@@ -187,13 +206,13 @@ export async function preflight(settings) {
     ['google', GOOGLE],
     ['probe', probeHost],
     ['udp', settings.udpHost],
-    ...(settings.paired
+    ...(pairedLight
       ? []
       : PAPER_REGISTRY.traces.map(t => [`trace:${t.id}`, t.host])),
-    ...(settings.paired
+    ...(pairedLight
       ? []
       : PAPER_REGISTRY.cdns.map(t => [`cdn:${t.id}`, new URL(t.url).hostname])),
-    ...(settings.paired
+    ...(pairedLight
       ? []
       : [['resolver', `preflight.${PAPER_REGISTRY.resolverDomain}`]]),
   ];
@@ -432,6 +451,8 @@ async function main() {
         default: `${DEFAULT_UPLOAD_PAUSE_MS / 1000}s`,
       },
       'phone-qualified-at': { type: 'string' },
+      'phone-started-at': { type: 'string' },
+      'paired-suite': { type: 'string' },
       'accept-mlab': { type: 'boolean', default: false },
       'no-control': { type: 'boolean', default: false },
       'allow-vpn': { type: 'boolean', default: false },
@@ -463,22 +484,21 @@ async function main() {
     udpPort: Number(values['udp-port'] ?? publicConfig.udpPort),
     mlab: values['accept-mlab'],
     allowVpn: values['allow-vpn'],
-    controls: !values['no-control'] && !values['phone-qualified-at'],
-    paired: !!values['phone-qualified-at'],
+    controls: !values['no-control'] && !values['phone-qualified-at'] && !values['phone-started-at'],
+    ...pairingSettings(values),
   };
   if (!settings.probeUrl || net.isIPv4(settings.udpHost ?? '') === false)
     throw new Error(
       'Set SKYMEASURE_PROBE_URL and SKYMEASURE_UDP_IPV4 in .env.skymeasure.local, or pass --probe-url and --udp-host.',
     );
-  if (values['phone-qualified-at'] && settings.mlab)
-    throw new Error(
-      'Paired runs use light probes only. Run --accept-mlab separately without --phone-qualified-at.',
-    );
   const durationMs = duration(values.duration);
   const uploadPauseMs = duration(values['upload-pause']);
+  const phoneStartedAt = values['phone-started-at']
+    ? clockTime(values['phone-started-at'])
+    : null;
   const phoneAt = values['phone-qualified-at']
     ? clockTime(values['phone-qualified-at'])
-    : null;
+    : phoneStartedAt === null ? null : phoneStartedAt + QUALIFICATION_MS;
 
   console.log('Checking network and tools...');
   const { problems, warnings, environment } = await preflight(settings);
@@ -507,7 +527,14 @@ async function main() {
   )
     throw new Error(`Output already exists: ${directory}`);
   const now = Date.now();
-  const paired = phoneAt === null ? undefined : pairedTimes(phoneAt, now);
+  const paired = phoneAt === null
+    ? undefined
+    : pairedTimes(phoneAt, now, settings.pairedSuite);
+  const validationMode = !paired
+    ? 'standalone_full_suite'
+    : paired.suite === 'full'
+    ? 'paired_full_shared_load'
+    : 'paired_light_only';
   const config = {
     collectionMode: 'linux_baseline',
     collectorVersion: VERSION,
@@ -517,7 +544,8 @@ async function main() {
     paperRegistry: PAPER_REGISTRY,
     tripId: `baseline-${runId}`,
     groundTest: true,
-    validationMode: paired ? 'paired_light_only' : 'standalone_full_suite',
+    validationMode,
+    sharedLoad: validationMode === 'paired_full_shared_load',
     durationMs,
     uploadPauseMs,
     uploadSimulation: 'pause_only',
@@ -528,7 +556,13 @@ async function main() {
           )
         : [],
     pairing: paired
-      ? { phoneQualifiedAt: new Date(phoneAt).toISOString(), ...paired }
+      ? {
+          phoneQualifiedAt: phoneStartedAt === null ? new Date(phoneAt).toISOString() : null,
+          phoneStartedAt: phoneStartedAt === null ? null : new Date(phoneStartedAt).toISOString(),
+          assumedPhoneQualifiedAt: phoneStartedAt === null ? null : new Date(phoneAt).toISOString(),
+          anchorSource: phoneStartedAt === null ? 'supplied_qualification_time' : 'start_time_plus_assumed_60_seconds',
+          ...paired,
+        }
       : null,
     icmpHost: GOOGLE,
     tcpServerUrl: `https://${GOOGLE}`,
@@ -645,6 +679,10 @@ async function main() {
       paired ? ', paired with the phone' : ''
     }. Output: ${directory}`,
   );
+  if (config.sharedLoad)
+    console.log(
+      'Full paired suite: both devices share load. Overlapping tests are retained and labelled; they are not independent capacity or packet-accuracy checks.',
+    );
   const describe = m =>
     m.success
       ? m.value == null
