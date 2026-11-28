@@ -8,7 +8,7 @@ try {
   });
   if (values.help || !values.input) {
     console.log(
-      'Usage: npm run baseline:verify -- --input RUN_OR_COMPARISON_FOLDER',
+      'Usage: npm run baseline:verify -- --input EVIDENCE_FOLDER (run, comparison or supervisor bundle)',
     );
     if (!values.help) process.exitCode = 1;
   } else {
